@@ -1,0 +1,379 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  :root, body {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+}
+
+.pdf-viewport-container {
+  overflow-y: auto !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: auto !important;
+  will-change: transform, scroll-position;
+}
+
+
+/* Hide scrollbar globally while preserving full scrolling capabilities */
+* {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Custom scrollbar ONLY for TOC / Sidebar when content overflows */
+.custom-scrollbar {
+  -ms-overflow-style: auto !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: #cbd5e1 transparent !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  display: block !important;
+  width: 5px !important;
+  height: 5px !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 4px !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+/* PDF Text Layer Styles for text selection */
+.pdf-text-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+  transform-origin: 0 0;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.pdf-text-layer span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: default;
+  transform-origin: 0% 0%;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pdf-text-layer,
+.pdf-text-layer span {
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.pdf-text-layer ::selection {
+  background: transparent;
+  color: transparent;
+}
+
+/* Rich text styling for FreeText editable content strictly scoped inside .free-text-editable */
+.free-text-editable ol {
+  list-style-type: decimal !important;
+  list-style-position: inside !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  text-align: left;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.free-text-editable ul {
+  list-style-type: disc !important;
+  list-style-position: inside !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  text-align: left;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.free-text-editable li {
+  display: list-item !important;
+  list-style-position: inside !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  text-indent: 0 !important;
+}
+
+.free-text-editable a {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  transition: color 0.15s ease;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+}
+
+.free-text-editable a:hover {
+  color: #1d4ed8 !important;
+  text-decoration: underline !important;
+}
+
+/* Ensure all pasted content inside FreeText respects container width, wrapping and font scaling */
+.free-text-editable,
+.free-text-editable * {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  word-break: normal;
+  overflow-wrap: break-word !important;
+}
+
+.free-text-editable span:not([style*="font-size"]):not([data-size]):not([style*="background-color"]):not([style*="background"]),
+.free-text-editable font:not([style*="font-size"]):not([data-size]):not([size]):not([style*="background-color"]):not([style*="background"]),
+.free-text-editable p:not([style*="font-size"]):not([data-size]),
+.free-text-editable div:not([style*="font-size"]):not([data-size]),
+.free-text-editable strong:not([style*="font-size"]):not([data-size]),
+.free-text-editable em:not([style*="font-size"]):not([data-size]),
+.free-text-editable b:not([style*="font-size"]):not([data-size]),
+.free-text-editable i:not([style*="font-size"]):not([data-size]) {
+  font-size: inherit;
+  line-height: inherit;
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.free-text-editable [style*="font-size"],
+.free-text-editable [data-size] {
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  display: inline;
+}
+
+.free-text-editable div[style*="font-size"],
+.free-text-editable div[data-size],
+.free-text-editable p[style*="font-size"],
+.free-text-editable p[data-size],
+.free-text-editable li[style*="font-size"],
+.free-text-editable li[data-size] {
+  display: block !important;
+  line-height: 1.34 !important;
+}
+
+/* Ensure highlighted text backgrounds expand and scale safely with Vietnamese diacritics (Ấ, Ề, Ữ, Ạ, Ẹ, Ị) */
+.free-text-editable mark,
+.free-text-editable [style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color: rgba(0, 0, 0, 0)"]),
+.free-text-editable [style*="background:"]:not([style*="background: transparent"]):not([style*="background: none"]),
+.free-text-editable .ft-font-size-span[style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color: rgba(0, 0, 0, 0)"]) {
+  display: inline;
+  padding-top: 0.16em !important;
+  padding-bottom: 0.14em !important;
+  padding-left: 0.22em !important;
+  padding-right: 0.22em !important;
+  border-radius: 3px !important;
+  box-decoration-break: clone !important;
+  -webkit-box-decoration-break: clone !important;
+}
+
+.free-text-editable mark:has(.ft-font-size-span),
+.free-text-editable mark:has([data-size]) {
+  background-color: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.free-text-editable .ft-font-size-span {
+  display: inline;
+  line-height: 1.34;
+}
+
+/* Enhanced Vietnamese typography underline: clears dấu nặng (ạ, ẹ, ị, ọ, ụ) and avoids crossing descenders or colliding with line below */
+.free-text-editable,
+.free-text-editable *,
+.free-text-editable u {
+  text-underline-offset: clamp(2px, 0.12em, 5px) !important;
+  text-decoration-skip-ink: none !important;
+  text-decoration-thickness: 0.08em;
+}
+
+.free-text-editable img {
+  max-width: 100% !important;
+  height: auto !important;
+  object-fit: contain !important;
+}
+
+.free-text-editable table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto !important;
+}
+
+.free-text-editable blockquote {
+  border-left: 3px solid #f5c41a !important;
+  padding-left: 0.75rem !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  font-style: italic !important;
+  background-color: rgba(22, 93, 255, 0.05) !important;
+  border-radius: 0 !important;
+  text-align: left;
+}
+
+.book-spine-shadow {
+  box-shadow: inset -15px 0 20px -10px rgba(0, 0, 0, 0.15);
+}
+
+.book-spine-shadow-right {
+  box-shadow: inset 15px 0 20px -10px rgba(0, 0, 0, 0.15);
+}
+
+.book-cover-shadow {
+  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.25), 0 0 1px 1px rgba(0, 0, 0, 0.08);
+}
+
+/* Shadow elevation without side border lines */
+.paper-stack-left {
+  box-shadow: -8px 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+}
+
+.paper-stack-right {
+  box-shadow: 8px 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+}
+
+.paper-stack-single {
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.12), 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Custom Rotate Cursors for 4 Corners & Arbitrary Angles - Compact & Clockwise */
+.cursor-rotate-0,
+.cursor-rotate-nw,
+.cursor-rotate {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(0 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-45 {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(45 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-90,
+.cursor-rotate-ne {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(90 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-135 {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(135 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-180,
+.cursor-rotate-se {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(180 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-225 {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(225 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-270,
+.cursor-rotate-sw {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(270 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.cursor-rotate-315 {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cg transform='rotate(315 12 12)'%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='white' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='white' stroke='white' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M 6.5 14.5 A 7 7 0 0 1 14.5 6.5' stroke='black' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpolygon points='16.5,6.5 12,3.5 12,9.5' fill='black'/%3E%3Cpolygon points='6.5,16.5 3.5,12 9.5,12' fill='black'/%3E%3C/g%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+
+
+/* Cursor rules requested by user */
+.cursor-default-arrow {
+  cursor: default !important;
+}
+
+.cursor-ibeam-drag {
+  cursor: text !important;
+}
+
+/* Hardware Acceleration & CSS Hardware Layering for PDF Viewport & Canvas */
+.pdf-hardware-accelerated {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
+}
+
+/* PDF Viewport & Canvas Hardware Acceleration */
+#pdf-transform-wrapper {
+  transition: none !important;
+}
+
+/* Strictly lock CSS transitions and animations during active trackpad pinch gestures */
+.is-zooming,
+.is-zooming #pdf-transform-wrapper,
+.is-zooming .pdf-viewport-container,
+.is-zooming * {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* Clean export mode: hides active selection handles, floating toolbars, and control buttons */
+.exporting-clean .ft-toolbar,
+.exporting-clean .box-floating-toolbar,
+.exporting-clean .hl-popup-toolbar,
+.exporting-clean .hl-popover,
+.exporting-clean .resize-handle,
+.exporting-clean [class*="cursor-nwse-resize"],
+.exporting-clean [class*="cursor-nesw-resize"],
+.exporting-clean [class*="cursor-ew-resize"],
+.exporting-clean [class*="cursor-ns-resize"],
+.exporting-clean button,
+.exporting-clean .ring-2,
+.exporting-clean .ring-blue-500,
+.exporting-clean .select-none-container > button,
+.exporting-clean [class*="z-[100]"] {
+  display: none !important;
+}
+

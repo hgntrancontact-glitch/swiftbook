@@ -1,0 +1,1 @@
+sed -i 's/prevProps.boxColor !== nextProps.boxColor ||/prevProps.boxColor !== nextProps.boxColor ||\n    JSON.stringify(prevProps.selectedIds) !== JSON.stringify(nextProps.selectedIds) ||/' src/components/PDFPageView.tsx

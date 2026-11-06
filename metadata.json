@@ -1,0 +1,8 @@
+{
+  "name": "Remix 1 - 4.11 (CHUYỂN GIAO VYDU) - Trình Đọc Sách PDF",
+  "description": "Xem với giao diện sách Online",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
