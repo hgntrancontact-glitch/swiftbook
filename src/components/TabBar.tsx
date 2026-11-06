@@ -8,6 +8,7 @@ interface TabBarProps {
   onSelectDoc: (id: string) => void;
   onToggleHide: (id: string) => void;
   onCloseDoc: (id: string) => void;
+  onReorderDocs: (sourceId: string, targetId: string) => void;
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -16,6 +17,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onSelectDoc,
   onToggleHide,
   onCloseDoc,
+  onReorderDocs,
 }) => {
   if (docs.length === 0) return null;
 
@@ -35,6 +37,24 @@ export const TabBar: React.FC<TabBarProps> = ({
             role="tab"
             aria-selected={isActive}
             onClick={() => onSelectDoc(doc.id)}
+            draggable
+            onDragStart={(event) => {
+              if ((event.target as HTMLElement).closest('button')) {
+                event.preventDefault();
+                return;
+              }
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', doc.id);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const sourceId = event.dataTransfer.getData('text/plain');
+              if (sourceId && sourceId !== doc.id) onReorderDocs(sourceId, doc.id);
+            }}
             title={doc.fileName}
             className={`group relative flex items-center h-[30px] px-2.5 rounded-t-md transition-all cursor-pointer text-xs shrink-0 max-w-[240px] gap-1.5 border-b-0 ${
               isActive

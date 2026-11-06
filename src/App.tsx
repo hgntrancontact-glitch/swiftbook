@@ -162,6 +162,21 @@ export function App() {
   const multiPdfContainerRef = useRef<HTMLDivElement>(null);
   const workspacePairIndexRef = useRef(0);
 
+  const scrollWorkspaceToDoc = useCallback((docId: string) => {
+    requestAnimationFrame(() => {
+      const container = multiPdfContainerRef.current;
+      if (!container) return;
+      const columns = Array.from(
+        container.querySelectorAll<HTMLElement>(':scope > [data-workspace-doc]')
+      ).filter((column) => column.style.display !== 'none');
+      const selectedIndex = columns.findIndex((column) => column.dataset.workspaceDoc === docId);
+      if (selectedIndex < 0 || columns.length < 2) return;
+      const pairIndex = Math.max(0, Math.min(columns.length - 2, selectedIndex === 0 ? 0 : selectedIndex - 1));
+      workspacePairIndexRef.current = pairIndex;
+      container.scrollTo({ left: pairIndex * (container.clientWidth / 2), behavior: 'smooth' });
+    });
+  }, []);
+
   useEffect(() => {
     const container = multiPdfContainerRef.current;
     if (!container) return;
@@ -243,24 +258,6 @@ export function App() {
       if (settleTimer) clearTimeout(settleTimer);
     };
   }, [visibleDocs.length]);
-
-  // Keep the selected document inside a fully aligned pair when switching tabs.
-  useEffect(() => {
-    const container = multiPdfContainerRef.current;
-    if (!container || visibleDocs.length < 2) return;
-    const selectedIndex = visibleDocs.findIndex((doc) => doc.id === activeDocId);
-    if (selectedIndex < 0) return;
-
-    const pairIndex = Math.max(
-      0,
-      Math.min(visibleDocs.length - 2, selectedIndex === 0 ? 0 : selectedIndex - 1)
-    );
-    workspacePairIndexRef.current = pairIndex;
-    container.scrollTo({
-      left: pairIndex * (container.clientWidth / 2),
-      behavior: "smooth",
-    });
-  }, [activeDocId, visibleDocs.length]);
 
   // Color & Tool Handlers
   const handleHighlightColorChange = useCallback((color: HighlightColor) => {
@@ -417,6 +414,7 @@ export function App() {
       if (matchedDoc) {
         // Bring existing document to focus and unhide if hidden
         setActiveDocId(matchedDoc.id);
+        scrollWorkspaceToDoc(matchedDoc.id);
         if (matchedDoc.isHidden) {
           setOpenDocs((prev) =>
             prev.map((d) => (d.id === matchedDoc!.id ? { ...d, isHidden: false } : d))
@@ -446,7 +444,7 @@ export function App() {
         const viewport = page1.getViewport({ scale: 1.0 });
 
         // Save bytes to forage in background
-        savePdfFileToForage(id, data.slice(0)).catch((err) =>
+        savePdfFileToForage(id, data).catch((err) =>
           console.warn("Background localforage save warning:", err)
         );
 
@@ -459,7 +457,9 @@ export function App() {
           fileName: name,
           fileSize: size,
           pdfDoc: doc,
-          pdfBytes: data.slice(0),
+          // PDF.js receives its own transferable copy above; keep the original
+          // bytes here instead of duplicating a large PDF again in memory.
+          pdfBytes: data,
           basePageDimensions: {
             width: viewport.width,
             height: viewport.height,
@@ -497,6 +497,7 @@ export function App() {
         });
 
         setActiveDocId(newDoc.id);
+        scrollWorkspaceToDoc(newDoc.id);
         setPenColor("#ef4444");
         setHighlightColor("yellow");
 
@@ -526,7 +527,7 @@ export function App() {
         setIsLoadingDoc(false);
       }
     },
-    [updateDoc]
+    [scrollWorkspaceToDoc, updateDoc]
   );
 
   // Restore last opened book on initial mount
@@ -563,26 +564,29 @@ export function App() {
   // Auto-save all open documents independently
   useEffect(() => {
     if (openDocs.length === 0) return;
-    openDocs.forEach((doc) => {
-      if (!doc.pdfDoc || !doc.fileId) return;
-      saveDocumentState({
-        fileId: doc.fileId,
-        fileName: doc.fileName,
-        fileSize: doc.fileSize,
-        totalPages: doc.totalPages,
-        currentPage: doc.currentPage,
-        viewMode: doc.viewMode,
-        zoom: doc.scale,
-        highlights: doc.highlights,
-        textNotes: doc.textNotes,
-        drawings: doc.drawings,
-        boxes: doc.boxes,
-        freeTexts: doc.freeTexts,
-        customTOC: doc.customTOC,
-        bookConfig: doc.bookConfig || undefined,
-        lastReadAt: doc.lastReadAt,
+    const saveTimer = window.setTimeout(() => {
+      openDocs.forEach((doc) => {
+        if (!doc.pdfDoc || !doc.fileId) return;
+        saveDocumentState({
+          fileId: doc.fileId,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          totalPages: doc.totalPages,
+          currentPage: doc.currentPage,
+          viewMode: doc.viewMode,
+          zoom: doc.scale,
+          highlights: doc.highlights,
+          textNotes: doc.textNotes,
+          drawings: doc.drawings,
+          boxes: doc.boxes,
+          freeTexts: doc.freeTexts,
+          customTOC: doc.customTOC,
+          bookConfig: doc.bookConfig || undefined,
+          lastReadAt: doc.lastReadAt,
+        });
       });
-    });
+    }, 500);
+    return () => window.clearTimeout(saveTimer);
   }, [openDocs]);
 
   // Tab Action: Toggle Hide (EyeOff / Eye)
@@ -664,6 +668,24 @@ export function App() {
   const handleActivateDoc = useCallback((id: string) => {
     setActiveDocId(id);
   }, []);
+
+  const handleSelectTabDoc = useCallback((id: string) => {
+    setActiveDocId(id);
+    scrollWorkspaceToDoc(id);
+  }, [scrollWorkspaceToDoc]);
+
+  const handleReorderDocs = useCallback((sourceId: string, targetId: string) => {
+    setOpenDocs((prev) => {
+      const sourceIndex = prev.findIndex((doc) => doc.id === sourceId);
+      const targetIndex = prev.findIndex((doc) => doc.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+    scrollWorkspaceToDoc(activeDocId);
+  }, [activeDocId, scrollWorkspaceToDoc]);
 
   // Handle User File Upload
   const handleFileUpload = async (
@@ -992,8 +1014,14 @@ export function App() {
 
   // Page, Zoom & ViewMode Handlers per document
   const handlePageChange = useCallback((docId: string, page: number) => {
-    updateDoc(docId, (d) => ({ ...d, currentPage: Math.max(1, Math.min(d.totalPages, page)) }));
-  }, [updateDoc]);
+    setOpenDocs((prev) => {
+      const current = prev.find((doc) => doc.id === docId);
+      if (!current) return prev;
+      const nextPage = Math.max(1, Math.min(current.totalPages, page));
+      if (current.currentPage === nextPage) return prev;
+      return prev.map((doc) => doc.id === docId ? { ...doc, currentPage: nextPage } : doc);
+    });
+  }, []);
 
   const handleZoomChange = useCallback((docId: string, scale: number, resetFitMode?: boolean) => {
     updateDoc(docId, (d) => ({
@@ -1497,9 +1525,10 @@ export function App() {
             <TabBar
               docs={openDocs}
               activeDocId={activeDocId}
-              onSelectDoc={(id) => setActiveDocId(id)}
+              onSelectDoc={handleSelectTabDoc}
               onToggleHide={handleToggleHideDoc}
               onCloseDoc={handleCloseDoc}
+              onReorderDocs={handleReorderDocs}
             />
           )}
 

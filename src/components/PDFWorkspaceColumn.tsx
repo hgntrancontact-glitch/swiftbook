@@ -231,8 +231,8 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         let deltaY = e.deltaY;
         if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) deltaY *= 16;
         else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) deltaY *= container.clientHeight;
-        deltaY = Math.max(-120, Math.min(120, deltaY));
-        targetZoomScale = Math.max(0.2, targetZoomScale * Math.exp(-deltaY * 0.0025));
+        deltaY = Math.max(-80, Math.min(80, deltaY));
+        targetZoomScale = Math.max(0.2, targetZoomScale * Math.exp(-deltaY * 0.0012));
 
         targetClientX = e.clientX;
         targetClientY = e.clientY;
@@ -310,6 +310,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   return (
     <div
       ref={columnRootRef}
+      data-workspace-doc={doc.id}
       onClick={handleActivateThisColumn}
       onPointerDownCapture={handleActivateThisColumn}
       onMouseDownCapture={handleActivateThisColumn}

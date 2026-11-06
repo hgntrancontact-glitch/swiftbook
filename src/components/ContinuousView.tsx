@@ -114,13 +114,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const pageElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
-  const observerRef = useRef<IntersectionObserver | null>(null);
   const isUserScrollingRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<any>(null);
 
   // Render near the current view first. Mounting dozens of canvas pages at once
   // makes large PDFs slow and can starve the pages the reader is looking at.
-  const initialPageCount = Math.min(4, totalPages);
+  const initialPageCount = Math.min(2, totalPages);
   const [renderedPages, setRenderedPages] = useState<Set<number>>(() => {
     const initial = new Set<number>();
     for (let i = 1; i <= initialPageCount; i++) {
@@ -129,15 +128,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
     return initial;
   });
 
-  // Keep rendered pages intact and expand if needed
+  // Keep only pages near the viewport mounted. Retaining every visited canvas
+  // made zoom gestures rerender too many large pages at once.
   useEffect(() => {
-    setRenderedPages((prev) => {
-      const next = new Set(prev);
-      for (let i = 1; i <= initialPageCount; i++) {
-        next.add(i);
-      }
-      return next;
-    });
+    const initial = new Set<number>();
+    for (let page = 1; page <= initialPageCount; page++) initial.add(page);
+    setRenderedPages(initial);
   }, [fileId, initialPageCount]);
 
   // Synchronize external currentPage jumps (e.g. from header input, TOC bookmark click)
@@ -159,58 +155,6 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   useEffect(() => {
     const scrollParent = wrapperRef.current?.closest('.pdf-viewport-container') as HTMLElement | null;
 
-    let pendingNewPages: number[] = [];
-    let rafId: number | null = null;
-
-    const commitNewPages = () => {
-      if (pendingNewPages.length === 0) return;
-      setRenderedPages((prev) => {
-        let hasNew = false;
-        const next = new Set(prev);
-        for (const p of pendingNewPages) {
-          if (!next.has(p)) {
-            next.add(p);
-            hasNew = true;
-          }
-        }
-        pendingNewPages = [];
-        return hasNew ? next : prev;
-      });
-    };
-
-    let observer: IntersectionObserver | null = null;
-    if (typeof IntersectionObserver !== 'undefined') {
-      observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              const pageNum = Number(entry.target.getAttribute('data-continuous-page'));
-              if (pageNum) {
-                pendingNewPages.push(pageNum);
-              }
-            }
-          }
-
-          if (pendingNewPages.length > 0 && rafId === null) {
-            rafId = requestAnimationFrame(() => {
-              rafId = null;
-              commitNewPages();
-            });
-          }
-        },
-        {
-          root: scrollParent || null,
-          rootMargin: '1200px 0px 1200px 0px',
-          threshold: 0,
-        }
-      );
-      observerRef.current = observer;
-
-      pageElementsRef.current.forEach((el) => {
-        observer?.observe(el);
-      });
-    }
-
     let scrollRaf: number | null = null;
     const handleScroll = () => {
       if (scrollRaf !== null) return;
@@ -220,15 +164,16 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 
         const containerRect = scrollParent.getBoundingClientRect();
         const viewportCenter = containerRect.top + containerRect.height / 2;
+        const nearbyPages = new Set<number>();
 
         let closestPage = 1;
         let minDistance = Infinity;
 
         pageElementsRef.current.forEach((el, pageNum) => {
           const rect = el.getBoundingClientRect();
-          // Buffer lookahead check: pre-mount pages near viewport
+          // Prepare nearby pages before they enter the viewport.
           if (rect.bottom >= containerRect.top - 1200 && rect.top <= containerRect.bottom + 1200) {
-            pendingNewPages.push(pageNum);
+            nearbyPages.add(pageNum);
           }
 
           // Track page closest to viewport center
@@ -240,7 +185,10 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
           }
         });
 
-        commitNewPages();
+        setRenderedPages((prev) => {
+          if (prev.size === nearbyPages.size && [...prev].every((page) => nearbyPages.has(page))) return prev;
+          return nearbyPages;
+        });
 
         if (onPageChange && closestPage) {
           isUserScrollingRef.current = true;
@@ -255,13 +203,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 
     const targetScroll = scrollParent || window;
     targetScroll.addEventListener('scroll', handleScroll, { passive: true });
+    const initialRaf = requestAnimationFrame(handleScroll);
 
     return () => {
-      observer?.disconnect();
-      observerRef.current = null;
       targetScroll.removeEventListener('scroll', handleScroll);
-      if (rafId !== null) cancelAnimationFrame(rafId);
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
+      cancelAnimationFrame(initialRaf);
       clearTimeout(scrollTimeoutRef.current);
     };
   }, [fileId, totalPages, onPageChange]);
@@ -339,9 +286,6 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
             ref={(el) => {
               if (el) {
                 pageElementsRef.current.set(pageNum, el);
-                if (observerRef.current) {
-                  observerRef.current.observe(el);
-                }
               } else {
                 pageElementsRef.current.delete(pageNum);
               }
