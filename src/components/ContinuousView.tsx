@@ -118,15 +118,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   const isUserScrollingRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<any>(null);
 
-  // Progressive Mounting:
-  // For documents with <= 60 pages, mount ALL pages directly!
-  // Modern browsers handle 60 canvas pages natively with content-visibility: auto.
-  // This completely eliminates white flashing and blank placeholder boxes!
-  const isSmallDoc = totalPages <= 60;
+  // Render near the current view first. Mounting dozens of canvas pages at once
+  // makes large PDFs slow and can starve the pages the reader is looking at.
+  const initialPageCount = Math.min(4, totalPages);
   const [renderedPages, setRenderedPages] = useState<Set<number>>(() => {
     const initial = new Set<number>();
-    const count = isSmallDoc ? totalPages : Math.min(20, totalPages);
-    for (let i = 1; i <= count; i++) {
+    for (let i = 1; i <= initialPageCount; i++) {
       initial.add(i);
     }
     return initial;
@@ -136,13 +133,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   useEffect(() => {
     setRenderedPages((prev) => {
       const next = new Set(prev);
-      const count = isSmallDoc ? totalPages : Math.min(20, totalPages);
-      for (let i = 1; i <= count; i++) {
+      for (let i = 1; i <= initialPageCount; i++) {
         next.add(i);
       }
       return next;
     });
-  }, [fileId, totalPages, isSmallDoc]);
+  }, [fileId, initialPageCount]);
 
   // Synchronize external currentPage jumps (e.g. from header input, TOC bookmark click)
   useEffect(() => {
@@ -204,7 +200,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
         },
         {
           root: scrollParent || null,
-          rootMargin: '2400px 0px 2400px 0px',
+          rootMargin: '1200px 0px 1200px 0px',
           threshold: 0,
         }
       );
@@ -231,7 +227,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
         pageElementsRef.current.forEach((el, pageNum) => {
           const rect = el.getBoundingClientRect();
           // Buffer lookahead check: pre-mount pages near viewport
-          if (rect.bottom >= containerRect.top - 2000 && rect.top <= containerRect.bottom + 2000) {
+          if (rect.bottom >= containerRect.top - 1200 && rect.top <= containerRect.bottom + 1200) {
             pendingNewPages.push(pageNum);
           }
 

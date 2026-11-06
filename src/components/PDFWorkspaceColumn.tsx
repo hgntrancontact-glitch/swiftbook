@@ -172,13 +172,20 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     }
   }, [doc.scale, doc.id]);
 
+  // Reset horizontal panning when zoom returns to its fitted 100% baseline.
+  useEffect(() => {
+    if (doc.fitMode && containerRef.current) {
+      containerRef.current.scrollLeft = 0;
+    }
+  }, [doc.fitMode, doc.id]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     let targetZoomScale = scaleRef.current || 1.0;
-    let targetClientX = 0;
-    let targetClientY = 0;
+    let targetClientX: number | null = null;
+    let targetClientY: number | null = null;
     let rafId: number | null = null;
 
     const applyZoomFrame = () => {
@@ -188,24 +195,14 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (!c || !w) return;
 
       const curScale = scaleRef.current || 1.0;
-      const nextScale = targetZoomScale;
+      const nextScale = Math.max(0.2, targetZoomScale);
       if (Math.abs(nextScale - curScale) < 0.0001) return;
-
-      if (nextScale <= 0.2) {
-        scaleRef.current = 0.2;
-        targetZoomScale = 0.2;
-        pendingZoomScrollRef.current = { reset: true } as any;
-        c.scrollLeft = 0;
-        c.scrollTop = 0;
-        onZoomChange(doc.id, 0.2);
-        return;
-      }
 
       const cRect = c.getBoundingClientRect();
       const wRect = w.getBoundingClientRect();
 
-      let clientX = targetClientX || cRect.left + cRect.width / 2;
-      let clientY = targetClientY || cRect.top + cRect.height / 2;
+      const clientX = targetClientX ?? cRect.left + cRect.width / 2;
+      const clientY = targetClientY ?? cRect.top + cRect.height / 2;
 
       const cursorViewportX = clientX - cRect.left;
       const cursorViewportY = clientY - cRect.top;
@@ -222,6 +219,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       };
 
       scaleRef.current = nextScale;
+      targetZoomScale = nextScale;
       onZoomChange(doc.id, nextScale);
     };
 
@@ -230,14 +228,11 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
-        const curScale = scaleRef.current || 1.0;
-        if (targetZoomScale < 0.2 || Math.abs(targetZoomScale - curScale) > 0.5) {
-          targetZoomScale = curScale;
-        }
-
-        const zoomDelta = -e.deltaY * 0.007;
-        const step = Math.exp(zoomDelta);
-        targetZoomScale = Math.max(0.2, targetZoomScale * step);
+        let deltaY = e.deltaY;
+        if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) deltaY *= 16;
+        else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) deltaY *= container.clientHeight;
+        deltaY = Math.max(-120, Math.min(120, deltaY));
+        targetZoomScale = Math.max(0.2, targetZoomScale * Math.exp(-deltaY * 0.0025));
 
         targetClientX = e.clientX;
         targetClientY = e.clientY;
@@ -279,13 +274,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   const columnRootRef = useRef<HTMLDivElement>(null);
   const [isInViewport, setIsInViewport] = useState<boolean>(true);
   const hasRenderedOnceRef = useRef<boolean>(false);
-
-  // Auto scroll this column into view when activated
-  useEffect(() => {
-    if (isActive && columnRootRef.current) {
-      columnRootRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-    }
-  }, [isActive]);
 
   // IntersectionObserver for performance virtualization on offscreen PDF columns
   useEffect(() => {
@@ -337,6 +325,8 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       style={{
         display: doc.isHidden ? 'none' : 'flex',
         contentVisibility: isInViewport || isActive ? 'visible' : 'auto',
+        scrollSnapAlign: totalVisibleDocs > 1 ? 'start' : undefined,
+        scrollSnapStop: totalVisibleDocs > 1 ? 'always' : undefined,
       }}
     >
       {/* Column Mini Sub-Header when viewing multiple PDFs */}
@@ -378,9 +368,22 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         ref={containerRef}
         className="pdf-viewport-container w-full h-full relative min-h-0 no-scrollbar box-border pt-4 pb-24 px-3 sm:px-4"
         style={{
-          overflowX: actualScale > 1.05 ? 'auto' : 'hidden',
+          overflowX: 'auto',
           overflowY: 'auto',
-          overscrollBehaviorX: 'auto',
+          overscrollBehaviorX: 'contain',
+        }}
+        onWheelCapture={(e) => {
+          if (e.ctrlKey || e.metaKey) return;
+          const viewport = e.currentTarget;
+          const hasHorizontalOverflow = viewport.scrollWidth > viewport.clientWidth + 1;
+          const horizontalDelta = e.deltaX || (e.shiftKey ? e.deltaY : 0);
+          if (!hasHorizontalOverflow || horizontalDelta === 0) return;
+
+          e.stopPropagation();
+          if (e.shiftKey && e.deltaX === 0) {
+            e.preventDefault();
+            viewport.scrollLeft += e.deltaY;
+          }
         }}
         onPointerDownCapture={handleActivateThisColumn}
         onMouseDownCapture={handleActivateThisColumn}

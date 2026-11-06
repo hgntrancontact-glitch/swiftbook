@@ -160,6 +160,7 @@ export function App() {
 
   // Multi-PDF Workspace Container Ref & Smooth Bi-directional Horizontal Wheel
   const multiPdfContainerRef = useRef<HTMLDivElement>(null);
+  const workspacePairIndexRef = useRef(0);
 
   useEffect(() => {
     const container = multiPdfContainerRef.current;
@@ -167,6 +168,22 @@ export function App() {
 
     let rafId: number | null = null;
     let accumulatedDelta = 0;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let previousWidth = container.clientWidth;
+    const maxPairIndex = Math.max(0, visibleDocs.length - 2);
+    const clampPairIndex = (index: number) =>
+      Math.max(0, Math.min(maxPairIndex, index));
+
+    const settleToNearestPair = () => {
+      const step = container.clientWidth / 2;
+      if (step <= 0) return;
+      const nextIndex = clampPairIndex(Math.round(container.scrollLeft / step));
+      workspacePairIndexRef.current = nextIndex;
+      const alignedLeft = nextIndex * step;
+      if (Math.abs(container.scrollLeft - alignedLeft) > 1) {
+        container.scrollLeft = alignedLeft;
+      }
+    };
 
     const flushScroll = () => {
       rafId = null;
@@ -177,7 +194,18 @@ export function App() {
     };
 
     const handleWorkspaceWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) return; // Zoom is handled per PDF column
+      if (e.ctrlKey || e.metaKey) return; // Zoom is handled per PDF column
+
+      const target = e.target instanceof Element ? e.target : null;
+      const pdfViewport = target?.closest<HTMLElement>(".pdf-viewport-container");
+      const horizontalDelta = e.deltaX || (e.shiftKey ? e.deltaY : 0);
+      const pdfHasHorizontalOverflow = Boolean(
+        pdfViewport && pdfViewport.scrollWidth > pdfViewport.clientWidth + 1
+      );
+
+      // A horizontally overflowing PDF owns the gesture. Its own wheel handler
+      // keeps it from chaining into the workspace.
+      if (pdfHasHorizontalOverflow && horizontalDelta !== 0) return;
 
       // Only convert Shift + vertical wheel on mouse into horizontal workspace scroll
       if (e.shiftKey && Math.abs(e.deltaY) > 0) {
@@ -189,12 +217,50 @@ export function App() {
       }
     };
 
+    const handleWorkspaceScroll = () => {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(settleToNearestPair, 140);
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      const width = container.clientWidth;
+      if (Math.abs(width - previousWidth) < 1) return;
+      previousWidth = width;
+      const step = width / 2;
+      const nextIndex = clampPairIndex(workspacePairIndexRef.current);
+      workspacePairIndexRef.current = nextIndex;
+      container.scrollLeft = nextIndex * step;
+    });
+
     container.addEventListener("wheel", handleWorkspaceWheel, { passive: false });
+    container.addEventListener("scroll", handleWorkspaceScroll, { passive: true });
+    resizeObserver.observe(container);
     return () => {
       container.removeEventListener("wheel", handleWorkspaceWheel);
+      container.removeEventListener("scroll", handleWorkspaceScroll);
+      resizeObserver.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (settleTimer) clearTimeout(settleTimer);
     };
-  }, []);
+  }, [visibleDocs.length]);
+
+  // Keep the selected document inside a fully aligned pair when switching tabs.
+  useEffect(() => {
+    const container = multiPdfContainerRef.current;
+    if (!container || visibleDocs.length < 2) return;
+    const selectedIndex = visibleDocs.findIndex((doc) => doc.id === activeDocId);
+    if (selectedIndex < 0) return;
+
+    const pairIndex = Math.max(
+      0,
+      Math.min(visibleDocs.length - 2, selectedIndex === 0 ? 0 : selectedIndex - 1)
+    );
+    workspacePairIndexRef.current = pairIndex;
+    container.scrollTo({
+      left: pairIndex * (container.clientWidth / 2),
+      behavior: "smooth",
+    });
+  }, [activeDocId, visibleDocs.length]);
 
   // Color & Tool Handlers
   const handleHighlightColorChange = useCallback((color: HighlightColor) => {
@@ -387,16 +453,6 @@ export function App() {
         // Load saved state from storage if exists
         const savedState = loadDocumentState(id);
 
-        let mappedTOC: AutoTOCItem[] = [];
-        try {
-          const outline = await doc.getOutline();
-          if (outline && outline.length > 0) {
-            mappedTOC = await mapPdfOutline(doc, outline);
-          }
-        } catch {
-          mappedTOC = [];
-        }
-
         const newDoc: WorkspaceDoc = {
           id: id,
           fileId: id,
@@ -422,7 +478,7 @@ export function App() {
           boxes: savedState?.boxes || [],
           freeTexts: savedState?.freeTexts || [],
           customTOC: savedState?.customTOC || [],
-          autoTOC: mappedTOC,
+          autoTOC: [],
           selectedIds: [],
           selectionState: null,
           pastStates: [],
@@ -443,6 +499,24 @@ export function App() {
         setActiveDocId(newDoc.id);
         setPenColor("#ef4444");
         setHighlightColor("yellow");
+
+        // The first page can be viewed immediately; outline extraction can be
+        // expensive on large PDFs, so finish it without blocking the workspace.
+        window.setTimeout(() => {
+          void (async () => {
+            try {
+              const outline = await doc.getOutline();
+              if (outline?.length) {
+                const mappedTOC = await mapPdfOutline(doc, outline);
+                if (mappedTOC.length) {
+                  updateDoc(newDoc.id, (current) => ({ ...current, autoTOC: mappedTOC }));
+                }
+              }
+            } catch {
+              // A missing or malformed outline does not prevent reading the PDF.
+            }
+          })();
+        }, 0);
       } catch (err: any) {
         console.error("Error loading PDF document:", err);
         setLoadError(
@@ -452,7 +526,7 @@ export function App() {
         setIsLoadingDoc(false);
       }
     },
-    []
+    [updateDoc]
   );
 
   // Restore last opened book on initial mount
@@ -832,6 +906,7 @@ export function App() {
   }, []);
 
   // Keyboard navigation & tool shortcuts
+  const lastToolShortcutPressRef = useRef<{ key: string; time: number } | null>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -860,6 +935,17 @@ export function App() {
         return;
       }
 
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Z resets the selected PDF's user zoom to 100% (fit scale).
+      if (e.key.toLowerCase() === "z") {
+        if (activeDoc) {
+          e.preventDefault();
+          updateDoc(activeDoc.id, (doc) => ({ ...doc, scale: 1.0, fitMode: true }));
+        }
+        return;
+      }
+
       // Page Navigation on activeDoc
       if (activeDoc) {
         if (e.key === "ArrowLeft" || e.key === "PageUp") {
@@ -879,8 +965,21 @@ export function App() {
 
       // Quick Tool Hotkeys
       const key = e.key.toLowerCase();
-      if (key === "p") setActiveTool("pen");
-      else if (key === "h") setActiveTool("highlighter");
+      if (key === "p" || key === "h") {
+        const now = Date.now();
+        const previous = lastToolShortcutPressRef.current;
+        const isDoublePress =
+          previous?.key === key && now - previous.time <= 400;
+
+        setActiveTool(
+          key === "p"
+            ? isDoublePress ? "smart_pen" : "pen"
+            : isDoublePress ? "smart_highlighter" : "highlighter"
+        );
+        lastToolShortcutPressRef.current = isDoublePress ? null : { key, time: now };
+        e.preventDefault();
+        return;
+      }
       else if (key === "x") setActiveTool("eraser");
       else if (key === "t") setActiveTool("text");
       else if (key === "n") setActiveTool("sticky");
@@ -1404,7 +1503,7 @@ export function App() {
             />
           )}
 
-          {isLoadingDoc ? (
+          {isLoadingDoc && openDocs.length === 0 ? (
             <div className="flex flex-col items-center justify-center w-full h-full">
               <div className="inline-flex flex-col items-center justify-center gap-3 p-8 my-auto mx-auto bg-white rounded-xl shadow-lg border border-neutral-200">
                 <div className="w-10 h-10 border-3 border-neutral-900 border-t-transparent rounded-full animate-spin" />
@@ -1418,7 +1517,7 @@ export function App() {
                 </div>
               </div>
             </div>
-          ) : loadError ? (
+          ) : loadError && openDocs.length === 0 ? (
             <div className="flex flex-col items-center justify-center w-full h-full">
               <div className="inline-flex flex-col items-center justify-center gap-3 p-8 my-auto bg-white rounded-xl shadow-lg border border-red-200 max-w-md text-center">
                 <AlertCircle size={36} className="text-red-500" />
@@ -1518,6 +1617,7 @@ export function App() {
               }`}
               style={{
                 overscrollBehaviorX: "contain",
+                scrollSnapType: visibleDocs.length > 1 ? "x mandatory" : "none",
               }}
             >
               {openDocs.map((doc) => (
