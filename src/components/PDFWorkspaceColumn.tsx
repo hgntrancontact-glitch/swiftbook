@@ -140,6 +140,9 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   const scaleRef = useRef<number>(doc.scale);
   scaleRef.current = doc.scale;
   const pendingZoomScrollRef = useRef<{
+    anchorElement?: HTMLElement | null;
+    anchorX?: number;
+    anchorY?: number;
     pointOnW_X: number;
     pointOnW_Y: number;
     ratio: number;
@@ -156,6 +159,17 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (pending.reset) {
         c.scrollLeft = 0;
         c.scrollTop = 0;
+        return;
+      }
+      if (pending.anchorElement?.isConnected) {
+        const pageRect = pending.anchorElement.getBoundingClientRect();
+        const containerRect = c.getBoundingClientRect();
+        const desiredClientX = containerRect.left + pending.cursorViewportX;
+        const desiredClientY = containerRect.top + pending.cursorViewportY;
+        const anchoredClientX = pageRect.left + (pending.anchorX || 0) * pageRect.width;
+        const anchoredClientY = pageRect.top + (pending.anchorY || 0) * pageRect.height;
+        c.scrollLeft = Math.max(0, c.scrollLeft + anchoredClientX - desiredClientX);
+        c.scrollTop = Math.max(0, c.scrollTop + anchoredClientY - desiredClientY);
         return;
       }
       const w = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
@@ -195,7 +209,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (!c || !w) return;
 
       const curScale = scaleRef.current || 1.0;
-      const nextScale = Math.max(0.2, targetZoomScale);
+      const nextScale = Math.max(1.0, targetZoomScale);
       if (Math.abs(nextScale - curScale) < 0.0001) return;
 
       const cRect = c.getBoundingClientRect();
@@ -209,8 +223,29 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       const pointOnW_X = clientX - wRect.left;
       const pointOnW_Y = clientY - wRect.top;
       const ratio = nextScale / curScale;
+      const targetElement = document.elementFromPoint(clientX, clientY);
+      let anchorElement = targetElement instanceof Element
+        ? targetElement.closest<HTMLElement>('[data-page-container="true"]')
+        : null;
+      if (!anchorElement) {
+        let nearestDistance = Infinity;
+        container.querySelectorAll<HTMLElement>('[data-page-container="true"]').forEach((page) => {
+          const rect = page.getBoundingClientRect();
+          const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+          const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+          const distance = dx * dx + dy * dy;
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            anchorElement = page;
+          }
+        });
+      }
+      const anchorRect = anchorElement?.getBoundingClientRect();
 
       pendingZoomScrollRef.current = {
+        anchorElement,
+        anchorX: anchorRect?.width ? Math.max(0, Math.min(1, (clientX - anchorRect.left) / anchorRect.width)) : undefined,
+        anchorY: anchorRect?.height ? Math.max(0, Math.min(1, (clientY - anchorRect.top) / anchorRect.height)) : undefined,
         pointOnW_X,
         pointOnW_Y,
         ratio,
@@ -220,7 +255,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
 
       scaleRef.current = nextScale;
       targetZoomScale = nextScale;
-      onZoomChange(doc.id, nextScale);
+      onZoomChange(doc.id, nextScale, nextScale <= 1.0001);
     };
 
     const handleWheel = (e: WheelEvent) => {
@@ -232,7 +267,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) deltaY *= 16;
         else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) deltaY *= container.clientHeight;
         deltaY = Math.max(-80, Math.min(80, deltaY));
-        targetZoomScale = Math.max(0.2, targetZoomScale * Math.exp(-deltaY * 0.0012));
+        targetZoomScale = Math.max(1.0, targetZoomScale * Math.exp(-deltaY * 0.0012));
 
         targetClientX = e.clientX;
         targetClientY = e.clientY;
@@ -270,6 +305,41 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   }, [doc.basePageDimensions, containerSize, doc.viewMode, doc.totalPages]);
 
   const actualScale = baseScale * doc.scale;
+
+  const previousLayoutRef = useRef({ baseScale, visibleDocs: totalVisibleDocs });
+  const preserveZoomAcrossColumnResizeRef = useRef(false);
+  const preserveZoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
+  }, []);
+  useLayoutEffect(() => {
+    const previous = previousLayoutRef.current;
+    if (previous.visibleDocs === 1 && totalVisibleDocs > 1) {
+      preserveZoomAcrossColumnResizeRef.current = true;
+      if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
+      preserveZoomTimeoutRef.current = setTimeout(() => {
+        preserveZoomTimeoutRef.current = null;
+        preserveZoomAcrossColumnResizeRef.current = false;
+      }, 300);
+    } else if (totalVisibleDocs <= 1) {
+      preserveZoomAcrossColumnResizeRef.current = false;
+      if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
+      preserveZoomTimeoutRef.current = null;
+    }
+
+    const baseScaleChanged = Math.abs(previous.baseScale - baseScale) > 0.001;
+    if (preserveZoomAcrossColumnResizeRef.current && baseScaleChanged && baseScale > 0) {
+      const preservedScale = doc.scale * previous.baseScale / baseScale;
+      if (Math.abs(preservedScale - doc.scale) > 0.001) {
+        onZoomChange(doc.id, preservedScale, preservedScale <= 1.0001);
+      }
+      preserveZoomAcrossColumnResizeRef.current = false;
+      if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
+      preserveZoomTimeoutRef.current = null;
+    }
+
+    previousLayoutRef.current = { baseScale, visibleDocs: totalVisibleDocs };
+  }, [baseScale, totalVisibleDocs, doc.id, doc.scale, onZoomChange]);
 
   const columnRootRef = useRef<HTMLDivElement>(null);
   const [isInViewport, setIsInViewport] = useState<boolean>(true);
@@ -314,7 +384,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       onClick={handleActivateThisColumn}
       onPointerDownCapture={handleActivateThisColumn}
       onMouseDownCapture={handleActivateThisColumn}
-      className={`h-full relative flex flex-col bg-[#fafafa] transition-all select-none ${
+      className={`h-full relative flex flex-col bg-[#fafafa] transition-[box-shadow,border-color] duration-150 select-none ${
         totalVisibleDocs > 1
           ? 'w-[50%] min-w-[50%] max-w-[50%] flex-[0_0_50%] shrink-0 border-r border-neutral-300/80 last:border-r-0'
           : 'w-full flex-1'

@@ -128,8 +128,8 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
     return initial;
   });
 
-  // Keep only pages near the viewport mounted. Retaining every visited canvas
-  // made zoom gestures rerender too many large pages at once.
+  // Mount pages on demand, then retain their canvas so scrolling back does not
+  // flash a blank page while PDF.js renders it again.
   useEffect(() => {
     const initial = new Set<number>();
     for (let page = 1; page <= initialPageCount; page++) initial.add(page);
@@ -186,8 +186,15 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
         });
 
         setRenderedPages((prev) => {
-          if (prev.size === nearbyPages.size && [...prev].every((page) => nearbyPages.has(page))) return prev;
-          return nearbyPages;
+          let changed = false;
+          const next = new Set(prev);
+          nearbyPages.forEach((page) => {
+            if (!next.has(page)) {
+              next.add(page);
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
         });
 
         if (onPageChange && closestPage) {

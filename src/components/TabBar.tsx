@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { WorkspaceDoc } from '../types';
 import { FileText, Eye, EyeOff, X } from 'lucide-react';
 
@@ -8,7 +8,7 @@ interface TabBarProps {
   onSelectDoc: (id: string) => void;
   onToggleHide: (id: string) => void;
   onCloseDoc: (id: string) => void;
-  onReorderDocs: (sourceId: string, targetId: string) => void;
+  onReorderDocs: (sourceId: string, targetId: string, insertBefore: boolean) => void;
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -19,6 +19,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onCloseDoc,
   onReorderDocs,
 }) => {
+  const dragInProgressRef = useRef(false);
   if (docs.length === 0) return null;
 
   return (
@@ -36,15 +37,27 @@ export const TabBar: React.FC<TabBarProps> = ({
             key={doc.id}
             role="tab"
             aria-selected={isActive}
-            onClick={() => onSelectDoc(doc.id)}
+            onClick={() => {
+              if (dragInProgressRef.current) {
+                dragInProgressRef.current = false;
+                return;
+              }
+              onSelectDoc(doc.id);
+            }}
             draggable
             onDragStart={(event) => {
               if ((event.target as HTMLElement).closest('button')) {
                 event.preventDefault();
                 return;
               }
+              dragInProgressRef.current = true;
               event.dataTransfer.effectAllowed = 'move';
               event.dataTransfer.setData('text/plain', doc.id);
+            }}
+            onDragEnd={() => {
+              window.setTimeout(() => {
+                dragInProgressRef.current = false;
+              }, 150);
             }}
             onDragOver={(event) => {
               event.preventDefault();
@@ -53,7 +66,10 @@ export const TabBar: React.FC<TabBarProps> = ({
             onDrop={(event) => {
               event.preventDefault();
               const sourceId = event.dataTransfer.getData('text/plain');
-              if (sourceId && sourceId !== doc.id) onReorderDocs(sourceId, doc.id);
+              if (sourceId && sourceId !== doc.id) {
+                const rect = event.currentTarget.getBoundingClientRect();
+                onReorderDocs(sourceId, doc.id, event.clientX < rect.left + rect.width / 2);
+              }
             }}
             title={doc.fileName}
             className={`group relative flex items-center h-[30px] px-2.5 rounded-t-md transition-all cursor-pointer text-xs shrink-0 max-w-[240px] gap-1.5 border-b-0 ${

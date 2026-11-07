@@ -150,6 +150,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
 
   const hasRenderedOnceRef = useRef<boolean>(false);
   const lastRenderedScaleRef = useRef<number>(0);
+  const [isNearViewport, setIsNearViewport] = useState(true);
   const [rasterScale, setRasterScale] = useState(scale);
   const desiredScaleRef = useRef(rasterScale);
   const activeRenderRef = useRef(false);
@@ -169,9 +170,26 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   // Keep layout zoom immediate, but rasterize once the trackpad gesture settles.
   // This avoids repeatedly cancelling a costly render for every pinch event.
   useEffect(() => {
+    if (!isNearViewport && hasRenderedOnceRef.current) return;
     const timer = setTimeout(() => setRasterScale(scale), 140);
     return () => clearTimeout(timer);
-  }, [scale]);
+  }, [scale, isNearViewport]);
+
+  // Keep previously rendered pages visible when scrolling back, but defer their
+  // expensive high-resolution rerasterization until they approach the viewport.
+  useEffect(() => {
+    const pageElement = pageContainerRef.current;
+    if (!pageElement) return;
+    const scrollRoot = pageElement.closest<HTMLElement>('.pdf-viewport-container');
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsNearViewport(entry.isIntersecting),
+      { root: scrollRoot, rootMargin: '1000px 0px', threshold: 0 }
+    );
+    observer.observe(pageElement);
+    return () => observer.disconnect();
+  }, [pageNumber, fileId]);
 
   // Do not cancel an expensive image-heavy page render on every trackpad tick.
   // Cancel only when the page component itself is removed.
@@ -200,6 +218,8 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     let isCancelled = false;
     let debounceTimer: any = null;
     let rafId: number | null = null;
+
+    if (!isNearViewport) return;
 
     async function renderPage() {
       if (!pdfDoc || pageNumber < 1 || pageNumber > pdfDoc.numPages) {
@@ -393,7 +413,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (debounceTimer) clearTimeout(debounceTimer);
     };
-  }, [pdfDoc, pageNumber, rasterScale, renderCount, visualViewportScale]);
+  }, [pdfDoc, pageNumber, rasterScale, renderCount, visualViewportScale, isNearViewport]);
 
 
   const lastRightClickRef = useRef<{ time: number; x: number; y: number } | null>(null);

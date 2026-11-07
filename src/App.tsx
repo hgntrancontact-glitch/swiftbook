@@ -470,7 +470,7 @@ export function App() {
             ? Math.max(1, Math.min(doc.numPages, savedState.currentPage))
             : 1,
           viewMode: savedState?.viewMode || (doc.numPages === 1 ? "single" : "double"),
-          scale: savedState?.zoom || 1.0,
+          scale: Math.max(1.0, savedState?.zoom || 1.0),
           fitMode: true,
           highlights: savedState?.highlights || [],
           textNotes: savedState?.textNotes || [],
@@ -674,18 +674,21 @@ export function App() {
     scrollWorkspaceToDoc(id);
   }, [scrollWorkspaceToDoc]);
 
-  const handleReorderDocs = useCallback((sourceId: string, targetId: string) => {
+  const handleReorderDocs = useCallback((sourceId: string, targetId: string, insertBefore: boolean) => {
     setOpenDocs((prev) => {
       const sourceIndex = prev.findIndex((doc) => doc.id === sourceId);
       const targetIndex = prev.findIndex((doc) => doc.id === targetId);
       if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return prev;
       const next = [...prev];
       const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
+      const adjustedTargetIndex = targetIndex - (sourceIndex < targetIndex ? 1 : 0);
+      const insertionIndex = adjustedTargetIndex + (insertBefore ? 0 : 1);
+      next.splice(insertionIndex, 0, moved);
       return next;
     });
-    scrollWorkspaceToDoc(activeDocId);
-  }, [activeDocId, scrollWorkspaceToDoc]);
+    setActiveDocId(sourceId);
+    scrollWorkspaceToDoc(sourceId);
+  }, [scrollWorkspaceToDoc]);
 
   // Handle User File Upload
   const handleFileUpload = async (
@@ -1024,10 +1027,11 @@ export function App() {
   }, []);
 
   const handleZoomChange = useCallback((docId: string, scale: number, resetFitMode?: boolean) => {
+    const nextScale = resetFitMode ? 1.0 : Math.max(1.0, scale);
     updateDoc(docId, (d) => ({
       ...d,
-      scale: resetFitMode ? 1.0 : Math.max(0.2, scale),
-      fitMode: Boolean(resetFitMode),
+      scale: nextScale,
+      fitMode: resetFitMode === true || nextScale <= 1.0001,
     }));
   }, [updateDoc]);
 
