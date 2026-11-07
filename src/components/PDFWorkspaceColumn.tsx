@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import {
   WorkspaceDoc,
   ActiveTool,
@@ -13,7 +13,8 @@ import {
   DrawingStroke,
 } from '../types';
 import { BookSpreadView } from './BookSpreadView';
-import { PDFPageView } from './PDFPageView';
+import { PDFPageView, pageDimensionCache } from './PDFPageView';
+import { fitPageScale, viewportPages, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
 import { ContinuousView } from './ContinuousView';
 import { ChevronLeft, ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
 
@@ -103,281 +104,239 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   const containerRef = useRef<HTMLElement>(null);
   const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(null);
 
-  // ResizeObserver for this specific PDF's container to scale accurately
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    let timeoutId: any;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const newWidth = entry.contentRect.width;
-        const newHeight = entry.contentRect.height;
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          setContainerSize((prev) => {
-            if (
-              prev &&
-              Math.abs(prev.width - newWidth) < 2 &&
-              Math.abs(prev.height - newHeight) < 2
-            ) {
-              return prev;
-            }
-            return { width: newWidth, height: newHeight };
-          });
-        }, 30);
-      }
-    });
-
-    observer.observe(el);
-    return () => {
-      observer.disconnect();
-      clearTimeout(timeoutId);
-    };
-  }, []);
-
-  // Butter-smooth pinch-to-zoom for this specific PDF viewport
-  const scaleRef = useRef<number>(doc.scale);
-  const zoomGestureRef = useRef<{ active: boolean }>({ active: false });
-  if (!zoomGestureRef.current.active) scaleRef.current = doc.scale;
-  const zoomPanOffsetRef = useRef({ x: 0, y: 0 });
-  const pendingZoomScrollRef = useRef<{
-    anchorElement?: HTMLElement | null;
-    anchorX?: number;
-    anchorY?: number;
-    cursorViewportX: number;
-    cursorViewportY: number;
-    reset?: boolean;
-  } | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const scaleRef = useRef(doc.scale);
+  const actionsRef = useRef({ onZoomChange, onActivate });
+  actionsRef.current = { onZoomChange, onActivate };
+  const gestureActiveRef = useRef(false);
+  if (!gestureActiveRef.current) scaleRef.current = doc.scale;
+  const panRef = useRef({ x: 0, y: 0 });
+  type Anchor = { element: HTMLElement; x: number; y: number; clientX: number; clientY: number };
+  const pendingAnchorRef = useRef<Anchor | null>(null);
+  const gestureControllerRef = useRef<{ cancel: () => void } | null>(null);
+  const releaseFrameRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
-    if (pendingZoomScrollRef.current && containerRef.current) {
-      const pending = pendingZoomScrollRef.current;
-      pendingZoomScrollRef.current = null;
-      const c = containerRef.current;
-      if (pending.reset) {
-        const wrapper = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-        if (wrapper) {
-          wrapper.style.transform = '';
-          wrapper.style.translate = '';
-        }
-        zoomPanOffsetRef.current = { x: 0, y: 0 };
-        c.scrollLeft = 0;
-        c.scrollTop = 0;
-        return;
-      }
-      // Remove the temporary compositor transform before measuring the committed
-      // layout. The page itself remains the zoom anchor across the reflow.
-      const wrapper = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-      if (wrapper) {
-        wrapper.style.transform = '';
-        wrapper.style.transformOrigin = '';
-        wrapper.style.willChange = '';
-      }
-      if (pending.anchorElement?.isConnected) {
-        const pageRect = pending.anchorElement.getBoundingClientRect();
-        const containerRect = c.getBoundingClientRect();
-        const desiredClientX = containerRect.left + pending.cursorViewportX;
-        const desiredClientY = containerRect.top + pending.cursorViewportY;
-        const anchoredClientX = pageRect.left + (pending.anchorX || 0) * pageRect.width;
-        const anchoredClientY = pageRect.top + (pending.anchorY || 0) * pageRect.height;
-        const previousScrollLeft = c.scrollLeft;
-        const previousScrollTop = c.scrollTop;
-        c.scrollLeft = Math.max(0, c.scrollLeft + anchoredClientX - desiredClientX);
-        c.scrollTop = Math.max(0, c.scrollTop + anchoredClientY - desiredClientY);
-        // When a page is still smaller than the viewport, scroll offsets cannot
-        // compensate for flex-centering reflow. Keep the residual as a compositor
-        // translation so the exact point under the cursor stays put.
-        const scrollShiftX = previousScrollLeft - c.scrollLeft;
-        const scrollShiftY = previousScrollTop - c.scrollTop;
-        const residualX = desiredClientX - anchoredClientX - scrollShiftX;
-        const residualY = desiredClientY - anchoredClientY - scrollShiftY;
-        if (wrapper && (Math.abs(residualX) > 0.1 || Math.abs(residualY) > 0.1)) {
-          zoomPanOffsetRef.current.x += residualX;
-          zoomPanOffsetRef.current.y += residualY;
-          wrapper.style.translate = `${zoomPanOffsetRef.current.x}px ${zoomPanOffsetRef.current.y}px`;
-        }
-        if (wrapper) wrapper.style.willChange = '';
-        return;
-      }
-      if (wrapper) wrapper.style.willChange = '';
-    }
-  }, [doc.scale, doc.id]);
+    const element = containerRef.current;
+    if (!element) return;
+    const measure = () => {
+      const style = getComputedStyle(element);
+      const width = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const height = element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      setContainerSize((previous) => previous && Math.abs(previous.width - width) < 0.5 && Math.abs(previous.height - height) < 0.5
+        ? previous : { width, height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [doc.viewMode]);
 
-  // Reset horizontal panning when zoom returns to its fitted 100% baseline.
+  const layoutKey = `${doc.viewMode}:${viewportPages(doc.viewMode, doc.currentPage, doc.totalPages).join(',')}`;
+  const [measuredPages, setMeasuredPages] = useState<{ key: string; pages: PageSize[] } | null>(null);
+  const pages = measuredPages?.key === layoutKey ? measuredPages.pages : viewportPages(doc.viewMode, doc.currentPage, doc.totalPages)
+    .map((page) => pageDimensionCache.get(`${doc.fileId}_${page}`) || doc.basePageDimensions || { width: 595, height: 842 });
   useEffect(() => {
-    if (doc.fitMode && containerRef.current) {
-      containerRef.current.scrollLeft = 0;
+    let cancelled = false;
+    const numbers = viewportPages(doc.viewMode, doc.currentPage, doc.totalPages);
+    Promise.all(numbers.map(async (number) => {
+      const page = await doc.pdfDoc.getPage(number);
+      const viewport = page.getViewport({ scale: 1 });
+      const size = { width: viewport.width, height: viewport.height };
+      pageDimensionCache.set(`${doc.fileId}_${number}`, size);
+      return size;
+    })).then((sizes) => {
+      if (!cancelled) setMeasuredPages({ key: layoutKey, pages: sizes });
+    }).catch((error) => console.warn('Could not measure current PDF pages', error));
+    return () => { cancelled = true; };
+  }, [doc.pdfDoc, doc.fileId, layoutKey]);
+  const baseScale = fitPageScale(doc.viewMode, pages, containerSize?.width || 600, containerSize?.height || 600);
+  const actualScale = baseScale * doc.scale;
+
+  const clearLiveZoom = () => {
+    wrapperRef.current?.style.removeProperty('--pdf-live-zoom');
+  };
+  const clearPan = () => {
+    panRef.current = { x: 0, y: 0 };
+    if (wrapperRef.current) wrapperRef.current.style.translate = '';
+  };
+  const captureAnchor = (clientX: number, clientY: number): Anchor | null => {
+    const container = containerRef.current;
+    if (!container) return null;
+    let nearest: HTMLElement | null = null;
+    let distance = Infinity;
+    const hit = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-page-container="true"]');
+    const allPages = hit && container.contains(hit) ? [hit]
+      : [...container.querySelectorAll<HTMLElement>('[data-page-container="true"]')];
+    let candidates = allPages;
+    if (!hit && doc.viewMode === 'continuous' && allPages.length > 4) {
+      // Continuous pages are ordered. Locate the gap/page under the pointer
+      // without forcing geometry reads for every page visited in a long PDF.
+      let low = 0;
+      let high = allPages.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (allPages[middle].getBoundingClientRect().bottom < clientY) low = middle + 1;
+        else high = middle;
+      }
+      candidates = allPages.slice(Math.max(0, low - 1), low + 2);
     }
-  }, [doc.fitMode, doc.id]);
+    candidates.forEach((page) => {
+      const rect = page.getBoundingClientRect();
+      const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
+      const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+      if (dx * dx + dy * dy < distance) { nearest = page; distance = dx * dx + dy * dy; }
+    });
+    const element = nearest as HTMLElement | null;
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    return { element, x: (clientX - rect.left) / Math.max(1, rect.width), y: (clientY - rect.top) / Math.max(1, rect.height), clientX, clientY };
+  };
+  const restoreAnchor = (anchor: Anchor, allowPan = true) => {
+    const container = containerRef.current;
+    const wrapper = wrapperRef.current;
+    if (!container || !wrapper || !anchor.element.isConnected) return;
+    const rect = anchor.element.getBoundingClientRect();
+    const dx = rect.left + anchor.x * rect.width - anchor.clientX;
+    const dy = rect.top + anchor.y * rect.height - anchor.clientY;
+    const oldX = container.scrollLeft;
+    const oldY = container.scrollTop;
+    if (allowPan) container.scrollLeft += dx;
+    container.scrollTop += dy;
+    if (allowPan) {
+      panRef.current.x += container.scrollLeft - oldX - dx;
+      panRef.current.y += container.scrollTop - oldY - dy;
+      wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
+    }
+  };
+  const alignCurrentPage = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.scrollLeft = 0;
+    if (doc.viewMode === 'continuous') {
+      const page = container.querySelector<HTMLElement>(`[data-continuous-page="${doc.currentPage}"]`);
+      if (page) container.scrollTop += page.getBoundingClientRect().top - container.getBoundingClientRect().top - parseFloat(getComputedStyle(container).paddingTop);
+    } else {
+      container.scrollTop = 0;
+    }
+  };
+  const releaseGesture = () => {
+    if (releaseFrameRef.current !== null) cancelAnimationFrame(releaseFrameRef.current);
+    releaseFrameRef.current = requestAnimationFrame(() => {
+      releaseFrameRef.current = requestAnimationFrame(() => {
+        releaseFrameRef.current = null;
+        const container = containerRef.current;
+        if (!container || gestureActiveRef.current) return;
+        delete container.dataset.zoomGesture;
+        container.dispatchEvent(new Event('pdf-zoom-end'));
+      });
+    });
+  };
+
+  const resetKey = `${doc.id}:${doc.viewMode}:${doc.viewportRevision || 0}`;
+  const previousLayoutRef = useRef({ key: '', baseScale: 0, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs });
+  useLayoutEffect(() => {
+    const previous = previousLayoutRef.current;
+    const explicitReset = previous.key !== resetKey;
+    const fitResize = doc.scale <= 1 && Math.abs(previous.baseScale - baseScale) > 0.0001;
+    const pageNavigation = previous.currentPage !== doc.currentPage && doc.viewMode !== 'continuous';
+    const columnsChanged = previous.visibleDocs !== totalVisibleDocs;
+    if (explicitReset || fitResize || pageNavigation || (columnsChanged && doc.scale <= 1)) {
+      gestureControllerRef.current?.cancel();
+      pendingAnchorRef.current = null;
+      clearLiveZoom();
+      clearPan();
+      alignCurrentPage();
+      releaseGesture();
+    } else if (pendingAnchorRef.current) {
+      const anchor = pendingAnchorRef.current;
+      pendingAnchorRef.current = null;
+      clearLiveZoom();
+      if (doc.scale <= 1) {
+        clearPan();
+        alignCurrentPage();
+      } else restoreAnchor(anchor);
+      releaseGesture();
+    }
+    previousLayoutRef.current = { key: resetKey, baseScale, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs };
+  }, [resetKey, baseScale, doc.scale, doc.currentPage, totalVisibleDocs]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    let targetZoomScale = scaleRef.current || 1.0;
-    let targetClientX: number | null = null;
-    let targetClientY: number | null = null;
-    let rafId: number | null = null;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
-    let gestureStartScale = targetZoomScale;
-    let gestureStartRect: DOMRect | null = null;
-
-    const applyZoomFrame = () => {
-      rafId = null;
-      const w = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-      if (!w || !gestureStartRect || targetClientX === null || targetClientY === null) return;
-      const ratio = targetZoomScale / gestureStartScale;
-      const originX = targetClientX - gestureStartRect.left;
-      const originY = targetClientY - gestureStartRect.top;
-      w.style.transformOrigin = `${originX}px ${originY}px`;
-      w.style.transform = `scale(${ratio})`;
-      w.style.willChange = 'transform';
+    let targetScale = scaleRef.current;
+    let startScale = targetScale;
+    let clientX = 0;
+    let clientY = 0;
+    let frame: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const apply = () => {
+      frame = null;
+      const anchor = captureAnchor(clientX, clientY);
+      wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
+      if (targetScale <= 1) {
+        clearPan();
+        container.scrollLeft = 0;
+        if (doc.viewMode !== 'continuous') container.scrollTop = 0;
+        else if (anchor) restoreAnchor(anchor, false);
+      } else if (anchor) restoreAnchor(anchor);
     };
-
-    const finishGesture = () => {
-      settleTimer = null;
-      if (!zoomGestureRef.current.active) return;
-      zoomGestureRef.current.active = false;
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-        applyZoomFrame();
-      }
-      const c = containerRef.current;
-      const w = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-      const clientX = targetClientX;
-      const clientY = targetClientY;
-      if (!c || !w || clientX === null || clientY === null) return;
-      if (Math.abs(targetZoomScale - gestureStartScale) < 0.0001) {
-        pendingZoomScrollRef.current = null;
-        w.style.transform = '';
-        w.style.transformOrigin = '';
-        w.style.willChange = '';
-        return;
-      }
-
-      const targetElement = document.elementFromPoint(clientX, clientY);
-      let anchorElement = targetElement instanceof Element
-        ? targetElement.closest<HTMLElement>('[data-page-container="true"]')
-        : null;
-      if (!anchorElement) {
-        let nearestDistance = Infinity;
-        container.querySelectorAll<HTMLElement>('[data-page-container="true"]').forEach((page) => {
-          const rect = page.getBoundingClientRect();
-          const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
-          const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
-          const distance = dx * dx + dy * dy;
-          if (distance < nearestDistance) {
-            nearestDistance = distance;
-            anchorElement = page;
-          }
-        });
-      }
-      const pageRect = anchorElement?.getBoundingClientRect();
-      const containerRect = c.getBoundingClientRect();
-      pendingZoomScrollRef.current = {
-        anchorElement,
-        anchorX: pageRect?.width ? Math.max(0, Math.min(1, (clientX - pageRect.left) / pageRect.width)) : undefined,
-        anchorY: pageRect?.height ? Math.max(0, Math.min(1, (clientY - pageRect.top) / pageRect.height)) : undefined,
-        cursorViewportX: clientX - containerRect.left,
-        cursorViewportY: clientY - containerRect.top,
-      };
-      scaleRef.current = targetZoomScale;
-      onZoomChange(doc.id, targetZoomScale, false);
+    const cancel = () => {
+      if (timer) clearTimeout(timer);
+      if (frame !== null) cancelAnimationFrame(frame);
+      timer = null;
+      frame = null;
+      gestureActiveRef.current = false;
     };
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (!zoomGestureRef.current.active) {
-          zoomGestureRef.current.active = true;
-          gestureStartScale = scaleRef.current || 1.0;
-          targetZoomScale = gestureStartScale;
-          const wrapper = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-          gestureStartRect = wrapper?.getBoundingClientRect() ?? null;
-        }
-
-        targetZoomScale = Math.min(50, Math.max(0.2, targetZoomScale * Math.exp(-e.deltaY / 90)));
-        targetClientX = e.clientX;
-        targetClientY = e.clientY;
-
-        if (rafId === null) {
-          rafId = requestAnimationFrame(applyZoomFrame);
-        }
-        if (settleTimer) clearTimeout(settleTimer);
-        settleTimer = setTimeout(finishGesture, 120);
+    gestureControllerRef.current = { cancel };
+    const finish = () => {
+      if (!gestureActiveRef.current) return;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (frame !== null) { cancelAnimationFrame(frame); apply(); }
+      pendingAnchorRef.current = captureAnchor(clientX, clientY);
+      gestureActiveRef.current = false;
+      if (Math.abs(targetScale - startScale) < 0.000001) {
+        clearLiveZoom();
+        if (targetScale <= 1) { clearPan(); alignCurrentPage(); }
+        pendingAnchorRef.current = null;
+        releaseGesture();
+      } else {
+        scaleRef.current = targetScale;
+        actionsRef.current.onZoomChange(doc.id, targetScale, false);
       }
     };
-
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    const handleNativeGestureEnd = () => finishGesture();
-    container.addEventListener('gestureend', handleNativeGestureEnd as EventListener);
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!gestureActiveRef.current) {
+        startScale = scaleRef.current;
+        targetScale = startScale;
+        gestureActiveRef.current = true;
+        container.dataset.zoomGesture = 'true';
+        container.dispatchEvent(new Event('pdf-zoom-start'));
+        actionsRef.current.onActivate(doc.id);
+      }
+      targetScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetScale * Math.exp(-event.deltaY / 90)));
+      clientX = event.clientX;
+      clientY = event.clientY;
+      if (frame === null) frame = requestAnimationFrame(apply);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(finish, 120);
+    };
+    container.addEventListener('wheel', wheel, { passive: false });
+    container.addEventListener('gestureend', finish);
     return () => {
-      container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('gestureend', handleNativeGestureEnd as EventListener);
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (settleTimer) clearTimeout(settleTimer);
+      cancel();
+      container.removeEventListener('wheel', wheel);
+      container.removeEventListener('gestureend', finish);
     };
-  }, [doc.id, onZoomChange]);
+  }, [doc.id, doc.viewMode, doc.viewportRevision]);
 
-  // Compute adaptive base scale for this column
-  const baseScale = useMemo(() => {
-    if (!doc.basePageDimensions) return 1.0;
-    const availableHeight = containerSize?.height || 700;
-    const targetHeight = Math.max(10, availableHeight - 40);
-    const scaleForHeight = targetHeight / doc.basePageDimensions.height;
-
-    const availableWidth = containerSize?.width || 600;
-    const isDoubleSpread = doc.viewMode === 'double' && doc.totalPages > 1;
-    const spreadMultiplier = isDoubleSpread ? 2 : 1;
-    const scaleForWidth = Math.max(10, availableWidth - 20) / (doc.basePageDimensions.width * spreadMultiplier);
-
-    if (doc.viewMode === 'continuous') {
-      return Math.max(0.05, Math.min(scaleForWidth, 1.6));
-    }
-
-    return Math.max(0.05, Math.min(scaleForHeight, scaleForWidth));
-  }, [doc.basePageDimensions, containerSize, doc.viewMode, doc.totalPages]);
-
-  const actualScale = baseScale * doc.scale;
-
-  const previousLayoutRef = useRef({ baseScale, visibleDocs: totalVisibleDocs });
-  const preserveZoomAcrossColumnResizeRef = useRef(false);
-  const preserveZoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
-    if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
+    if (releaseFrameRef.current !== null) cancelAnimationFrame(releaseFrameRef.current);
   }, []);
-  useLayoutEffect(() => {
-    const previous = previousLayoutRef.current;
-    if (previous.visibleDocs === 1 && totalVisibleDocs > 1) {
-      preserveZoomAcrossColumnResizeRef.current = true;
-      if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
-      preserveZoomTimeoutRef.current = setTimeout(() => {
-        preserveZoomTimeoutRef.current = null;
-        preserveZoomAcrossColumnResizeRef.current = false;
-      }, 300);
-    } else if (totalVisibleDocs <= 1) {
-      preserveZoomAcrossColumnResizeRef.current = false;
-      if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
-      preserveZoomTimeoutRef.current = null;
-    }
-
-    const baseScaleChanged = Math.abs(previous.baseScale - baseScale) > 0.001;
-    if (preserveZoomAcrossColumnResizeRef.current && baseScaleChanged && baseScale > 0) {
-      const preservedScale = doc.scale * previous.baseScale / baseScale;
-      if (Math.abs(preservedScale - doc.scale) > 0.001) {
-        onZoomChange(doc.id, preservedScale, preservedScale <= 1.0001);
-      }
-      preserveZoomAcrossColumnResizeRef.current = false;
-      if (preserveZoomTimeoutRef.current) clearTimeout(preserveZoomTimeoutRef.current);
-      preserveZoomTimeoutRef.current = null;
-    }
-
-    previousLayoutRef.current = { baseScale, visibleDocs: totalVisibleDocs };
-  }, [baseScale, totalVisibleDocs, doc.id, doc.scale, onZoomChange]);
 
   const columnRootRef = useRef<HTMLDivElement>(null);
   const [isInViewport, setIsInViewport] = useState<boolean>(true);
@@ -475,11 +434,14 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       {/* Main Viewport Container */}
       <main
         ref={containerRef}
-        className="pdf-viewport-container w-full h-full relative min-h-0 no-scrollbar box-border pt-4 pb-24 px-3 sm:px-4"
+        className="pdf-viewport-container w-full h-full relative min-h-0 no-scrollbar box-border"
         style={{
           overflowX: 'auto',
           overflowY: 'auto',
           overscrollBehaviorX: 'contain',
+          padding: doc.viewMode === 'continuous' ? '16px 24px' : '24px',
+          overflowAnchor: 'none',
+          scrollBehavior: 'auto',
         }}
         onWheelCapture={(e) => {
           if (e.ctrlKey || e.metaKey) return;
@@ -513,9 +475,10 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       >
         <div className="w-max min-w-full min-h-full flex flex-col justify-start items-start">
           <div
+            ref={wrapperRef}
             id={`pdf-transform-wrapper-${doc.id}`}
             data-scale={actualScale}
-            className="pdf-hardware-accelerated flex flex-col relative shrink-0 m-auto"
+            className={`flex flex-col relative shrink-0 ${doc.viewMode === 'continuous' ? 'mx-auto' : 'm-auto'}`}
             style={{ width: 'fit-content' }}
           >
             {(isInViewport || isActive || hasRenderedOnceRef.current) ? (

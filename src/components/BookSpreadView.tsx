@@ -11,6 +11,7 @@ import {
   HighlightColor,
 } from '../types';
 import { PDFPageView } from './PDFPageView';
+import { SPREAD_GAP } from '../utils/pdfViewport';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface BookSpreadViewProps {
@@ -291,7 +292,7 @@ const BookSpreadViewComponent: React.FC<BookSpreadViewProps> = ({
 
         {/* Center Spine Crease / Divider */}
         {rightPageNum && (
-          <div className="w-[6px] sm:w-[8px] h-full bg-[#fafafa] relative z-20 self-stretch shrink-0 pointer-events-none" />
+          <div data-spread-gap="true" style={{ width: SPREAD_GAP }} className="bg-[#fafafa] relative z-20 self-stretch shrink-0 pointer-events-none" />
         )}
 
         {/* Right Page */}

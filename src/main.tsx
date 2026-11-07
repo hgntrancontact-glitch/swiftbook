@@ -5,7 +5,9 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import './index.css';
 
 window.addEventListener('wheel', (e) => {
-  // Let the browser handle native viewport pinch-to-zoom (do not prevent default on ctrlKey)
+  // Content viewports own pinch zoom. A pinch over fixed chrome must not zoom
+  // the entire application when it bubbles beyond those viewports.
+  if (e.ctrlKey) e.preventDefault();
 }, { passive: false });
 
 createRoot(document.getElementById('root')!).render(

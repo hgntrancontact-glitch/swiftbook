@@ -183,6 +183,7 @@ export interface WorkspaceDoc {
   viewMode: ViewMode;
   scale: number;
   fitMode: boolean;
+  viewportRevision?: number;
   highlights: HighlightAnnotation[];
   textNotes: TextNoteAnnotation[];
   drawings: DrawingStroke[];

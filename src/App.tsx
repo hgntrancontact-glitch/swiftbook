@@ -48,7 +48,7 @@ import {
 import { Toolbar } from "./components/Toolbar";
 import { TabBar } from "./components/TabBar";
 import { PDFWorkspaceColumn } from "./components/PDFWorkspaceColumn";
-import { clearDocCanvasCache } from "./components/PDFPageView";
+import { clearDocCanvasCache, pageDimensionCache } from "./components/PDFPageView";
 import { Sidebar } from "./components/Sidebar";
 import { LarkFloatingToolbar } from "./components/LarkFloatingToolbar";
 import { UnifiedSelectionToolbar } from "./components/UnifiedSelectionToolbar";
@@ -442,6 +442,8 @@ export function App() {
         const doc = await loadingTask.promise;
         const page1 = await doc.getPage(1);
         const viewport = page1.getViewport({ scale: 1.0 });
+        pageDimensionCache.set(`${id}_default`, { width: viewport.width, height: viewport.height });
+        pageDimensionCache.set(`${id}_1`, { width: viewport.width, height: viewport.height });
 
         // Save bytes to forage in background
         savePdfFileToForage(id, data).catch((err) =>
@@ -470,7 +472,7 @@ export function App() {
             ? Math.max(1, Math.min(doc.numPages, savedState.currentPage))
             : 1,
           viewMode: savedState?.viewMode || (doc.numPages === 1 ? "single" : "double"),
-          scale: Math.min(50, Math.max(0.2, savedState?.zoom || 1.0)),
+          scale: 1.0,
           fitMode: true,
           highlights: savedState?.highlights || [],
           textNotes: savedState?.textNotes || [],
@@ -966,7 +968,7 @@ export function App() {
       if (e.key.toLowerCase() === "z") {
         if (activeDoc) {
           e.preventDefault();
-          updateDoc(activeDoc.id, (doc) => ({ ...doc, scale: 1.0, fitMode: true }));
+          updateDoc(activeDoc.id, (doc) => ({ ...doc, scale: 1.0, fitMode: true, viewportRevision: (doc.viewportRevision || 0) + 1 }));
         }
         return;
       }
@@ -1037,11 +1039,12 @@ export function App() {
       ...d,
       scale: nextScale,
       fitMode: Boolean(resetFitMode),
+      viewportRevision: resetFitMode ? (d.viewportRevision || 0) + 1 : d.viewportRevision,
     }));
   }, [updateDoc]);
 
   const handleViewModeChange = useCallback((docId: string, mode: ViewMode) => {
-    updateDoc(docId, (d) => ({ ...d, viewMode: mode }));
+    updateDoc(docId, (d) => ({ ...d, viewMode: mode, scale: 1.0, fitMode: true, viewportRevision: (d.viewportRevision || 0) + 1 }));
   }, [updateDoc]);
 
   const handleUpdateBoxConfig = useCallback((docId: string, updates: Partial<BoxConfig>) => {

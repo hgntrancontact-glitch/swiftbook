@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   HighlightAnnotation,
   TextNoteAnnotation,
@@ -118,42 +118,25 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   const onPageChangeRef = useRef(onPageChange);
   currentPageRef.current = currentPage;
   onPageChangeRef.current = onPageChange;
-  const isUserScrollingRef = useRef<boolean>(false);
-  const scrollTimeoutRef = useRef<any>(null);
 
-  // Render near the current view first. Mounting dozens of canvas pages at once
-  // makes large PDFs slow and can starve the pages the reader is looking at.
-  const initialPageCount = Math.min(2, totalPages);
-  const [renderedPages, setRenderedPages] = useState<Set<number>>(() => {
-    const initial = new Set<number>();
-    for (let i = 1; i <= initialPageCount; i++) {
-      initial.add(i);
-    }
-    return initial;
-  });
-
-  // Mount pages on demand, then retain their canvas so scrolling back does not
-  // flash a blank page while PDF.js renders it again.
-  useEffect(() => {
-    const initial = new Set<number>();
-    for (let page = 1; page <= initialPageCount; page++) initial.add(page);
-    setRenderedPages(initial);
-  }, [fileId, initialPageCount]);
-
-  // Synchronize external currentPage jumps (e.g. from header input, TOC bookmark click)
-  useEffect(() => {
-    if (!currentPage || isUserScrollingRef.current) return;
-    const targetEl = pageElementsRef.current.get(currentPage);
-    if (targetEl) {
-      setRenderedPages((prev) => {
-        if (prev.has(currentPage)) return prev;
-        const next = new Set(prev);
-        next.add(currentPage);
-        return next;
-      });
-      targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [currentPage]);
+  const seedPages = () => new Set(Array.from({ length: 3 }, (_, index) => currentPage - 1 + index)
+    .filter((page) => page >= 1 && page <= totalPages));
+  const [renderedPages, setRenderedPages] = useState<Set<number>>(seedPages);
+  const reportedPageRef = useRef<number | null>(null);
+  const positioningRef = useRef(true);
+  useLayoutEffect(() => {
+    if (!currentPage || reportedPageRef.current === currentPage) return;
+    const container = wrapperRef.current?.closest<HTMLElement>('.pdf-viewport-container');
+    const target = pageElementsRef.current.get(currentPage);
+    if (!container || !target) return;
+    positioningRef.current = true;
+    setRenderedPages((previous) => previous.has(currentPage) ? previous : new Set([...previous, currentPage]));
+    container.scrollTop += target.getBoundingClientRect().top - container.getBoundingClientRect().top - parseFloat(getComputedStyle(container).paddingTop);
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => { positioningRef.current = false; });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fileId, currentPage]);
 
   // IntersectionObserver & Scroll Listener for continuous scroll loading & page tracker
   useEffect(() => {
@@ -179,6 +162,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
           return next.size === prev.size ? prev : next;
         });
       }
+      handleScroll();
     }, { root: scrollParent, rootMargin: '1200px 0px', threshold: 0 });
     pageElementsRef.current.forEach((element) => observer.observe(element));
 
@@ -187,7 +171,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
       if (scrollRaf !== null) return;
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = null;
-        if (!scrollParent) return;
+        if (!scrollParent || positioningRef.current || scrollParent.dataset.zoomGesture === 'true') return;
 
         const containerRect = scrollParent.getBoundingClientRect();
         const viewportCenter = containerRect.top + containerRect.height / 2;
@@ -207,12 +191,8 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
         });
 
         if (onPageChangeRef.current && closestPage) {
-          isUserScrollingRef.current = true;
-          onPageChangeRef.current(closestPage);
-          clearTimeout(scrollTimeoutRef.current);
-          scrollTimeoutRef.current = setTimeout(() => {
-            isUserScrollingRef.current = false;
-          }, 400);
+          reportedPageRef.current = closestPage;
+          if (closestPage !== currentPageRef.current) onPageChangeRef.current(closestPage);
         }
       });
     };
@@ -226,7 +206,6 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
       observer.disconnect();
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       cancelAnimationFrame(initialRaf);
-      clearTimeout(scrollTimeoutRef.current);
     };
   }, [fileId, totalPages]);
 
@@ -268,7 +247,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   return (
     <div
       ref={wrapperRef}
-      className="flex flex-col items-center justify-center gap-6 px-4 my-auto mx-auto"
+      className="flex flex-col items-center justify-center gap-6 mx-auto"
     >
       {pagesArray.map((pageNum) => {
         const cachedDim = pageDimensionCache.get(`${fileId}_${pageNum}`) || defaultDim;
@@ -311,11 +290,11 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
             className="shadow-2xl rounded-none relative overflow-visible"
             style={{
               zIndex: pageZIndex,
-              minWidth: `${estimatedW}px`,
-              minHeight: `${estimatedH}px`,
-              contentVisibility: 'auto',
-              containIntrinsicSize: `${estimatedW}px ${estimatedH}px`,
-            }}
+              '--pdf-page-width': `${estimatedW}px`,
+              '--pdf-page-height': `${estimatedH}px`,
+              minWidth: 'calc(var(--pdf-page-width) * var(--pdf-live-zoom, 1))',
+              minHeight: 'calc(var(--pdf-page-height) * var(--pdf-live-zoom, 1))',
+            } as React.CSSProperties}
             onMouseEnter={() => {
               if (!activeGesturingPage) setActiveSpreadPage(pageNum);
             }}
@@ -376,8 +355,8 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
             ) : (
               <div
                 style={{
-                  width: `${estimatedW}px`,
-                  height: `${estimatedH}px`,
+                  width: 'calc(var(--pdf-page-width) * var(--pdf-live-zoom, 1))',
+                  height: 'calc(var(--pdf-page-height) * var(--pdf-live-zoom, 1))',
                 }}
                 className="bg-white/95 rounded-none shadow-md flex flex-col items-center justify-center text-neutral-300 font-sans text-xs select-none border border-neutral-100"
               >
