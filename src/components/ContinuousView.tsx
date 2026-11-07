@@ -111,7 +111,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 }) => {
   const pagesArray = useMemo(() => Array.from({ length: totalPages }, (_, i) => i + 1), [totalPages]);
   const [activeGesturingPage, setActiveGesturingPage] = useState<number | null>(null);
-  const [activeSpreadPage, setActiveSpreadPage] = useState<number | null>(null);
+  const [activeInteractionPage, setActiveInteractionPage] = useState<number | null>(null);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const pageElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -189,6 +189,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
         const viewportCenter = containerRect.top + containerRect.height / 2;
         let closestPage = 1;
         let minDistance = Infinity;
+        let currentDistance = Infinity;
         const candidates = nearbyPageNumbers.size ? nearbyPageNumbers : new Set([currentPageRef.current || 1]);
         candidates.forEach((pageNum) => {
           const el = pageElementsRef.current.get(pageNum);
@@ -196,12 +197,18 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
           const rect = el.getBoundingClientRect();
           const pageCenter = rect.top + rect.height / 2;
           const dist = Math.abs(pageCenter - viewportCenter);
+          if (pageNum === currentPageRef.current) currentDistance = dist;
           if (dist < minDistance) {
             minDistance = dist;
             closestPage = pageNum;
           }
         });
 
+        // Retain the current page in the narrow tie region between adjacent
+        // pages. Subpixel/layout updates must not repeatedly flip the tracker.
+        if (closestPage !== currentPageRef.current && currentDistance - minDistance < 12) {
+          closestPage = currentPageRef.current;
+        }
         if (onPageChangeRef.current && closestPage) {
           reportedPageRef.current = closestPage;
           if (closestPage !== currentPageRef.current) onPageChangeRef.current(closestPage);
@@ -231,20 +238,20 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
       const pNum = e.detail?.pageNumber;
       if (pNum) {
         setActiveGesturingPage(pNum);
-        setActiveSpreadPage(pNum);
+        setActiveInteractionPage(pNum);
       }
     };
     const handleReset = (e: any) => {
       setActiveGesturingPage(null);
       const pNum = e.detail?.pageNumber;
       if (pNum) {
-        setActiveSpreadPage(pNum);
+        setActiveInteractionPage(pNum);
       }
     };
     const handleActivated = (e: any) => {
       const pNum = e.detail?.pageNumber;
       if (pNum) {
-        setActiveSpreadPage(pNum);
+        setActiveInteractionPage(pNum);
       }
     };
 
@@ -281,14 +288,14 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
           )
         );
         const isGesturing = activeGesturingPage === pageNum;
-        const isHovered = activeSpreadPage === pageNum;
+        const isActivePage = activeInteractionPage === pageNum;
         const pageZIndex = isGesturing
           ? 9999
           : hasSelectedAnnotation
           ? 500
           : hasOpenNote
           ? 200
-          : isHovered
+          : isActivePage
           ? 30
           : 10;
 
@@ -305,7 +312,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
               }
             }}
             data-continuous-page={pageNum}
-            className="shadow-2xl rounded-none relative overflow-visible"
+            className="rounded-none relative overflow-visible"
             style={{
               zIndex: pageZIndex,
               '--pdf-page-width': `${estimatedW}px`,
@@ -314,14 +321,11 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
               height: isMounted ? undefined : 'calc(var(--pdf-page-height) * var(--pdf-live-zoom, 1))',
               flexShrink: 0,
             } as React.CSSProperties}
-            onMouseEnter={() => {
-              if (!activeGesturingPage) setActiveSpreadPage(pageNum);
-            }}
             onPointerDownCapture={() => {
-              if (!activeGesturingPage) setActiveSpreadPage(pageNum);
+              if (!activeGesturingPage) setActiveInteractionPage(pageNum);
             }}
             onMouseDownCapture={() => {
-              if (!activeGesturingPage) setActiveSpreadPage(pageNum);
+              if (!activeGesturingPage) setActiveInteractionPage(pageNum);
             }}
           >
             {isMounted ? (

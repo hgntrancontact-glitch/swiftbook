@@ -1,7 +1,7 @@
 import type { ViewMode } from '../types';
 
 export const SPREAD_GAP = 8;
-export const CONTINUOUS_GAP = 24;
+export const CONTINUOUS_GAP = 12;
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 50;
 export type PageSize = { width: number; height: number };

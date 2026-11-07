@@ -941,10 +941,14 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         className="absolute inset-0 select-none overflow-visible z-[25000] pointer-events-none"
       />
 
-      {/* Page Number Watermark Badge at bottom center */}
-      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-neutral-400 font-mono select-none pointer-events-none bg-white/80 px-2 py-0.5 rounded shadow-2xs">
-        {pageNumber}
       </div>
+      {/* Screen-space overlay: follow the page slot, never the canvas transform. */}
+      <div
+        data-page-label={pageNumber}
+        aria-hidden="true"
+        className="absolute bottom-1 left-1/2 -translate-x-1/2 h-[18px] leading-[18px] min-w-6 text-center text-[10px] text-neutral-400 font-mono tabular-nums select-none pointer-events-none bg-white/80 px-1 rounded shadow-2xs"
+      >
+        {pageNumber}
       </div>
     </div>
   );
