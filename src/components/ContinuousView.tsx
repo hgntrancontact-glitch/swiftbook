@@ -114,6 +114,10 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const pageElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const currentPageRef = useRef(currentPage);
+  const onPageChangeRef = useRef(onPageChange);
+  currentPageRef.current = currentPage;
+  onPageChangeRef.current = onPageChange;
   const isUserScrollingRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<any>(null);
 
@@ -154,6 +158,29 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   // IntersectionObserver & Scroll Listener for continuous scroll loading & page tracker
   useEffect(() => {
     const scrollParent = wrapperRef.current?.closest('.pdf-viewport-container') as HTMLElement | null;
+    const nearbyPageNumbers = new Set<number>();
+
+    const observer = new IntersectionObserver((entries) => {
+      const pagesToMount: number[] = [];
+      entries.forEach((entry) => {
+        const pageNumber = Number((entry.target as HTMLElement).dataset.continuousPage);
+        if (!pageNumber) return;
+        if (entry.isIntersecting) {
+          nearbyPageNumbers.add(pageNumber);
+          pagesToMount.push(pageNumber);
+        } else {
+          nearbyPageNumbers.delete(pageNumber);
+        }
+      });
+      if (pagesToMount.length) {
+        setRenderedPages((prev) => {
+          const next = new Set(prev);
+          pagesToMount.forEach((page) => next.add(page));
+          return next.size === prev.size ? prev : next;
+        });
+      }
+    }, { root: scrollParent, rootMargin: '1200px 0px', threshold: 0 });
+    pageElementsRef.current.forEach((element) => observer.observe(element));
 
     let scrollRaf: number | null = null;
     const handleScroll = () => {
@@ -164,19 +191,13 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 
         const containerRect = scrollParent.getBoundingClientRect();
         const viewportCenter = containerRect.top + containerRect.height / 2;
-        const nearbyPages = new Set<number>();
-
         let closestPage = 1;
         let minDistance = Infinity;
-
-        pageElementsRef.current.forEach((el, pageNum) => {
+        const candidates = nearbyPageNumbers.size ? nearbyPageNumbers : new Set([currentPageRef.current || 1]);
+        candidates.forEach((pageNum) => {
+          const el = pageElementsRef.current.get(pageNum);
+          if (!el) return;
           const rect = el.getBoundingClientRect();
-          // Prepare nearby pages before they enter the viewport.
-          if (rect.bottom >= containerRect.top - 1200 && rect.top <= containerRect.bottom + 1200) {
-            nearbyPages.add(pageNum);
-          }
-
-          // Track page closest to viewport center
           const pageCenter = rect.top + rect.height / 2;
           const dist = Math.abs(pageCenter - viewportCenter);
           if (dist < minDistance) {
@@ -185,21 +206,9 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
           }
         });
 
-        setRenderedPages((prev) => {
-          let changed = false;
-          const next = new Set(prev);
-          nearbyPages.forEach((page) => {
-            if (!next.has(page)) {
-              next.add(page);
-              changed = true;
-            }
-          });
-          return changed ? next : prev;
-        });
-
-        if (onPageChange && closestPage) {
+        if (onPageChangeRef.current && closestPage) {
           isUserScrollingRef.current = true;
-          onPageChange(closestPage);
+          onPageChangeRef.current(closestPage);
           clearTimeout(scrollTimeoutRef.current);
           scrollTimeoutRef.current = setTimeout(() => {
             isUserScrollingRef.current = false;
@@ -214,11 +223,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
 
     return () => {
       targetScroll.removeEventListener('scroll', handleScroll);
+      observer.disconnect();
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       cancelAnimationFrame(initialRaf);
       clearTimeout(scrollTimeoutRef.current);
     };
-  }, [fileId, totalPages, onPageChange]);
+  }, [fileId, totalPages]);
 
   useEffect(() => {
     const handleElevate = (e: any) => {

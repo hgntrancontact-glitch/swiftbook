@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import {
   HighlightAnnotation,
   TextNoteAnnotation,
@@ -189,7 +189,9 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   onSelect,
   fileId,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRefs = useRef<[HTMLCanvasElement | null, HTMLCanvasElement | null]>([null, null]);
+  const frontCanvasIndexRef = useRef(0);
+  const [frontCanvasIndex, setFrontCanvasIndex] = useState(0);
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
 
@@ -213,7 +215,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   const hasRenderedOnceRef = useRef<boolean>(false);
   const lastRenderedScaleRef = useRef<number>(0);
   const [isNearViewport, setIsNearViewport] = useState(true);
-  const [isPageVisible, setIsPageVisible] = useState(true);
+  const renderPriorityRef = useRef(0);
   const [rasterScale, setRasterScale] = useState(scale);
   const desiredScaleRef = useRef(rasterScale);
   const rasterScaleRef = useRef(rasterScale);
@@ -236,12 +238,22 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   const renderInputRef = useRef({ pdfDoc, pageNumber, docId });
   renderInputRef.current = { pdfDoc, pageNumber, docId };
 
+  // Keep only the current front bitmap per visited page. The hidden buffer is
+  // released after each atomic swap instead of doubling memory across a long PDF.
+  useLayoutEffect(() => {
+    const staleCanvas = canvasRefs.current[frontCanvasIndex === 0 ? 1 : 0];
+    if (staleCanvas && !activeRenderRef.current) {
+      staleCanvas.width = 1;
+      staleCanvas.height = 1;
+    }
+  }, [frontCanvasIndex]);
+
   // Keep layout zoom immediate, but rasterize once the trackpad gesture settles.
   // This avoids repeatedly cancelling a costly render for every pinch event.
   useEffect(() => {
     if (!isNearViewport && hasRenderedOnceRef.current) return;
-    const timer = setTimeout(() => setRasterScale(scale), 80);
-    return () => clearTimeout(timer);
+    const frame = requestAnimationFrame(() => setRasterScale(scale));
+    return () => cancelAnimationFrame(frame);
   }, [scale, isNearViewport]);
 
   // Keep previously rendered pages visible when scrolling back, but defer their
@@ -265,9 +277,15 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
           pageRect.top < rootBottom &&
           pageRect.right > rootLeft &&
           pageRect.left < rootRight;
+        const verticalDistance = pageRect.bottom < rootTop
+          ? rootTop - pageRect.bottom
+          : pageRect.top > rootBottom ? pageRect.top - rootBottom : 0;
+        const priority = isVisible
+          ? 0
+          : 1 + verticalDistance / Math.max(1, rootBottom - rootTop);
+        renderPriorityRef.current = priority;
         setIsNearViewport(entry.isIntersecting);
-        setIsPageVisible(isVisible);
-        renderSlotHandleRef.current?.setPriority(isVisible ? 0 : 1);
+        renderSlotHandleRef.current?.setPriority(priority);
       },
       { root: scrollRoot, rootMargin: '1000px 0px', threshold: 0 }
     );
@@ -351,7 +369,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
             const fallbackWidth = 595 * rasterScale;
             const fallbackHeight = 842 * rasterScale;
             setBaseDimension({ width: 595, height: 842 });
-            const visibleCanvas = canvasRef.current;
+            const visibleCanvas = canvasRefs.current[frontCanvasIndexRef.current];
             if (visibleCanvas) {
               visibleCanvas.width = fallbackWidth;
               visibleCanvas.height = fallbackHeight;
@@ -385,13 +403,18 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         pageDimensionCache.set(`${docId}_${pageNumber}`, { width: unscaledBase.width, height: unscaledBase.height });
         pageDimensionCache.set(`${docId}_default`, { width: unscaledBase.width, height: unscaledBase.height });
 
-        // Calculate accurate DPR (Device Pixel Ratio) for sharp high-DPI rendering
-        const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+        // Bound raster memory. A fixed 2.5 DPR can allocate hundreds of MB
+        // for large or heavily zoomed pages and stall input/rendering.
+        const cssViewport = page.getViewport({ scale: rasterScale });
+        const requestedDpr = Math.min(2.5, window.devicePixelRatio || 1);
+        const pixelBudgetDpr = Math.sqrt(16_000_000 / Math.max(1, cssViewport.width * cssViewport.height));
+        const edgeBudgetDpr = 12_000 / Math.max(cssViewport.width, cssViewport.height, 1);
+        const dpr = Math.min(requestedDpr, pixelBudgetDpr, edgeBudgetDpr);
         const viewport = page.getViewport({ scale: rasterScale * dpr });
         const canvasWidth = Math.max(1, Math.round(viewport.width));
         const canvasHeight = Math.max(1, Math.round(viewport.height));
 
-        const renderSlotHandle = requestPdfRenderSlot(isPageVisible ? 0 : 1);
+        const renderSlotHandle = requestPdfRenderSlot(renderPriorityRef.current);
         renderSlotHandleRef.current = renderSlotHandle;
         const releaseRenderSlot = await renderSlotHandle.promise;
         if (renderSlotHandleRef.current === renderSlotHandle) renderSlotHandleRef.current = null;
@@ -406,18 +429,20 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
           return;
         }
 
-        // Use a temporary scratch canvas for atomic double-buffering (no white flashes)
-        const offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = canvasWidth;
-        offscreenCanvas.height = canvasHeight;
-        const offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
-        if (!offscreenCtx) throw new Error('Could not create offscreen 2D context');
-
-        offscreenCtx.fillStyle = '#ffffff';
-        offscreenCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+        // Resize and render into the hidden buffer; the current front canvas
+        // remains untouched until PDF.js finishes successfully.
+        const backCanvasIndex = frontCanvasIndexRef.current === 0 ? 1 : 0;
+        const backCanvas = canvasRefs.current[backCanvasIndex];
+        if (!backCanvas) throw new Error('Could not create PDF canvas buffer');
+        backCanvas.width = canvasWidth;
+        backCanvas.height = canvasHeight;
+        const backCtx = backCanvas.getContext('2d', { alpha: false });
+        if (!backCtx) throw new Error('Could not create PDF canvas context');
+        backCtx.fillStyle = '#ffffff';
+        backCtx.fillRect(0, 0, canvasWidth, canvasHeight);
 
         const renderContext = {
-          canvasContext: offscreenCtx,
+          canvasContext: backCtx,
           viewport: viewport,
         };
 
@@ -432,8 +457,6 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
             renderErr?.name === 'RenderingCancelledException' ||
             renderErr?.message?.includes('cancelled')
           ) {
-            offscreenCanvas.width = 0;
-            offscreenCanvas.height = 0;
             return;
           }
           throw renderErr;
@@ -445,31 +468,16 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
           renderInputRef.current.pdfDoc !== pdfDoc ||
           renderInputRef.current.pageNumber !== pageNumber
         ) {
-          offscreenCanvas.width = 0;
-          offscreenCanvas.height = 0;
           return;
         }
         if (cancelRenderRequestedRef.current || Math.abs(desiredScaleRef.current - rasterScale) > 0.001) {
-          offscreenCanvas.width = 0;
-          offscreenCanvas.height = 0;
           queuedRenderRef.current = mountedRef.current && isNearViewport;
           return;
         }
 
-        // Atomically commit complete high-resolution bitmap to visible canvas
-        const visibleCanvas = canvasRef.current;
-        if (visibleCanvas) {
-          visibleCanvas.width = canvasWidth;
-          visibleCanvas.height = canvasHeight;
-          const visibleCtx = visibleCanvas.getContext('2d');
-          if (visibleCtx) {
-            visibleCtx.drawImage(offscreenCanvas, 0, 0);
-          }
-        }
-
-        // Immediately release scratch canvas memory
-        offscreenCanvas.width = 0;
-        offscreenCanvas.height = 0;
+        // Swap buffers only after the full-resolution render has completed.
+        frontCanvasIndexRef.current = backCanvasIndex;
+        setFrontCanvasIndex(backCanvasIndex);
 
         hasRenderedOnceRef.current = true;
         lastRenderedScaleRef.current = rasterScale;
@@ -889,16 +897,21 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       )}
 
       {/* PDF Rendering Canvas */}
-      <canvas
-        ref={canvasRef}
-        className="pdf-hardware-accelerated block w-full h-full"
-        style={{
-          transformStyle: 'preserve-3d',
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
-          willChange: 'transform',
-        }}
-      />
+      {[0, 1].map((bufferIndex) => (
+        <canvas
+          key={`pdf-canvas-buffer-${bufferIndex}`}
+          ref={(element) => { canvasRefs.current[bufferIndex as 0 | 1] = element; }}
+          aria-hidden="true"
+          className="pdf-hardware-accelerated absolute inset-0 block w-full h-full"
+          style={{
+            visibility: frontCanvasIndex === bufferIndex ? 'visible' : 'hidden',
+            pointerEvents: 'none',
+            transformStyle: 'preserve-3d',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+          }}
+        />
+      ))}
 
       {/* Interactive Text Layer for Highlighting & Selection */}
       <div

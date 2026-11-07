@@ -138,14 +138,13 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
 
   // Butter-smooth pinch-to-zoom for this specific PDF viewport
   const scaleRef = useRef<number>(doc.scale);
-  scaleRef.current = doc.scale;
+  const zoomGestureRef = useRef<{ active: boolean }>({ active: false });
+  if (!zoomGestureRef.current.active) scaleRef.current = doc.scale;
+  const zoomPanOffsetRef = useRef({ x: 0, y: 0 });
   const pendingZoomScrollRef = useRef<{
     anchorElement?: HTMLElement | null;
     anchorX?: number;
     anchorY?: number;
-    pointOnW_X: number;
-    pointOnW_Y: number;
-    ratio: number;
     cursorViewportX: number;
     cursorViewportY: number;
     reset?: boolean;
@@ -157,9 +156,23 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       pendingZoomScrollRef.current = null;
       const c = containerRef.current;
       if (pending.reset) {
+        const wrapper = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
+        if (wrapper) {
+          wrapper.style.transform = '';
+          wrapper.style.translate = '';
+        }
+        zoomPanOffsetRef.current = { x: 0, y: 0 };
         c.scrollLeft = 0;
         c.scrollTop = 0;
         return;
+      }
+      // Remove the temporary compositor transform before measuring the committed
+      // layout. The page itself remains the zoom anchor across the reflow.
+      const wrapper = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
+      if (wrapper) {
+        wrapper.style.transform = '';
+        wrapper.style.transformOrigin = '';
+        wrapper.style.willChange = '';
       }
       if (pending.anchorElement?.isConnected) {
         const pageRect = pending.anchorElement.getBoundingClientRect();
@@ -168,21 +181,26 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         const desiredClientY = containerRect.top + pending.cursorViewportY;
         const anchoredClientX = pageRect.left + (pending.anchorX || 0) * pageRect.width;
         const anchoredClientY = pageRect.top + (pending.anchorY || 0) * pageRect.height;
+        const previousScrollLeft = c.scrollLeft;
+        const previousScrollTop = c.scrollTop;
         c.scrollLeft = Math.max(0, c.scrollLeft + anchoredClientX - desiredClientX);
         c.scrollTop = Math.max(0, c.scrollTop + anchoredClientY - desiredClientY);
+        // When a page is still smaller than the viewport, scroll offsets cannot
+        // compensate for flex-centering reflow. Keep the residual as a compositor
+        // translation so the exact point under the cursor stays put.
+        const scrollShiftX = previousScrollLeft - c.scrollLeft;
+        const scrollShiftY = previousScrollTop - c.scrollTop;
+        const residualX = desiredClientX - anchoredClientX - scrollShiftX;
+        const residualY = desiredClientY - anchoredClientY - scrollShiftY;
+        if (wrapper && (Math.abs(residualX) > 0.1 || Math.abs(residualY) > 0.1)) {
+          zoomPanOffsetRef.current.x += residualX;
+          zoomPanOffsetRef.current.y += residualY;
+          wrapper.style.translate = `${zoomPanOffsetRef.current.x}px ${zoomPanOffsetRef.current.y}px`;
+        }
+        if (wrapper) wrapper.style.willChange = '';
         return;
       }
-      const w = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-      if (c && w) {
-        const new_cRect = c.getBoundingClientRect();
-        const new_wRect = w.getBoundingClientRect();
-        const new_w_offset_X = new_wRect.left - new_cRect.left + c.scrollLeft;
-        const new_w_offset_Y = new_wRect.top - new_cRect.top + c.scrollTop;
-        const newPointOnW_X = pending.pointOnW_X * pending.ratio;
-        const newPointOnW_Y = pending.pointOnW_Y * pending.ratio;
-        c.scrollLeft = Math.max(0, (new_w_offset_X + newPointOnW_X) - pending.cursorViewportX);
-        c.scrollTop = Math.max(0, (new_w_offset_Y + newPointOnW_Y) - pending.cursorViewportY);
-      }
+      if (wrapper) wrapper.style.willChange = '';
     }
   }, [doc.scale, doc.id]);
 
@@ -201,28 +219,44 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     let targetClientX: number | null = null;
     let targetClientY: number | null = null;
     let rafId: number | null = null;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let gestureStartScale = targetZoomScale;
+    let gestureStartRect: DOMRect | null = null;
 
     const applyZoomFrame = () => {
       rafId = null;
+      const w = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
+      if (!w || !gestureStartRect || targetClientX === null || targetClientY === null) return;
+      const ratio = targetZoomScale / gestureStartScale;
+      const originX = targetClientX - gestureStartRect.left;
+      const originY = targetClientY - gestureStartRect.top;
+      w.style.transformOrigin = `${originX}px ${originY}px`;
+      w.style.transform = `scale(${ratio})`;
+      w.style.willChange = 'transform';
+    };
+
+    const finishGesture = () => {
+      settleTimer = null;
+      if (!zoomGestureRef.current.active) return;
+      zoomGestureRef.current.active = false;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        applyZoomFrame();
+      }
       const c = containerRef.current;
       const w = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
-      if (!c || !w) return;
+      const clientX = targetClientX;
+      const clientY = targetClientY;
+      if (!c || !w || clientX === null || clientY === null) return;
+      if (Math.abs(targetZoomScale - gestureStartScale) < 0.0001) {
+        pendingZoomScrollRef.current = null;
+        w.style.transform = '';
+        w.style.transformOrigin = '';
+        w.style.willChange = '';
+        return;
+      }
 
-      const curScale = scaleRef.current || 1.0;
-      const nextScale = Math.max(0.2, targetZoomScale);
-      if (Math.abs(nextScale - curScale) < 0.0001) return;
-
-      const cRect = c.getBoundingClientRect();
-      const wRect = w.getBoundingClientRect();
-
-      const clientX = targetClientX ?? cRect.left + cRect.width / 2;
-      const clientY = targetClientY ?? cRect.top + cRect.height / 2;
-
-      const cursorViewportX = clientX - cRect.left;
-      const cursorViewportY = clientY - cRect.top;
-      const pointOnW_X = clientX - wRect.left;
-      const pointOnW_Y = clientY - wRect.top;
-      const ratio = nextScale / curScale;
       const targetElement = document.elementFromPoint(clientX, clientY);
       let anchorElement = targetElement instanceof Element
         ? targetElement.closest<HTMLElement>('[data-page-container="true"]')
@@ -240,22 +274,17 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
           }
         });
       }
-      const anchorRect = anchorElement?.getBoundingClientRect();
-
+      const pageRect = anchorElement?.getBoundingClientRect();
+      const containerRect = c.getBoundingClientRect();
       pendingZoomScrollRef.current = {
         anchorElement,
-        anchorX: anchorRect?.width ? Math.max(0, Math.min(1, (clientX - anchorRect.left) / anchorRect.width)) : undefined,
-        anchorY: anchorRect?.height ? Math.max(0, Math.min(1, (clientY - anchorRect.top) / anchorRect.height)) : undefined,
-        pointOnW_X,
-        pointOnW_Y,
-        ratio,
-        cursorViewportX,
-        cursorViewportY,
+        anchorX: pageRect?.width ? Math.max(0, Math.min(1, (clientX - pageRect.left) / pageRect.width)) : undefined,
+        anchorY: pageRect?.height ? Math.max(0, Math.min(1, (clientY - pageRect.top) / pageRect.height)) : undefined,
+        cursorViewportX: clientX - containerRect.left,
+        cursorViewportY: clientY - containerRect.top,
       };
-
-      scaleRef.current = nextScale;
-      targetZoomScale = nextScale;
-      onZoomChange(doc.id, nextScale, false);
+      scaleRef.current = targetZoomScale;
+      onZoomChange(doc.id, targetZoomScale, false);
     };
 
     const handleWheel = (e: WheelEvent) => {
@@ -263,22 +292,34 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
-        const deltaY = e.deltaY;
-        targetZoomScale = Math.max(0.2, targetZoomScale * Math.exp(-deltaY / 100));
+        if (!zoomGestureRef.current.active) {
+          zoomGestureRef.current.active = true;
+          gestureStartScale = scaleRef.current || 1.0;
+          targetZoomScale = gestureStartScale;
+          const wrapper = document.getElementById(`pdf-transform-wrapper-${doc.id}`);
+          gestureStartRect = wrapper?.getBoundingClientRect() ?? null;
+        }
 
+        targetZoomScale = Math.min(50, Math.max(0.2, targetZoomScale * Math.exp(-e.deltaY / 90)));
         targetClientX = e.clientX;
         targetClientY = e.clientY;
 
         if (rafId === null) {
           rafId = requestAnimationFrame(applyZoomFrame);
         }
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = setTimeout(finishGesture, 120);
       }
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
+    const handleNativeGestureEnd = () => finishGesture();
+    container.addEventListener('gestureend', handleNativeGestureEnd as EventListener);
     return () => {
       container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('gestureend', handleNativeGestureEnd as EventListener);
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (settleTimer) clearTimeout(settleTimer);
     };
   }, [doc.id, onZoomChange]);
 
