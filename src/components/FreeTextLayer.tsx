@@ -1,3 +1,4 @@
+import { AnnotationToolbar } from './AnnotationToolbar';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FreeTextAnnotation } from '../types';
@@ -1142,7 +1143,6 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
   const [toolbarPos, setToolbarPos] = useState<ToolbarPosition | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [smartDirectionMap, setSmartDirectionMap] = useState<Record<string, boolean>>({});
-  const [smartShiftXMap, setSmartShiftXMap] = useState<Record<string, number>>({});
 
   // Formatting state synchronization for Toolbar
   const [selectionFormat, setSelectionFormat] = useState<TextFormatState | null>(null);
@@ -1278,37 +1278,11 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
       }
     }
 
-    const sidebarEl = document.querySelector('aside, .sidebar-container, [data-sidebar="true"]');
-    const sidebarRect = sidebarEl ? sidebarEl.getBoundingClientRect() : null;
-    const sidebarRight = sidebarRect && sidebarRect.right > 0 && sidebarRect.right < viewportWidth / 2
-      ? sidebarRect.right
-      : 0;
-
-    const minAllowedLeft = Math.max(MARGIN, sidebarRight + MARGIN);
-    const maxAllowedRight = viewportWidth - MARGIN;
-    const maxAllowedLeft = maxAllowedRight - tbWidth;
-
-    const groupCenterX = rect.left + rect.width / 2;
-    const idealTbLeft = groupCenterX - tbWidth / 2;
-
-    let shiftX = 0;
-    if (idealTbLeft < minAllowedLeft) {
-      shiftX = minAllowedLeft - idealTbLeft;
-    } else if (idealTbLeft > maxAllowedLeft) {
-      shiftX = maxAllowedLeft - idealTbLeft;
-    }
-
-    const finalShiftX = Math.round(shiftX);
-
     setSmartDirectionMap((prev) => {
       if (prev[targetKey!] === isAbove) return prev;
       return { ...prev, [targetKey!]: isAbove };
     });
 
-    setSmartShiftXMap((prev) => {
-      if (prev[targetKey!] === finalShiftX) return prev;
-      return { ...prev, [targetKey!]: finalShiftX };
-    });
   }, [activeTextId, selectedIds, pageNumber, freeTexts, smartDirectionMap]);
 
   useLayoutEffect(() => {
@@ -3325,7 +3299,6 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
 
         // Smart positioning logic: dynamically calculate space relative to Header and viewport
         const isToolbarAbove = smartDirectionMap[item.id] !== undefined ? smartDirectionMap[item.id] : true;
-        const toolbarShiftX = smartShiftXMap[item.id] ?? 0;
 
         // Robust width preservation: Never let group dragging or page boundary transfer crush the text box width into a vertical strip
         const isBeingDragged =
@@ -3526,15 +3499,9 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
             )}
 
             {isSelected && !isMultiSelectedText && !isShiftDown && !isGesturing && !(activeLinkCard && activeLinkCard.itemId === item.id) && (
-              <div
+              <AnnotationToolbar anchorId={`freetext-${item.id}`} preferredAbove={isToolbarAbove}
                 ref={activeTextId === item.id ? toolbarRef : undefined}
-                className={`ft-toolbar pointer-events-auto absolute bg-white text-neutral-800 px-1 py-1 rounded-[10px] shadow-[0_4px_24px_rgba(0,0,0,0.18)] flex items-center gap-0 text-[14px] z-[8500] select-none border border-neutral-200 transition-none ${
-                  isToolbarAbove ? 'bottom-[calc(100%+10px)]' : 'top-[calc(100%+10px)]'
-                } left-1/2`}
-                style={{
-                  transform: `translateX(calc(-50% + ${toolbarShiftX}px)) ${item.rotation ? `rotate(${-item.rotation}deg)` : ''}`,
-                  transformOrigin: 'center center',
-                }}
+                className="ft-toolbar pointer-events-auto bg-white text-neutral-800 px-1 py-1 rounded-[10px] shadow-[0_4px_24px_rgba(0,0,0,0.18)] flex items-center gap-0 text-[14px] select-none border border-neutral-200 transition-none"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => {
@@ -4292,7 +4259,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
                 </div>
               
                   </>
-                )}</div>
+                )}</AnnotationToolbar>
             )}
 
             {/* Editable Text Element */}

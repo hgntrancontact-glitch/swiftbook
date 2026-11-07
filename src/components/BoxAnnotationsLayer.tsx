@@ -1,3 +1,4 @@
+import { AnnotationToolbar } from './AnnotationToolbar';
 import React, { useState, useRef, useEffect } from 'react';
 import { BoxAnnotation, BoxConfig, DEFAULT_BOX_CONFIG } from '../types';
 import { Trash2, Check, Square } from 'lucide-react';
@@ -476,16 +477,6 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
         const isDashed = box.borderStyle === 'dashed';
         const hasFill = box.fillColor && box.fillColor !== 'transparent';
         const isNearTop = box.y < 12;
-        const boxCenterXPct = box.x + (box.width || 0) / 2;
-        
-        // Smart horizontal alignment to prevent toolbar from overflowing screen/page boundaries
-        let horizontalAlignClass = 'left-1/2 -translate-x-1/2';
-        if (boxCenterXPct > 65 || box.x + box.width > 80) {
-          horizontalAlignClass = 'right-0 left-auto translate-x-0';
-        } else if (boxCenterXPct < 35 || box.x < 15) {
-          horizontalAlignClass = 'left-0 translate-x-0';
-        }
-
         const isPrimaryForToolbar = !isMultiSelected || box.id === primaryBoxId;
 
         // Multi-selection mixed state calculations
@@ -615,12 +606,10 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
 
             {/* Floating Toolbar with smart boundary positioning & compact sleek styling */}
             {isSelected && !isMultiSelected && !isDragging && (!altGhost || altGhost.id !== box.id) && (
-              <div
+              <AnnotationToolbar anchorId={`box-${box.id}`} preferredAbove={!isNearTop}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
-                className={`box-floating-toolbar absolute ${
-                  isNearTop ? 'top-full mt-2' : 'bottom-full mb-2'
-                } ${horizontalAlignClass} z-[9500] pointer-events-auto bg-white/98 backdrop-blur-md border border-neutral-200/90 shadow-lg rounded-lg px-2 py-1 flex items-center gap-1.5 whitespace-nowrap select-none animate-in fade-in zoom-in-95 duration-150`}
+                className="box-floating-toolbar pointer-events-auto bg-white/98 backdrop-blur-md border border-neutral-200/90 shadow-lg rounded-lg px-2 py-1 flex items-center gap-1.5 whitespace-nowrap select-none"
               >
                 {/* Border Color Swatches (5 colors: Red, Blue, Green, Yellow, Black) */}
                 <div className="flex items-center gap-1 pr-1.5 border-r border-neutral-200">
@@ -746,7 +735,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
                 >
                   <Trash2 size={13.5} />
                 </button>
-              </div>
+              </AnnotationToolbar>
             )}
 
             {/* 8 Smart Resize Handles (4 corners + 4 edge centers) */}

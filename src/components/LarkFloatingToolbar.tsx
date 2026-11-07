@@ -348,7 +348,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
           >
             <div className="flex items-center justify-between text-xs font-bold text-neutral-800 mb-2">
               <span>Độ dày nét vẽ</span>
-              <span className="bg-neutral-100 text-neutral-900 px-2 py-0.5 rounded-md text-[10.5px]" style={{ fontFamily: '"Open Sans", sans-serif' }}>
+              <span className="bg-neutral-100 text-neutral-900 px-2 py-0.5 rounded-md text-[10.5px]" style={{ fontFamily: '"Inter", sans-serif' }}>
                 {activeTool === 'eraser' ? eraserSize : penSize}px
               </span>
             </div>
@@ -445,7 +445,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
                 onClick={toggleDrawToolbar}
                 className={`p-2 rounded-full transition-all flex items-center gap-1.5 text-xs font-semibold ${
                   ['pen', 'highlighter', 'smart_pen', 'smart_highlighter', 'eraser'].includes(activeTool) || showDrawToolbar
-                    ? 'bg-[#f5c41a]/15 text-neutral-950 shadow-xs font-bold'
+                    ? 'bg-[#f5c41a] text-neutral-950 shadow-xs font-bold'
                     : 'text-neutral-700 hover:bg-neutral-100'
                 }`}
                 title="Bộ công cụ vẽ & đánh dấu (Vẽ tự do, Highlight, Vẽ thông minh, Highlight thẳng, Cục tẩy)"

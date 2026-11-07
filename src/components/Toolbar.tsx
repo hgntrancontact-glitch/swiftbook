@@ -346,9 +346,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <span className="font-bold text-neutral-900 text-[20px] tracking-tight select-none leading-none">
               Swiftbook
             </span>
-            <span className="bg-[#f5c41a] text-black px-2.5 py-0.5 rounded-full text-[11.5px] font-medium leading-tight select-none">
+            <a href="https://swiftstreet.vn" target="_blank" rel="noopener noreferrer" className="bg-[#f5c41a] text-black px-2.5 py-0.5 rounded-full text-[11.5px] font-medium leading-tight select-none">
               by Swiftstreet
-            </span>
+            </a>
           </div>
 
           {/* Logo / Reset Button (Nhấn đúp 2 lần mới Reset) */}

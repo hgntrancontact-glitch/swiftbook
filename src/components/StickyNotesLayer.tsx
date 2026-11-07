@@ -34,6 +34,36 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const hasNotes = notes.some(note => note.pageNumber === pageNumber);
+  useLayoutEffect(() => {
+    const layer = containerRef.current;
+    const page = layer?.closest<HTMLElement>('[data-page-container="true"]');
+    const wrapper = page?.closest<HTMLElement>('[data-scale]');
+    if (!hasNotes || !layer || !page || !wrapper) return;
+    // A compositor transform stretches cached text pixels during pinch. Native
+    // layout zoom rerasterizes the HTML note at the live size; the inverse
+    // transform cancels only that extra geometry, leaving the page's zoom intact.
+    const update = () => {
+      const live = Number(wrapper.style.getPropertyValue('--pdf-live-zoom')) || 1;
+      layer.style.width = page.style.width;
+      layer.style.height = page.style.height;
+      layer.style.zoom = String(live);
+      layer.style.transformOrigin = '0 0';
+      layer.style.transform = live === 1 ? '' : `scale(${1 / live})`;
+    };
+    const observer = new MutationObserver(update);
+    observer.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
+    observer.observe(page, { attributes: true, attributeFilter: ['style'] });
+    update();
+    return () => {
+      observer.disconnect();
+      layer.style.zoom = '';
+      layer.style.transform = '';
+      layer.style.width = '';
+      layer.style.height = '';
+    };
+  }, [hasNotes, pageNumber, scale]);
+
   const getPageEl = (targetPage: number): HTMLElement | null => {
     if (containerRef.current && targetPage === pageNumber) {
       const currentContainer = containerRef.current.closest<HTMLElement>('[data-page-container="true"]') || containerRef.current.parentElement;

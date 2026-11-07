@@ -578,7 +578,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       <div className="absolute inset-0 bg-transparent" onClick={onClose} />
       {/* Modal Container */}
       <div
-        className="relative z-10 w-full max-w-5xl h-[84vh] max-h-[760px] bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden border border-zinc-200/90 my-auto"
+        data-library-modal="true" className="relative isolate z-10 w-full max-w-5xl h-[84vh] max-h-[760px] bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden border border-zinc-200/90 my-auto"
         onClick={() => setActiveGroupMenuBookId(null)}
       >
         {/* TOP BANNER: Minimalist White Header with Brand Yellow Accents */}
@@ -1240,7 +1240,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                             </div>
                             <p className="text-[11px] text-zinc-500 truncate">
                               Đang đọc trang {book.lastReadPage || 1}
-                              {book.totalPages ? `/${book.totalPages}` : ''} • Tiến độ {progressPercent}%
+                              {book.totalPages ? `/${book.totalPages}` : ''} | Tiến độ {progressPercent}%
                             </p>
                           </div>
                         </div>
@@ -1324,7 +1324,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         {/* MODAL: GROUP MANAGER */}
         {isGroupManagerOpen && (
           <div className="absolute inset-0 z-60 bg-transparent flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-transparent" onClick={() => { setIsGroupManagerOpen(false); setEditingGroupId(null); }} />
+            <div data-library-child-backdrop="true" className="absolute inset-0 bg-white/25 backdrop-blur-[3px]" onClick={() => { setIsGroupManagerOpen(false); setEditingGroupId(null); }} />
             <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden animate-scaleIn border border-zinc-200/90">
               <div className="bg-[#f5c41a] px-5 py-3.5 flex items-center justify-between border-b border-[#e5b512]">
                 <h3 className="font-bold text-zinc-950 text-sm">
@@ -1414,7 +1414,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         {/* MODAL: EDIT BOOK DETAILS */}
         {editingBook && (
           <div className="absolute inset-0 z-60 bg-transparent flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-transparent" onClick={() => setEditingBook(null)} />
+            <div data-library-child-backdrop="true" className="absolute inset-0 bg-white/25 backdrop-blur-[3px]" onClick={() => setEditingBook(null)} />
             <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-zinc-200/90 animate-scaleIn relative flex flex-col overflow-hidden">
               <div className="bg-[#f5c41a] px-5 py-3.5 flex items-center justify-between border-b border-[#e5b512]">
                 <h3 className="font-bold text-zinc-950 text-sm flex items-center gap-2">
@@ -1482,7 +1482,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         {/* MODAL XÁC NHẬN: ĐÓNG | XOÁ NGAY */}
         {confirmDeleteModal?.isOpen && (
           <div className="absolute inset-0 z-70 bg-transparent flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="absolute inset-0 bg-transparent" onClick={handleCloseConfirmModal} />
+            <div data-library-child-backdrop="true" className="absolute inset-0 bg-white/25 backdrop-blur-[3px]" onClick={handleCloseConfirmModal} />
             <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 border border-zinc-200/90">
               <div className={`px-4 py-3.5 flex items-center justify-between ${confirmDeleteModal.isTrash ? 'bg-red-600 text-white' : 'bg-[#f5c41a] text-zinc-950'}`}>
                 <div className="font-bold text-xs">
@@ -1539,7 +1539,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         {/* MODAL XÁC NHẬN XÓA NHÓM */}
         {groupToDelete && (
           <div className="absolute inset-0 z-70 bg-transparent flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="absolute inset-0 bg-transparent" onClick={handleCancelDeleteGroup} />
+            <div data-library-child-backdrop="true" className="absolute inset-0 bg-white/25 backdrop-blur-[3px]" onClick={handleCancelDeleteGroup} />
             <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 border border-zinc-200/90">
               <div className="bg-[#f5c41a] px-4 py-3.5 flex items-center justify-between text-zinc-950 border-b border-[#e5b512]">
                 <div className="font-bold text-xs flex items-center gap-2">

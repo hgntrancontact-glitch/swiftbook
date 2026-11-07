@@ -624,7 +624,7 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
 
     return (
       <div
-        className="unified-box-toolbar bg-white/98 backdrop-blur-md border border-neutral-200/90 shadow-xl rounded-lg px-2 py-1 flex items-center gap-1.5 whitespace-nowrap select-none animate-in fade-in zoom-in-95 duration-150"
+        className="unified-box-toolbar bg-white/98 backdrop-blur-md border border-neutral-200/90 shadow-xl rounded-lg px-2 py-1 flex items-center gap-1.5 whitespace-nowrap select-none max-w-full flex-wrap"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -767,7 +767,7 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
 
     return (
       <div
-        className="unified-text-toolbar pointer-events-auto bg-white text-neutral-800 px-1 py-1 rounded-[10px] shadow-[0_4px_24px_rgba(0,0,0,0.18)] flex items-center gap-0 text-[14px] select-none border border-neutral-200 transition-none"
+        className="unified-text-toolbar pointer-events-auto max-w-full flex-wrap bg-white text-neutral-800 px-1 py-1 rounded-[10px] shadow-[0_4px_24px_rgba(0,0,0,0.18)] flex items-center gap-0 text-[14px] select-none border border-neutral-200 transition-none"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -1341,6 +1341,7 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
       ref={toolbarRef}
       className="unified-group-toolbar fixed z-[90000] pointer-events-auto select-none"
       style={{
+        maxWidth: 'calc(100vw - 20px)',
         left: `${pos.left}px`,
         top: `${pos.top}px`,
         visibility: pos.isVisible ? 'visible' : 'hidden',
