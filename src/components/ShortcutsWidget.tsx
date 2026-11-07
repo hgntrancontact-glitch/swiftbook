@@ -68,6 +68,9 @@ export const ShortcutsWidget: React.FC = () => {
                 </kbd>
               </div>
             ))}
+            <div className="py-1.5 px-2 text-[12px] text-neutral-700 leading-relaxed" data-quick-highlight-guide="true">
+              <span className="font-medium">Highlight nhanh:</span> Kéo chuột trái để chọn vùng cần tô sáng, sau đó nhấn chuột phải hai lần để tạo highlight.
+            </div>
           </div>
         </div>
       )}

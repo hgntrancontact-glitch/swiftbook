@@ -18,6 +18,7 @@ export interface HighlightAnnotation {
 }
 
 export interface TextNoteAnnotation {
+  title?: string;
   /** Page scale when pixel-sized properties were created; absent legacy values use page units. */
   referenceScale?: number;
   id: string;

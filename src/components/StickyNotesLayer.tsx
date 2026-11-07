@@ -68,15 +68,15 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
 
   const pageNotes = [...notes.filter((n) => n.pageNumber === pageNumber), ...(altGhost && altGhost.pageNumber === pageNumber ? [altGhost] : [])];
 
-  // Automatically elevate page z-index whenever any note on this page is expanded
+  // Elevation changes with note state, not on every zoom/render frame.
+  const hasExpandedNote = pageNotes.some((n) => !n.isMinimized);
   useEffect(() => {
-    const hasExpandedNote = pageNotes.some((n) => !n.isMinimized);
     if (hasExpandedNote) {
       elevatePageZIndex(pageNumber, fileId);
     } else if (!draggingNoteId) {
       resetPageZIndex(pageNumber, fileId);
     }
-  }, [pageNotes, pageNumber, draggingNoteId, fileId]);
+  }, [hasExpandedNote, pageNumber, draggingNoteId, fileId]);
 
   // Click on page container to place a single new note and switch back to Select mode
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -353,7 +353,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
               <div
                 onMouseDown={(e) => startDrag(e, note)}
                 onClick={(e) => handleNoteClick(e, note)}
-                className="rounded-full shadow-md border border-black/30 flex items-center justify-center cursor-grab active:cursor-grabbing hover:scale-110 active:scale-95 transition-transform group"
+                className="rounded-full shadow-md border border-black/30 flex items-center justify-center cursor-grab active:cursor-grabbing group"
                 style={{
                   background: theme.noteBg,
                   width: `${24 * scale / (note.referenceScale || 1)}px`,
@@ -367,7 +367,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
               >
                 <MessageSquare
                   size={13 * scale / (note.referenceScale || 1)}
-                  className="text-black fill-black group-hover:scale-105 transition-transform"
+                  className="text-black fill-black"
                 />
               </div>
             ) : (
@@ -412,10 +412,24 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   scale = 1.0,
 }) => {
   const noteScale = scale / (note.referenceScale || 1);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const cancelTitleRef = useRef(false);
+  const finishTitleEdit = () => {
+    if (!cancelTitleRef.current) {
+      const title = titleDraft.trim() || 'Note';
+      if (title !== (note.title || 'Note')) onUpdateNote(note.id, { title });
+    }
+    cancelTitleRef.current = false;
+    setEditingTitle(false);
+  };
   const getDims = () => {
     const cont = containerRef.current;
-    const contW = cont && cont.offsetWidth > 0 ? cont.offsetWidth : 595 * scale;
-    const contH = cont && cont.offsetHeight > 0 ? cont.offsetHeight : 842 * scale;
+    const page = cont?.closest<HTMLElement>('[data-page-container="true"]');
+    // Read untransformed, fractional page dimensions. offsetWidth/offsetHeight
+    // round to integers and make percentage-sized notes wobble at zoom commits.
+    const contW = parseFloat(page?.style.width || '') || cont?.offsetWidth || 595 * scale;
+    const contH = parseFloat(page?.style.height || '') || cont?.offsetHeight || 842 * scale;
 
     let wPx = 224 * noteScale;
     let hPx = 160 * noteScale;
@@ -555,7 +569,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   return (
     <div
       ref={noteBoxRef}
-      className="relative shadow-2xl border border-black/20 flex flex-col font-['Inter',sans-serif] animate-in fade-in zoom-in-95 duration-150 select-none"
+      className="relative shadow-2xl border border-black/20 flex flex-col font-['Inter',sans-serif] select-none"
       style={{
         width: `${size.width}px`,
         height: `${size.height}px`,
@@ -594,11 +608,40 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
           title="Kéo thanh tiêu đề để di chuyển giữa các trang"
         >
           <div
-            className="flex items-center gap-1.5 font-bold tracking-tight"
+            className="flex items-center gap-1.5 font-bold tracking-tight min-w-0 flex-1"
             style={{ fontSize: `${11.5 * noteScale}px` }}
           >
             <Move size={iconSize} className="opacity-70" />
-            <span>Note</span>
+            {editingTitle ? (
+              <input
+                autoFocus aria-label="Tiêu đề giấy note" value={titleDraft}
+                className="min-w-0 w-full bg-transparent border-0 outline-none"
+                style={{ font: 'inherit', color: 'inherit' }}
+                onFocus={e => e.currentTarget.select()}
+                onMouseDown={e => e.stopPropagation()}
+                onChange={e => setTitleDraft(e.target.value)}
+                onBlur={finishTitleEdit}
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelTitleRef.current = e.key === 'Escape';
+                    e.currentTarget.blur();
+                  }
+                }}
+              />
+            ) : (
+              <button type="button" title="Nhấp để đổi tiêu đề giấy note"
+                className="truncate min-w-0 text-left cursor-text" style={{ font: 'inherit', color: 'inherit' }}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation();
+                  setTitleDraft(note.title || 'Note');
+                  setEditingTitle(true);
+                }}>
+                {note.title || 'Note'}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1">

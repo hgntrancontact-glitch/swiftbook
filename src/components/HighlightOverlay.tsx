@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { HighlightAnnotation, HIGHLIGHT_COLORS, HighlightColor, NormalizedRect } from '../types';
-import { Trash2, MessageSquare, Edit3, X } from 'lucide-react';
+import { Trash2, MessageSquare, Edit3, X, Pin, PinOff, Eye } from 'lucide-react';
 
 // Helper to merge contiguous/overlapping line rects into unified solid blocks without seam lines
 function mergeContiguousRects(rects: NormalizedRect[]): NormalizedRect[] {
@@ -72,6 +72,43 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
   const [hoveredNoteHlId, setHoveredNoteHlId] = useState<string | null>(null);
   const [editingNote, setEditingNote] = useState<{ id: string; text: string } | null>(null);
 
+  const [previewMode, setPreviewMode] = useState<'auto' | 'pinned' | 'transparent'>('auto');
+  const previewIdRef = useRef(hoveredNoteHlId);
+  previewIdRef.current = hoveredNoteHlId;
+  const previewOwner = elevatedContainerId || `highlight-note-${pageNumber}`;
+  const focusHighlight = (id: string) => {
+    window.dispatchEvent(new CustomEvent('highlight-note-focus', { detail: { owner: previewOwner, id } }));
+  };
+  const openNotePreview = (id: string) => {
+    focusHighlight(id);
+    if (previewIdRef.current !== id) setPreviewMode('auto');
+    setHoveredNoteHlId(id);
+  };
+  const closeNotePreview = () => {
+    setHoveredNoteHlId(null);
+    setPreviewMode('auto');
+  };
+
+  // A pinned preview belongs to one highlight, including across PDF pages/documents.
+  useEffect(() => {
+    const handleFocus = (event: Event) => {
+      const { owner, id } = (event as CustomEvent).detail;
+      if (owner !== previewOwner || id !== previewIdRef.current) {
+        setHoveredNoteHlId(null);
+        setPreviewMode('auto');
+      }
+    };
+    window.addEventListener('highlight-note-focus', handleFocus);
+    return () => window.removeEventListener('highlight-note-focus', handleFocus);
+  }, [previewOwner]);
+
+  useEffect(() => {
+    if (!hoveredNoteHlId || !highlights.some(hl => hl.id === hoveredNoteHlId && hl.pageNumber === pageNumber && hl.note)) {
+      setHoveredNoteHlId(null);
+      setPreviewMode('auto');
+    }
+  }, [highlights, pageNumber, hoveredNoteHlId]);
+
   const [mountedContainer, setMountedContainer] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const el = document.getElementById(elevatedContainerId || `elevated-annotation-container-${pageNumber}`);
@@ -91,7 +128,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
 
     const handleGlobalClickAway = (e: MouseEvent) => {
       const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-      if (el?.closest?.('.highlight-popup-toolbar')) {
+      if (el?.closest?.('.highlight-popup-toolbar, .highlight-note-preview')) {
         return;
       }
       setActiveHighlightId(null);
@@ -132,8 +169,15 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
               width: `${rect.width}%`,
               height: `${rect.height}%`,
             }}
+            onMouseEnter={() => {
+              if (hl.note && activeHighlightId !== hl.id) openNotePreview(hl.id);
+            }}
+            onMouseLeave={() => {
+              if (previewMode === 'auto') setHoveredNoteHlId(prev => prev === hl.id ? null : prev);
+            }}
             onMouseDown={(e) => {
               e.stopPropagation();
+              focusHighlight(hl.id);
               if (e.button === 0 && onSelect) {
                 onSelect(hl.id, e.shiftKey);
               }
@@ -163,16 +207,6 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             {idx === 0 && hl.note && (
               <div
                 className="absolute -top-3.5 -right-2.5 z-30 pointer-events-auto"
-                onMouseEnter={(e) => {
-                  e.stopPropagation();
-                  if (activeHighlightId !== hl.id) {
-                    setHoveredNoteHlId(hl.id);
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.stopPropagation();
-                  setHoveredNoteHlId((prev) => (prev === hl.id ? null : prev));
-                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   setHoveredNoteHlId(null);
@@ -213,17 +247,37 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                 {/* Quick note hover tooltip preview */}
                 {hoveredNoteHlId === hl.id && activeHighlightId !== hl.id && (
                   <div 
-                    className="absolute bottom-full right-0 mb-1.5 w-64 max-w-[280px] bg-neutral-900 text-white rounded-xl p-2.5 shadow-2xl border border-neutral-700/60 z-[99999] pointer-events-none text-xs font-['Inter',sans-serif] animate-in fade-in zoom-in-95 duration-150"
+                    className="highlight-note-preview absolute bottom-full right-0 w-64 max-w-[280px] pb-1.5 z-[99999] pointer-events-auto text-xs font-['Inter',sans-serif] cursor-default"
+                    data-highlight-note-preview={hl.id} data-preview-mode={previewMode}
+                    style={{ pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
+                    onMouseDown={e => e.stopPropagation()}
+                    onClick={e => e.stopPropagation()}
                   >
-                    <div className="flex items-center gap-1.5 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800">
+                    <div className={`rounded-xl p-2.5 border ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
+                      style={previewMode === 'transparent' ? { backgroundColor: 'rgba(255,255,255,0.16)' } : undefined}>
+
+                    <div className="flex items-center gap-1.5 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto">
                       <MessageSquare size={11} className="fill-[#f5c41a]" />
-                      <span>Ghi chú</span>
+                      <span className={previewMode === 'transparent' ? 'text-neutral-950' : ''}>Ghi chú</span>
+                      <button type="button" className="ml-auto p-1 rounded hover:bg-neutral-500/20 pointer-events-auto"
+                        data-highlight-note-mode="true"
+                        title={previewMode === 'auto' ? 'Ghim hiển thị — giữ ghi chú khi rê chuột ra ngoài' : previewMode === 'pinned' ? 'Ghim trong suốt — nhìn nội dung PDF phía dưới' : 'Tự thu gọn — thu gọn khi rê chuột ra ngoài'}
+                        aria-label={previewMode === 'auto' ? 'Ghim hiển thị' : previewMode === 'pinned' ? 'Ghim trong suốt' : 'Tự thu gọn'}
+                        onClick={e => {
+                          e.stopPropagation();
+                          setPreviewMode(mode => mode === 'auto' ? 'pinned' : mode === 'pinned' ? 'transparent' : 'auto');
+                        }}>
+                        {previewMode === 'auto' ? <PinOff size={13} /> : previewMode === 'pinned' ? <Pin size={13} /> : <Eye size={13} />}
+                      </button>
+                      <button type="button" title="Đóng ghi chú" aria-label="Đóng ghi chú" className="p-1 rounded hover:bg-neutral-500/20"
+                        onClick={e => { e.stopPropagation(); closeNotePreview(); }}><X size={13} /></button>
                     </div>
-                    <p className="text-neutral-200 text-xs leading-relaxed whitespace-pre-wrap break-words">
+                    <p className={`${previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} text-xs leading-relaxed whitespace-pre-wrap break-words`}>
                       {hl.note}
                     </p>
                     <div className="text-[10px] text-neutral-400 mt-1.5 text-right italic">
                       Nhấp đúp chuột vào highlight để sửa
+                    </div>
                     </div>
                   </div>
                 )}

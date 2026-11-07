@@ -1085,7 +1085,7 @@ function renderStickyNoteOnCanvas(
   ctx.fillStyle = '#000000';
   ctx.font = `bold ${Math.max(8, Math.round(11.5 * ratio))}px ${fontSans}`;
   ctx.textBaseline = 'middle';
-  ctx.fillText('Note', nx + headerPadLeft + moveIconSize + Math.round(6 * ratio), ny + headerH / 2);
+  ctx.fillText(note.title || 'Note', nx + headerPadLeft + moveIconSize + Math.round(6 * ratio), ny + headerH / 2, Math.max(1, cardW - headerPadLeft * 2 - moveIconSize - 6 * ratio));
 
   // LAYER 3: Footer Bar (height = 24 * ratio) at bottom
   const footerH = Math.max(14, Math.round(24 * ratio));

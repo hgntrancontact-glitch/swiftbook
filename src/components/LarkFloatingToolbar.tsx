@@ -348,7 +348,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
           >
             <div className="flex items-center justify-between text-xs font-bold text-neutral-800 mb-2">
               <span>Độ dày nét vẽ</span>
-              <span className="bg-neutral-100 text-neutral-900 px-2 py-0.5 rounded-md text-[11px]" style={{ fontFamily: '"Open Sans", sans-serif' }}>
+              <span className="bg-neutral-100 text-neutral-900 px-2 py-0.5 rounded-md text-[10.5px]" style={{ fontFamily: '"Open Sans", sans-serif' }}>
                 {activeTool === 'eraser' ? eraserSize : penSize}px
               </span>
             </div>
@@ -388,7 +388,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
             }}
             className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-neutral-200/90 p-3.5 w-56 text-neutral-800 z-[999999] animate-in fade-in zoom-in-95 select-none font-['Inter',sans-serif]"
           >
-            <div className="text-xs font-bold text-neutral-800 mb-2.5">
+            <div className="text-xs font-normal text-neutral-800 mb-2.5">
               Chọn màu nét vẽ & highlight
             </div>
             <div className="grid grid-cols-5 gap-2">
