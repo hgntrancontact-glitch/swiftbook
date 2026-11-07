@@ -276,8 +276,8 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
     >
       {pagesArray.map((pageNum) => {
         const cachedDim = pageDimensionCache.get(`${fileId}_${pageNum}`) || defaultDim;
-        const estimatedW = Math.max(1, Math.round(cachedDim.width * scale));
-        const estimatedH = Math.max(1, Math.round(cachedDim.height * scale));
+        const estimatedW = Math.max(1, cachedDim.width * scale);
+        const estimatedH = Math.max(1, cachedDim.height * scale);
 
         const hasOpenNote = textNotes.some((n) => n.pageNumber === pageNum && !n.isMinimized);
         const hasSelectedAnnotation = Boolean(

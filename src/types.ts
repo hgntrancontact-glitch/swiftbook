@@ -184,6 +184,7 @@ export interface WorkspaceDoc {
   scale: number;
   fitMode: boolean;
   viewportRevision?: number;
+  zoomRevision?: number;
   highlights: HighlightAnnotation[];
   textNotes: TextNoteAnnotation[];
   drawings: DrawingStroke[];

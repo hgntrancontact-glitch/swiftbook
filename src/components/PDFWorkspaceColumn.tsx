@@ -110,11 +110,16 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   const actionsRef = useRef({ onZoomChange, onActivate });
   actionsRef.current = { onZoomChange, onActivate };
   const gestureActiveRef = useRef(false);
-  if (!gestureActiveRef.current) scaleRef.current = doc.scale;
+  const committedScaleRef = useRef(doc.scale);
+  committedScaleRef.current = doc.scale;
+  const pendingCommitRef = useRef(false);
+  const gestureEpochRef = useRef(0);
+  if (!gestureActiveRef.current && !pendingCommitRef.current) scaleRef.current = doc.scale;
   const panRef = useRef({ x: 0, y: 0 });
   type Anchor = { element: HTMLElement; x: number; y: number; clientX: number; clientY: number };
   const pendingAnchorRef = useRef<Anchor | null>(null);
-  const gestureControllerRef = useRef<{ cancel: () => void } | null>(null);
+  const visualAnchorRef = useRef<Anchor | null>(null);
+  const gestureControllerRef = useRef<{ cancel: () => void; rebase: (scale: number) => void } | null>(null);
   const releaseFrameRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
@@ -231,14 +236,15 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     }
   };
   const releaseGesture = () => {
+    const epoch = gestureEpochRef.current;
     if (releaseFrameRef.current !== null) cancelAnimationFrame(releaseFrameRef.current);
     releaseFrameRef.current = requestAnimationFrame(() => {
       releaseFrameRef.current = requestAnimationFrame(() => {
         releaseFrameRef.current = null;
         const container = containerRef.current;
-        if (!container || gestureActiveRef.current) return;
+        if (!container || gestureActiveRef.current || epoch !== gestureEpochRef.current) return;
         delete container.dataset.zoomGesture;
-        container.dispatchEvent(new Event('pdf-zoom-end'));
+        container.dispatchEvent(new CustomEvent('pdf-zoom-end', { detail: { epoch } }));
       });
     });
   };
@@ -248,28 +254,37 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   useLayoutEffect(() => {
     const previous = previousLayoutRef.current;
     const explicitReset = previous.key !== resetKey;
-    const fitResize = doc.scale <= 1 && Math.abs(previous.baseScale - baseScale) > 0.0001;
+    const fitResize = !gestureActiveRef.current && !pendingCommitRef.current && doc.scale <= 1 && Math.abs(previous.baseScale - baseScale) > 0.0001;
     const pageNavigation = previous.currentPage !== doc.currentPage && doc.viewMode !== 'continuous';
     const columnsChanged = previous.visibleDocs !== totalVisibleDocs;
     if (explicitReset || fitResize || pageNavigation || (columnsChanged && doc.scale <= 1)) {
       gestureControllerRef.current?.cancel();
       pendingAnchorRef.current = null;
+      pendingCommitRef.current = false;
+      visualAnchorRef.current = null;
+      scaleRef.current = doc.scale;
       clearLiveZoom();
       clearPan();
       alignCurrentPage();
       releaseGesture();
-    } else if (pendingAnchorRef.current) {
+    } else if (gestureActiveRef.current || (pendingCommitRef.current && Math.abs(doc.scale - scaleRef.current) > 0.000001)) {
+      // A prior commit can arrive after another gesture has already started.
+      // Rebase the live ratio on the committed layout without ending that gesture.
+      gestureControllerRef.current?.rebase(doc.scale);
+    } else if (pendingCommitRef.current) {
       const anchor = pendingAnchorRef.current;
       pendingAnchorRef.current = null;
+      pendingCommitRef.current = false;
       clearLiveZoom();
-      if (doc.scale <= 1) {
-        clearPan();
-        alignCurrentPage();
-      } else restoreAnchor(anchor);
+      if (doc.viewMode === 'continuous') {
+        if (doc.scale <= 1) { clearPan(); if (containerRef.current) containerRef.current.scrollLeft = 0; }
+        if (anchor) restoreAnchor(anchor, doc.scale > 1);
+      } else if (doc.scale <= 1) { clearPan(); alignCurrentPage(); }
+      else if (anchor) restoreAnchor(anchor);
       releaseGesture();
     }
     previousLayoutRef.current = { key: resetKey, baseScale, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs };
-  }, [resetKey, baseScale, doc.scale, doc.currentPage, totalVisibleDocs]);
+  }, [resetKey, baseScale, doc.scale, doc.zoomRevision, doc.currentPage, totalVisibleDocs]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -290,6 +305,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         if (doc.viewMode !== 'continuous') container.scrollTop = 0;
         else if (anchor) restoreAnchor(anchor, false);
       } else if (anchor) restoreAnchor(anchor);
+      visualAnchorRef.current = captureAnchor(clientX, clientY);
     };
     const cancel = () => {
       if (timer) clearTimeout(timer);
@@ -297,8 +313,15 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       timer = null;
       frame = null;
       gestureActiveRef.current = false;
+      gestureEpochRef.current++;
     };
-    gestureControllerRef.current = { cancel };
+    const rebase = (scale: number) => {
+      startScale = scale;
+      wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
+      const anchor = visualAnchorRef.current;
+      if (anchor) restoreAnchor(anchor, targetScale > 1);
+    };
+    gestureControllerRef.current = { cancel, rebase };
     const finish = () => {
       if (!gestureActiveRef.current) return;
       if (timer) clearTimeout(timer);
@@ -306,13 +329,17 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (frame !== null) { cancelAnimationFrame(frame); apply(); }
       pendingAnchorRef.current = captureAnchor(clientX, clientY);
       gestureActiveRef.current = false;
-      if (Math.abs(targetScale - startScale) < 0.000001) {
+      if (Math.abs(targetScale - startScale) < 0.000001 && !pendingCommitRef.current) {
         clearLiveZoom();
-        if (targetScale <= 1) { clearPan(); alignCurrentPage(); }
+        if (doc.viewMode === 'continuous') {
+          if (targetScale <= 1) { clearPan(); container.scrollLeft = 0; }
+          if (pendingAnchorRef.current) restoreAnchor(pendingAnchorRef.current, targetScale > 1);
+        } else if (targetScale <= 1) { clearPan(); alignCurrentPage(); }
         pendingAnchorRef.current = null;
         releaseGesture();
       } else {
         scaleRef.current = targetScale;
+        pendingCommitRef.current = true;
         actionsRef.current.onZoomChange(doc.id, targetScale, false);
       }
     };
@@ -321,14 +348,17 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       event.preventDefault();
       event.stopPropagation();
       if (!gestureActiveRef.current) {
-        startScale = scaleRef.current;
-        targetScale = startScale;
+        if (releaseFrameRef.current !== null) { cancelAnimationFrame(releaseFrameRef.current); releaseFrameRef.current = null; }
+        gestureEpochRef.current++;
+        startScale = committedScaleRef.current;
+        targetScale = scaleRef.current;
         gestureActiveRef.current = true;
         container.dataset.zoomGesture = 'true';
         container.dispatchEvent(new Event('pdf-zoom-start'));
         actionsRef.current.onActivate(doc.id);
       }
       targetScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetScale * Math.exp(-event.deltaY / 90)));
+      scaleRef.current = targetScale;
       clientX = event.clientX;
       clientY = event.clientY;
       if (frame === null) frame = requestAnimationFrame(apply);
@@ -374,9 +404,17 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       }
     );
 
+    const visibilityObserver = new IntersectionObserver(([entry]) => {
+      const container = containerRef.current;
+      if (!container) return;
+      container.dataset.renderVisible = String(entry.isIntersecting);
+      container.dispatchEvent(new Event('pdf-viewport-visibility'));
+    }, { root: parentWorkspace || null, threshold: 0.01 });
+    visibilityObserver.observe(el);
     observer.observe(el);
     return () => {
       observer.disconnect();
+      visibilityObserver.disconnect();
     };
   }, []);
 
@@ -388,6 +426,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     <div
       ref={columnRootRef}
       data-workspace-doc={doc.id}
+      data-active={isActive}
       onClick={handleActivateThisColumn}
       onPointerDownCapture={handleActivateThisColumn}
       onMouseDownCapture={handleActivateThisColumn}

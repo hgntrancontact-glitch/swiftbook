@@ -1037,6 +1037,7 @@ export function App() {
     updateDoc(docId, (d) => ({
       ...d,
       scale: nextScale,
+      zoomRevision: (d.zoomRevision || 0) + 1,
       fitMode: Boolean(resetFitMode),
       viewportRevision: resetFitMode ? (d.viewportRevision || 0) + 1 : d.viewportRevision,
     }));
