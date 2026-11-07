@@ -919,6 +919,8 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
 
       {/* Simulated Selection Layer */}
       <SimulatedSelectionLayer
+        pdfDoc={pdfDoc}
+        isNearViewport={isNearViewport && !isLoading}
         pageNumber={pageNumber}
         scale={scale}
         isActive={activeTool === 'select'}
@@ -1031,7 +1033,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       <div
         data-page-label={pageNumber}
         aria-hidden="true"
-        className="absolute bottom-1 left-1/2 -translate-x-1/2 h-[18px] leading-[18px] min-w-6 text-center text-[10px] text-neutral-400 font-mono tabular-nums select-none pointer-events-none bg-white/80 px-1 rounded shadow-2xs"
+        className="absolute z-[50000] bottom-1 left-1/2 -translate-x-1/2 h-[18px] leading-[18px] min-w-6 text-center text-[10px] text-neutral-400 font-mono tabular-nums select-none pointer-events-none bg-white/80 px-1 rounded shadow-2xs"
       >
         {pageNumber}
       </div>

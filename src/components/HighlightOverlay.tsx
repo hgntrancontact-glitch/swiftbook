@@ -1,3 +1,4 @@
+import { AnnotationToolbar } from './AnnotationToolbar';
 import { HighlightNoteOverlay } from './HighlightNoteOverlay';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -284,12 +285,13 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
 
         {/* Note & Color Popover Toolbar when Double-Clicked or Right-Clicked */}
         {activeHighlightId === hl.id && hl.rects.length > 0 && (
-          <div
-            className="highlight-popup-toolbar absolute z-[99999] bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 w-72 text-neutral-800 pointer-events-auto animate-in fade-in zoom-in-95 duration-150 font-['Inter',sans-serif]"
-            style={{
-              left: `${Math.min(Math.max(hl.rects[0].x, 3), 65)}%`,
-              top: `${Math.min(hl.rects[0].y + hl.rects[0].height + 2, 80)}%`,
-            }}
+          <AnnotationToolbar
+            anchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-0`}
+            anchorIds={hl.rects.map((_, i) => `${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${i}`)}
+            scopeId={elevatedContainerId || `elevated-annotation-container-${pageNumber}`}
+            preserveAnchorGap
+            className="highlight-popup-toolbar bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 text-neutral-800 pointer-events-auto font-['Inter',sans-serif]"
+            style={{ width: 288 }}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => {
@@ -393,7 +395,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                 )}
               </div>
             )}
-          </div>
+          </AnnotationToolbar>
         )}
       </React.Fragment>
     );

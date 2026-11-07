@@ -1,7 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, type LineGesture, type SelectionLine } from '../utils/selectionLines';
 import { HighlightAnnotation, NormalizedRect, HighlightColor } from '../types';
 
 interface SimulatedSelectionLayerProps {
+  pdfDoc: any;
+  isNearViewport: boolean;
   pageNumber: number;
   scale: number;
   isActive: boolean;
@@ -9,12 +12,11 @@ interface SimulatedSelectionLayerProps {
   onAddHighlight: (highlight: HighlightAnnotation) => void;
 }
 
-interface PendingBox {
-  rects: { minX: number; maxX: number; y: number; width: number; lineHeight: number }[];
-  normalizedRects: NormalizedRect[];
-}
+interface PendingBox { rects: NormalizedRect[] }
 
 export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = ({
+  pdfDoc,
+  isNearViewport,
   pageNumber,
   scale,
   isActive,
@@ -28,8 +30,23 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
   const [pendingSelection, setPendingSelection] = useState<PendingBox | null>(null);
   const lastRightClickTimeRef = useRef<number>(0);
 
-  // Constants for simulated line height
-  const BASE_LINE_HEIGHT = 20;
+  const linesRef = useRef<SelectionLine[]>([]);
+  const loadedPageRef = useRef<{ doc: any; page: number } | null>(null);
+  const gestureRef = useRef<LineGesture | null>(null);
+  const draggedRef = useRef(false);
+  const inputRef = useRef({ pdfDoc, pageNumber });
+  inputRef.current = { pdfDoc, pageNumber };
+  const prepareLines = () => {
+    if (!isActive || !isNearViewport || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const viewport = containerRef.current.closest('.pdf-viewport-container')?.getBoundingClientRect();
+    if (viewport && (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.right <= viewport.left || rect.left >= viewport.right)) return;
+    loadSelectionLines(pdfDoc, pageNumber).then(lines => {
+      if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
+      linesRef.current = lines; loadedPageRef.current = { doc: pdfDoc, page: pageNumber };
+    });
+  };
+  useEffect(() => { prepareLines(); }, [pdfDoc, pageNumber, isActive, isNearViewport]);
 
   useEffect(() => {
     if (!isActive) {
@@ -39,6 +56,11 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       setPendingSelection(null);
     }
   }, [isActive]);
+
+  useEffect(() => {
+    setStartPos(null); setCurrentPos(null); setPendingSelection(null); setIsDragging(false);
+    gestureRef.current = null;
+  }, [pdfDoc, pageNumber]);
 
   // Global listener: if user clicks left mouse anywhere, dismiss pending selection immediately
   useEffect(() => {
@@ -57,6 +79,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isActive || e.button !== 0) return;
 
+    prepareLines();
     // Immediately dismiss any existing pending selection on new click
     setPendingSelection(null);
 
@@ -69,40 +92,31 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    const fallbackHeight = 20 * scale / Math.max(1, containerRef.current!.clientHeight);
+    const page = containerRef.current!.closest('[data-page-container="true"]');
+    const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
+    const matchingLines = loadedPageRef.current?.doc === pdfDoc && loadedPageRef.current.page === pageNumber ? linesRef.current : [];
+    const lines = matchingLines.length ? matchingLines : rasterSelectionLines(canvas, x, y, fallbackHeight);
+    gestureRef.current = beginLineGesture(lines, x, y, fallbackHeight);
+    draggedRef.current = false;
 
     setStartPos({ x, y });
     setCurrentPos({ x, y });
     setIsDragging(false);
   };
 
-  const getSelectionRects = (p1: {x: number, y: number}, p2: {x: number, y: number}, rectWidth: number, rectHeight: number) => {
-    const lineHeight = BASE_LINE_HEIGHT * scale;
-    const startY = Math.min(p1.y, p2.y);
-    const endY = Math.max(p1.y, p2.y);
-    
-    // Strict A-B horizontal width locking:
-    // Start X (A) and End X (B) determine the exact horizontal range [minX, maxX]
-    const minX = Math.min(p1.x, p2.x);
-    const maxX = Math.max(p1.x, p2.x);
-    const lockedWidth = Math.max(0, maxX - minX);
-
-    if (lockedWidth <= 2) return [];
-
-    // Calculate how many lines we are spanning vertically
-    const numLines = Math.max(1, Math.round((endY - startY) / lineHeight) + 1);
-    const firstLineY = startY - lineHeight / 2;
-    const totalHeight = Math.max(lineHeight, numLines * lineHeight);
-
-    // Return a single unified block spanning the entire height seamlessly without horizontal seam lines
-    return [{
-      minX,
-      maxX,
-      width: lockedWidth,
-      y: firstLineY,
-      lineHeight: totalHeight,
-    }];
+  const getSelectionRects = (p1: { x: number; y: number }, p2: { x: number; y: number }): NormalizedRect[] => {
+    const gesture = gestureRef.current;
+    if (!gesture || !containerRef.current) return [];
+    const x = Math.max(0, Math.min(p1.x, p2.x));
+    const right = Math.min(1, Math.max(p1.x, p2.x));
+    if ((right - x) * containerRef.current.clientWidth <= 2) return [];
+    const a = gesture.lines[gesture.start], b = gesture.lines[gesture.current];
+    const y = Math.max(0, Math.min(a.y, b.y));
+    const bottom = Math.min(1, Math.max(a.y + a.height, b.y + b.height));
+    return [{ x: x * 100, y: y * 100, width: (right - x) * 100, height: (bottom - y) * 100 }];
   };
 
   // Robust window mousemove and mouseup listeners during dragging
@@ -113,11 +127,12 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      const dist = Math.hypot(x - startPos.x, y - startPos.y);
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      if (gestureRef.current) moveLineGesture(gestureRef.current, y);
+      const dist = Math.hypot((x - startPos.x) * rect.width, (y - startPos.y) * rect.height);
       if (dist > 3) {
+        draggedRef.current = true;
         setIsDragging(true);
         setPendingSelection(null);
       }
@@ -134,23 +149,12 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
         return;
       }
 
-      const endX = e.clientX - rect.left;
-      const endY = e.clientY - rect.top;
-
-      const dist = Math.hypot(endX - startPos.x, endY - startPos.y);
-      if (dist > 8 && isDragging) {
-        const rects = getSelectionRects(startPos, { x: endX, y: endY }, rect.width, rect.height);
-        const normalizedRects = rects.map((r) => ({
-          x: (r.minX / rect.width) * 100,
-          y: (r.y / rect.height) * 100,
-          width: (r.width / rect.width) * 100,
-          height: (r.lineHeight / rect.height) * 100,
-        }));
-
-        setPendingSelection({
-          rects,
-          normalizedRects,
-        });
+      const endX = (e.clientX - rect.left) / rect.width;
+      const endY = (e.clientY - rect.top) / rect.height;
+      if (gestureRef.current) moveLineGesture(gestureRef.current, endY);
+      const dist = Math.hypot((endX - startPos.x) * rect.width, (endY - startPos.y) * rect.height);
+      if (dist > 8 && draggedRef.current) {
+        setPendingSelection({ rects: getSelectionRects(startPos, { x: endX, y: endY }) });
       }
 
       setIsDragging(false);
@@ -165,7 +169,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [startPos, isDragging, scale]);
+  }, [startPos]);
 
   const commitHighlight = () => {
     if (!pendingSelection) return;
@@ -177,7 +181,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       pageNumber,
       text: '', // Simulated selection
       color: colorToUse,
-      rects: pendingSelection.normalizedRects,
+      rects: pendingSelection.rects,
       createdAt: Date.now(),
     };
 
@@ -214,19 +218,21 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
         WebkitBackfaceVisibility: 'hidden',
         transform: 'translateZ(0px)',
       }}
+      onMouseEnter={prepareLines}
       onMouseDown={handleMouseDown}
     >
       {/* Live dragging rectangle */}
       {isDragging && startPos && currentPos && containerRef.current && (
-        getSelectionRects(startPos, currentPos, containerRef.current.clientWidth, containerRef.current.clientHeight).map((r, i) => (
+        getSelectionRects(startPos, currentPos).map((r, i) => (
           <div 
             key={i}
+            data-selection-preview="live"
             style={{
               position: 'absolute',
-              left: `${r.minX}px`,
-              top: `${r.y}px`,
-              width: `${r.width}px`,
-              height: `${r.lineHeight}px`,
+              left: `${r.x}%`,
+              top: `${r.y}%`,
+              width: `${r.width}%`,
+              height: `${r.height}%`,
               backgroundColor: 'rgba(59, 130, 246, 0.3)',
               pointerEvents: 'none',
               zIndex: 50,
@@ -252,12 +258,13 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
           {pendingSelection.rects.map((r, i) => (
             <div
               key={i}
+              data-selection-preview="pending"
               style={{
                 position: 'absolute',
-                left: `${r.minX}px`,
-                top: `${r.y}px`,
-                width: `${r.width}px`,
-                height: `${r.lineHeight}px`,
+                left: `${r.x}%`,
+                top: `${r.y}%`,
+                width: `${r.width}%`,
+                height: `${r.height}%`,
                 backgroundColor: 'rgba(59, 130, 246, 0.35)',
                 // REMOVED border to satisfy user request!
                 zIndex: 45,

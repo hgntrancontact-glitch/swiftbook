@@ -1,3 +1,4 @@
+import { routeAnnotationWheel } from '../utils/annotationWheel';
 import React, { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageSquare } from 'lucide-react';
@@ -40,18 +41,21 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const popup = popupRef.current;
       if (!popup) return;
       popup.style.width = `${Math.min(256, window.innerWidth - 16)}px`;
-      popup.style.maxHeight = `${Math.max(32, bottom - top)}px`;
+      const safeTop = Math.max(8, (document.getElementById('app-header')?.getBoundingClientRect().bottom || 0) + 4);
+      // Never flip below the icon or clamp the card over the highlighted text.
+      // A near-edge note scrolls internally within the available space above.
+      popup.style.maxHeight = `${Math.max(1, iy - 6 - safeTop)}px`;
+      popup.style.overflowY = 'auto';
       const p = popup.getBoundingClientRect();
-      const above = iy - p.height - 6 >= top || iy + 26 + p.height > bottom;
       const x = Math.max(8, Math.min(window.innerWidth - p.width - 8, ix + 20 - p.width));
-      const y = Math.max(top, Math.min(bottom - p.height, above ? iy - p.height - 6 : iy + 26));
+      const y = iy - p.height - 6;
       popup.style.left = `${x}px`;
       popup.style.top = `${y}px`;
       popup.style.visibility = visible || mode !== 'auto' ? 'visible' : 'hidden';
       const bridge = bridgeRef.current;
       if (bridge) {
         bridge.style.left = `${x}px`;
-        bridge.style.top = `${above ? y + p.height : iy + 20}px`;
+        bridge.style.top = `${y + p.height}px`;
         bridge.style.width = `${p.width}px`;
         bridge.style.height = '6px';
       }
@@ -61,21 +65,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     // strands ordinary page scrolling on the body element.
     const viewport = anchor.closest<HTMLElement>('.pdf-viewport-container');
     const wheel = (event: WheelEvent) => {
-      if (!viewport) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const forwarded = new WheelEvent('wheel', {
-        deltaX: event.deltaX, deltaY: event.deltaY, deltaZ: event.deltaZ,
-        deltaMode: event.deltaMode, ctrlKey: event.ctrlKey, metaKey: event.metaKey,
-        shiftKey: event.shiftKey, altKey: event.altKey,
-        clientX: event.clientX, clientY: event.clientY, bubbles: true, cancelable: true,
-      });
-      viewport.dispatchEvent(forwarded);
-      if (!forwarded.defaultPrevented && !event.ctrlKey && !event.metaKey) {
-        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1;
-        viewport.scrollLeft += (event.deltaX || (event.shiftKey ? event.deltaY : 0)) * unit;
-        if (!event.shiftKey) viewport.scrollTop += event.deltaY * unit;
-      }
+      if (viewport) routeAnnotationWheel(event, viewport, popupRef.current);
     };
     const root = rootRef.current;
     root?.addEventListener('wheel', wheel, { passive: false });
@@ -101,17 +91,17 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
   return createPortal(
     <div ref={rootRef} data-highlight-note-overlay={highlightId} data-highlight-note-owner={owner} className="pointer-events-none" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <button ref={iconRef} type="button" data-highlight-note-icon={highlightId}
-        className="fixed w-5 h-5 bg-[#f5c41a] hover:bg-[#e5a84c] text-neutral-950 rounded-full shadow-md flex items-center justify-center border-2 border-white cursor-pointer pointer-events-auto z-[90000]"
-        style={{ left: 0, top: 0, visibility: 'hidden' }} title="Xem/Sửa ghi chú"
+        className="fixed bg-[#f5c41a] hover:bg-[#e5a84c] text-neutral-950 rounded-full shadow-md flex items-center justify-center border-2 border-white cursor-pointer pointer-events-auto z-[90000]"
+        style={{ left: 0, top: 0, visibility: 'hidden', width: '20px', height: '20px', minWidth: '20px', minHeight: '20px', maxWidth: '20px', maxHeight: '20px', boxSizing: 'border-box', flexShrink: 0, transform: 'none', zoom: 1 }} title="Xem/Sửa ghi chú"
         onMouseDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); onEdit(); }}
         onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}
         onContextMenu={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}>
-        <MessageSquare size={10} className="fill-neutral-950 stroke-neutral-950" />
+        <MessageSquare size={10} style={{ width: '10px', height: '10px', flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
       </button>
       {showPopup && <>
         <div ref={bridgeRef} className="fixed z-[90000]" style={{ pointerEvents: mode === 'auto' ? 'auto' : 'none' }} />
-        <div ref={popupRef} className="fixed z-[90001]" style={{ left: 0, top: 0, visibility: 'hidden', pointerEvents: mode === 'transparent' ? 'none' : 'auto' }}>
+        <div ref={popupRef} data-highlight-note-popup-frame={highlightId} className={`fixed rounded-xl z-[90001] ${mode === 'transparent' ? 'shadow-md' : 'shadow-2xl'}`} style={{ left: 0, top: 0, visibility: 'hidden', pointerEvents: mode === 'transparent' ? 'none' : 'auto' }}>
           {children}
         </div>
       </>}
