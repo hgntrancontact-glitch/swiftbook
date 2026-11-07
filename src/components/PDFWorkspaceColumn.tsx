@@ -103,6 +103,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
 }) => {
   const containerRef = useRef<HTMLElement>(null);
   const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(null);
+  const [safeBottomInset, setSafeBottomInset] = useState(24);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef(doc.scale);
@@ -122,13 +123,22 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const measure = () => {
       const style = getComputedStyle(element);
       const width = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const height = element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const dock = document.getElementById('bottom-toolbar-dock');
+      // Reserve page space above the existing floating dock. The dock itself
+      // keeps its layout and position; only the viewport's fit rectangle changes.
+      const bottomInset = doc.viewMode !== 'continuous' && dock
+        ? Math.max(24, element.getBoundingClientRect().bottom - dock.getBoundingClientRect().top + 12)
+        : parseFloat(style.paddingBottom);
+      if (doc.viewMode !== 'continuous') setSafeBottomInset((previous) => Math.abs(previous - bottomInset) < 0.5 ? previous : bottomInset);
+      const height = element.clientHeight - parseFloat(style.paddingTop) - bottomInset;
       setContainerSize((previous) => previous && Math.abs(previous.width - width) < 0.5 && Math.abs(previous.height - height) < 0.5
         ? previous : { width, height });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
+    const dock = document.getElementById('bottom-toolbar-dock');
+    if (dock) observer.observe(dock);
     return () => observer.disconnect();
   }, [doc.viewMode]);
 
@@ -439,7 +449,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
           overflowX: 'auto',
           overflowY: 'auto',
           overscrollBehaviorX: 'contain',
-          padding: doc.viewMode === 'continuous' ? '16px 24px' : '24px',
+          padding: doc.viewMode === 'continuous' ? '16px 24px' : `24px 24px ${safeBottomInset}px`,
           overflowAnchor: 'none',
           scrollBehavior: 'auto',
         }}

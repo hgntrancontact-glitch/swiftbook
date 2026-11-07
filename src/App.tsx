@@ -689,8 +689,7 @@ export function App() {
       return next;
     });
     setActiveDocId(sourceId);
-    scrollWorkspaceToDoc(sourceId);
-  }, [scrollWorkspaceToDoc]);
+  }, []);
 
   // Handle User File Upload
   const handleFileUpload = async (

@@ -11,6 +11,7 @@ import {
   HighlightColor,
 } from '../types';
 import { PDFPageView, pageDimensionCache } from './PDFPageView';
+import { CONTINUOUS_GAP } from '../utils/pdfViewport';
 
 interface ContinuousViewProps {
   fileId: string;
@@ -124,6 +125,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   const [renderedPages, setRenderedPages] = useState<Set<number>>(seedPages);
   const reportedPageRef = useRef<number | null>(null);
   const positioningRef = useRef(true);
+  const zoomScrollRef = useRef(false);
   useLayoutEffect(() => {
     if (!currentPage || reportedPageRef.current === currentPage) return;
     const container = wrapperRef.current?.closest<HTMLElement>('.pdf-viewport-container');
@@ -142,26 +144,36 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   useEffect(() => {
     const scrollParent = wrapperRef.current?.closest('.pdf-viewport-container') as HTMLElement | null;
     const nearbyPageNumbers = new Set<number>();
+    const startZoom = () => { zoomScrollRef.current = true; };
+    const userScroll = (event: Event) => {
+      if (event instanceof WheelEvent && event.ctrlKey) return;
+      zoomScrollRef.current = false;
+    };
+    scrollParent?.addEventListener('pdf-zoom-start', startZoom);
+    scrollParent?.addEventListener('wheel', userScroll, { passive: true });
+    scrollParent?.addEventListener('pointerdown', userScroll, { passive: true });
+    scrollParent?.addEventListener('touchstart', userScroll, { passive: true });
 
+    const mountNearbyPages = () => {
+      if (scrollParent?.dataset.zoomGesture === 'true') return;
+      setRenderedPages((previous) => {
+        const next = new Set(previous);
+        nearbyPageNumbers.forEach((page) => next.add(page));
+        return next.size === previous.size ? previous : next;
+      });
+    };
+    scrollParent?.addEventListener('pdf-zoom-end', mountNearbyPages);
     const observer = new IntersectionObserver((entries) => {
-      const pagesToMount: number[] = [];
       entries.forEach((entry) => {
         const pageNumber = Number((entry.target as HTMLElement).dataset.continuousPage);
         if (!pageNumber) return;
         if (entry.isIntersecting) {
           nearbyPageNumbers.add(pageNumber);
-          pagesToMount.push(pageNumber);
         } else {
           nearbyPageNumbers.delete(pageNumber);
         }
       });
-      if (pagesToMount.length) {
-        setRenderedPages((prev) => {
-          const next = new Set(prev);
-          pagesToMount.forEach((page) => next.add(page));
-          return next.size === prev.size ? prev : next;
-        });
-      }
+      mountNearbyPages();
       handleScroll();
     }, { root: scrollParent, rootMargin: '1200px 0px', threshold: 0 });
     pageElementsRef.current.forEach((element) => observer.observe(element));
@@ -171,7 +183,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
       if (scrollRaf !== null) return;
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = null;
-        if (!scrollParent || positioningRef.current || scrollParent.dataset.zoomGesture === 'true') return;
+        if (!scrollParent || positioningRef.current || zoomScrollRef.current || scrollParent.dataset.zoomGesture === 'true') return;
 
         const containerRect = scrollParent.getBoundingClientRect();
         const viewportCenter = containerRect.top + containerRect.height / 2;
@@ -204,6 +216,11 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
     return () => {
       targetScroll.removeEventListener('scroll', handleScroll);
       observer.disconnect();
+      scrollParent?.removeEventListener('pdf-zoom-end', mountNearbyPages);
+      scrollParent?.removeEventListener('pdf-zoom-start', startZoom);
+      scrollParent?.removeEventListener('wheel', userScroll);
+      scrollParent?.removeEventListener('pointerdown', userScroll);
+      scrollParent?.removeEventListener('touchstart', userScroll);
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       cancelAnimationFrame(initialRaf);
     };
@@ -247,7 +264,8 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
   return (
     <div
       ref={wrapperRef}
-      className="flex flex-col items-center justify-center gap-6 mx-auto"
+      style={{ gap: CONTINUOUS_GAP }}
+      className="flex flex-col items-center justify-center mx-auto"
     >
       {pagesArray.map((pageNum) => {
         const cachedDim = pageDimensionCache.get(`${fileId}_${pageNum}`) || defaultDim;
@@ -292,8 +310,9 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
               zIndex: pageZIndex,
               '--pdf-page-width': `${estimatedW}px`,
               '--pdf-page-height': `${estimatedH}px`,
-              minWidth: 'calc(var(--pdf-page-width) * var(--pdf-live-zoom, 1))',
-              minHeight: 'calc(var(--pdf-page-height) * var(--pdf-live-zoom, 1))',
+              width: isMounted ? undefined : 'calc(var(--pdf-page-width) * var(--pdf-live-zoom, 1))',
+              height: isMounted ? undefined : 'calc(var(--pdf-page-height) * var(--pdf-live-zoom, 1))',
+              flexShrink: 0,
             } as React.CSSProperties}
             onMouseEnter={() => {
               if (!activeGesturingPage) setActiveSpreadPage(pageNum);

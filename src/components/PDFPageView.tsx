@@ -746,16 +746,13 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
 
   return (
     <div
-      className={`pdf-hardware-accelerated relative shrink-0 p-0 bg-white border-0 rounded-none ${bookSpineClass} overflow-visible [&:has(.cursor-grabbing)]:z-50 [&:has([class*='z-[500]'])]:z-50 [&:has([class*='z-[8000]'])]:z-50 [&:has([class*='z-[9999]'])]:z-50 [&:has([class*='z-[20000]'])]:z-50 [&:has([class*='z-[30000]'])]:z-50 [&:has([class*='z-[35000]'])]:z-50`}
+      className={`relative shrink-0 p-0 bg-white border-0 rounded-none ${bookSpineClass} overflow-visible [&:has(.cursor-grabbing)]:z-50 [&:has([class*='z-[500]'])]:z-50 [&:has([class*='z-[8000]'])]:z-50 [&:has([class*='z-[9999]'])]:z-50 [&:has([class*='z-[20000]'])]:z-50 [&:has([class*='z-[30000]'])]:z-50 [&:has([class*='z-[35000]'])]:z-50`}
       data-pdf-page-slot="true"
       style={{
         '--pdf-page-width': `${effectiveWidth}px`,
         '--pdf-page-height': `${effectiveHeight}px`,
         width: 'calc(var(--pdf-page-width) * var(--pdf-live-zoom, 1))',
         height: 'calc(var(--pdf-page-height) * var(--pdf-live-zoom, 1))',
-        transformStyle: 'preserve-3d',
-        backfaceVisibility: 'hidden',
-        WebkitBackfaceVisibility: 'hidden',
       } as React.CSSProperties}
     >
       <div
@@ -817,13 +814,10 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
           key={`pdf-canvas-buffer-${bufferIndex}`}
           ref={(element) => { canvasRefs.current[bufferIndex as 0 | 1] = element; }}
           aria-hidden="true"
-          className="pdf-hardware-accelerated absolute inset-0 block w-full h-full"
+          className="absolute inset-0 block w-full h-full"
           style={{
             visibility: frontCanvasIndex === bufferIndex ? 'visible' : 'hidden',
             pointerEvents: 'none',
-            transformStyle: 'preserve-3d',
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
           }}
         />
       ))}
