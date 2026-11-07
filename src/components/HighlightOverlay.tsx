@@ -242,18 +242,18 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                 }}
               >
                 {/* Quick note hover tooltip preview */}
-                {hoveredNoteHlId === hl.id && activeHighlightId !== hl.id && (
+                {(
                   <div 
                     className="highlight-note-preview w-full max-w-[280px] pointer-events-auto text-xs font-['Inter',sans-serif] cursor-default"
                     data-highlight-note-preview={hl.id} data-preview-mode={previewMode}
-                    style={{ pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
+                    style={{ maxHeight: 'var(--highlight-popup-height)', display: 'flex', flexDirection: 'column', pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => e.stopPropagation()}
                   >
-                    <div className={`rounded-xl p-2.5 border ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
+                    <div className={`rounded-xl p-2.5 border flex flex-col min-h-0 ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
                       style={previewMode === 'transparent' ? { backgroundColor: 'rgba(255,255,255,0.16)' } : undefined}>
 
-                    <div className="flex items-center gap-1.5 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto">
+                    <div data-highlight-note-header className="flex items-center gap-1.5 shrink-0 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto">
                       <MessageSquare size={11} className="fill-[#f5c41a]" />
                       <span className={previewMode === 'transparent' ? 'text-neutral-950' : ''}>Ghi chú</span>
                       <button type="button" className="ml-auto p-1 rounded hover:bg-neutral-500/20 pointer-events-auto"
@@ -269,11 +269,13 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                       <button type="button" title="Đóng ghi chú" aria-label="Đóng ghi chú" className="p-1 rounded hover:bg-neutral-500/20"
                         onClick={e => { e.stopPropagation(); closeNotePreview(); }}><X size={13} /></button>
                     </div>
+                    <div data-highlight-note-body className="overflow-y-auto min-h-0">
                     <p className={`${previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} text-xs leading-relaxed whitespace-pre-wrap break-words`}>
                       {hl.note}
                     </p>
                     <div className="text-[10px] text-neutral-400 mt-1.5 text-right italic">
                       Nhấp đúp chuột vào highlight để sửa
+                    </div>
                     </div>
                     </div>
                   </div>
@@ -416,7 +418,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
         >
           {pageHighlights.map((hl) => {
             const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
-            const displayRects = mergeContiguousRects(hl.rects);
+            const displayRects = hl.selectionKind === 'text' ? hl.rects : mergeContiguousRects(hl.rects);
 
             return (
               <g key={`hl-svg-${hl.id}`} opacity={0.42}>

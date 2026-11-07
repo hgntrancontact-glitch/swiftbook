@@ -1,5 +1,6 @@
+import { loadOCRLines } from '../utils/selectionOCR';
 import React, { useRef, useState, useEffect } from 'react';
-import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, type LineGesture, type SelectionLine } from '../utils/selectionLines';
+import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, type LineGesture, type SelectionLine } from '../utils/selectionLines';
 import { HighlightAnnotation, NormalizedRect, HighlightColor } from '../types';
 
 interface SimulatedSelectionLayerProps {
@@ -12,7 +13,7 @@ interface SimulatedSelectionLayerProps {
   onAddHighlight: (highlight: HighlightAnnotation) => void;
 }
 
-interface PendingBox { rects: NormalizedRect[] }
+interface PendingBox { rects: NormalizedRect[]; selectionKind?: 'text' }
 
 export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = ({
   pdfDoc,
@@ -41,7 +42,25 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     const rect = containerRef.current.getBoundingClientRect();
     const viewport = containerRef.current.closest('.pdf-viewport-container')?.getBoundingClientRect();
     if (viewport && (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.right <= viewport.left || rect.left >= viewport.right)) return;
-    loadSelectionLines(pdfDoc, pageNumber).then(lines => {
+    const relevant = () => {
+      const box = containerRef.current?.getBoundingClientRect();
+      const view = containerRef.current?.closest('.pdf-viewport-container')?.getBoundingClientRect();
+      return inputRef.current.pdfDoc === pdfDoc && inputRef.current.pageNumber === pageNumber && !!box && !!view && box.bottom > view.top && box.top < view.bottom;
+    };
+    loadSelectionLines(pdfDoc, pageNumber).then(async lines => {
+      if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
+      if (lines.length) { linesRef.current = lines; loadedPageRef.current = { doc: pdfDoc, page: pageNumber }; }
+      // Scans can contain just a selectable page number/watermark. A token
+      // text layer must not suppress OCR of the actual photographed content.
+      const sparseText = lines.length < 3 || lines.reduce((n, line) => n + (line.glyphs?.length || 0), 0) < 80;
+      if (sparseText && relevant()) {
+        const page = containerRef.current?.closest('[data-page-container="true"]');
+        const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
+        if (canvas) {
+          const recognized = await loadOCRLines(pdfDoc, pageNumber, canvas, relevant);
+          if (recognized.length) lines = recognized;
+        }
+      }
       if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
       linesRef.current = lines; loadedPageRef.current = { doc: pdfDoc, page: pageNumber };
     });
@@ -110,13 +129,9 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
   const getSelectionRects = (p1: { x: number; y: number }, p2: { x: number; y: number }): NormalizedRect[] => {
     const gesture = gestureRef.current;
     if (!gesture || !containerRef.current) return [];
-    const x = Math.max(0, Math.min(p1.x, p2.x));
-    const right = Math.min(1, Math.max(p1.x, p2.x));
-    if ((right - x) * containerRef.current.clientWidth <= 2) return [];
-    const a = gesture.lines[gesture.start], b = gesture.lines[gesture.current];
-    const y = Math.max(0, Math.min(a.y, b.y));
-    const bottom = Math.min(1, Math.max(a.y + a.height, b.y + b.height));
-    return [{ x: x * 100, y: y * 100, width: (right - x) * 100, height: (bottom - y) * 100 }];
+    return lineSelectionRects(gesture, p1.x, p2.x)
+      .filter(rect => rect.width * containerRef.current!.clientWidth > 2)
+      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100 }));
   };
 
   // Robust window mousemove and mouseup listeners during dragging
@@ -154,7 +169,8 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       if (gestureRef.current) moveLineGesture(gestureRef.current, endY);
       const dist = Math.hypot((endX - startPos.x) * rect.width, (endY - startPos.y) * rect.height);
       if (dist > 8 && draggedRef.current) {
-        setPendingSelection({ rects: getSelectionRects(startPos, { x: endX, y: endY }) });
+        const rects = getSelectionRects(startPos, { x: endX, y: endY });
+        if (rects.length) setPendingSelection({ rects, selectionKind: gestureRef.current?.textSelection ? 'text' : undefined });
       }
 
       setIsDragging(false);
@@ -182,6 +198,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       text: '', // Simulated selection
       color: colorToUse,
       rects: pendingSelection.rects,
+      selectionKind: pendingSelection.selectionKind,
       createdAt: Date.now(),
     };
 
@@ -206,6 +223,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
   return (
     <div
       ref={containerRef}
+      data-selection-layer="true"
       className={`absolute inset-0 select-none ${
         !isActive
           ? 'pointer-events-none z-20'

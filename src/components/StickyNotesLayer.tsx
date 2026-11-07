@@ -50,6 +50,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
       layer.style.zoom = String(live);
       layer.style.transformOrigin = '0 0';
       layer.style.transform = live === 1 ? '' : `scale(${1 / live})`;
+      layer.querySelectorAll<HTMLElement>('[data-sticky-note-icon]').forEach(icon => { icon.style.zoom = String(1 / live); });
     };
     const observer = new MutationObserver(update);
     observer.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
@@ -123,7 +124,9 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
       x,
       y,
       text: '',
-      referenceScale: scale,
+      // New notes use canonical page units, independent of creation zoom.
+      // Existing notes keep their saved referenceScale and dimensions.
+      referenceScale: 1,
       color: NOTE_PAPER_COLORS[0].contentBg,
       isMinimized: false,
     });
@@ -381,12 +384,13 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
             {note.isMinimized ? (
               /* Minimized Sticky Note Icon */
               <div
+                data-sticky-note-icon={note.id}
                 onMouseDown={(e) => startDrag(e, note)}
                 onClick={(e) => handleNoteClick(e, note)}
                 className="rounded-full shadow-md border border-black/30 flex items-center justify-center cursor-grab active:cursor-grabbing group"
                 style={{
                   background: theme.noteBg,
-                  zoom: scale / (note.referenceScale || 1),
+                  zoom: 1,
                   width: '24px',
                   height: '24px',
                 }}

@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 import path from 'path';
 import {defineConfig} from 'vite';
 
@@ -7,7 +8,11 @@ export default defineConfig(({ command }) => {
   return {
     // GitHub Pages serves this repository under /swiftbook/; local development stays at /.
     base: command === 'build' ? '/swiftbook/' : '/',
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), viteStaticCopy({ targets: [
+      { src: 'node_modules/tesseract.js/dist/worker.min.js', dest: 'ocr', rename: { stripBase: true } },
+      { src: 'node_modules/tesseract.js/dist/worker.min.js.LICENSE.txt', dest: 'ocr', rename: { stripBase: true } },
+      { src: 'node_modules/tesseract.js-core/*.wasm*', dest: 'ocr', rename: { stripBase: true } },
+    ] })],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

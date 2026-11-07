@@ -8,6 +8,7 @@ export interface NormalizedRect {
 }
 
 export interface HighlightAnnotation {
+  selectionKind?: 'text'; // Keep separate line rectangles for text-range highlights.
   id: string;
   pageNumber: number;
   text: string;

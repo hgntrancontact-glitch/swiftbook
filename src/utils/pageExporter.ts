@@ -1249,7 +1249,7 @@ export async function renderPageWithAnnotations(
   // Layer 1: Highlights (Highlighter Overlay)
   pageHighlights.forEach((hl) => {
     const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
-    const displayRects = mergeContiguousRects(hl.rects);
+    const displayRects = hl.selectionKind === 'text' ? hl.rects : mergeContiguousRects(hl.rects);
 
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
