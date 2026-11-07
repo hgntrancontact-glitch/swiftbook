@@ -470,7 +470,7 @@ export function App() {
             ? Math.max(1, Math.min(doc.numPages, savedState.currentPage))
             : 1,
           viewMode: savedState?.viewMode || (doc.numPages === 1 ? "single" : "double"),
-          scale: Math.max(1.0, savedState?.zoom || 1.0),
+          scale: Math.max(0.2, savedState?.zoom || 1.0),
           fitMode: true,
           highlights: savedState?.highlights || [],
           textNotes: savedState?.textNotes || [],
@@ -990,6 +990,11 @@ export function App() {
 
       // Quick Tool Hotkeys
       const key = e.key.toLowerCase();
+      if (key === "v") {
+        setActiveTool("select");
+        e.preventDefault();
+        return;
+      }
       if (key === "p" || key === "h") {
         const now = Date.now();
         const previous = lastToolShortcutPressRef.current;
@@ -1027,11 +1032,11 @@ export function App() {
   }, []);
 
   const handleZoomChange = useCallback((docId: string, scale: number, resetFitMode?: boolean) => {
-    const nextScale = resetFitMode ? 1.0 : Math.max(1.0, scale);
+    const nextScale = resetFitMode ? 1.0 : Math.max(0.2, scale);
     updateDoc(docId, (d) => ({
       ...d,
       scale: nextScale,
-      fitMode: resetFitMode === true || nextScale <= 1.0001,
+      fitMode: Boolean(resetFitMode),
     }));
   }, [updateDoc]);
 

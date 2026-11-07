@@ -253,8 +253,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     const cleanStr = zoomInputValue.replace(/[^0-9.]/g, '');
     const parsedNum = parseFloat(cleanStr);
     if (!isNaN(parsedNum) && parsedNum > 0) {
-      // The fit layout is the minimum zoom level.
-      const clampedPercent = Math.max(100, Math.min(5000, parsedNum));
+      // Keep the zoom controls aligned with the 20% minimum.
+      const clampedPercent = Math.max(20, Math.min(5000, parsedNum));
       const newScale = Number((clampedPercent / 100).toFixed(2));
       onZoomChange(newScale, false);
       setZoomInputValue(`${Math.round(clampedPercent)}%`);
@@ -590,12 +590,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <button
                 onClick={() => {
                   const currentPercent = Math.round(scale * 100);
-                  const nextPercent = Math.max(100, Math.floor((currentPercent - 1) / 10) * 10);
+                  const nextPercent = Math.max(20, Math.floor((currentPercent - 1) / 10) * 10);
                   onZoomChange(Number((nextPercent / 100).toFixed(2)), false);
                 }}
-                disabled={Math.round(scale * 100) <= 100}
+                disabled={Math.round(scale * 100) <= 20}
                 className={`p-0.5 rounded transition-colors ${
-                  Math.round(scale * 100) <= 100
+                  Math.round(scale * 100) <= 20
                     ? 'text-neutral-300 cursor-not-allowed'
                     : 'text-neutral-700 hover:text-neutral-900 hover:bg-neutral-200'
                 }`}

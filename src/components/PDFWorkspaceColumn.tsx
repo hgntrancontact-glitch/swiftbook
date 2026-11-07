@@ -209,7 +209,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (!c || !w) return;
 
       const curScale = scaleRef.current || 1.0;
-      const nextScale = Math.max(1.0, targetZoomScale);
+      const nextScale = Math.max(0.2, targetZoomScale);
       if (Math.abs(nextScale - curScale) < 0.0001) return;
 
       const cRect = c.getBoundingClientRect();
@@ -255,7 +255,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
 
       scaleRef.current = nextScale;
       targetZoomScale = nextScale;
-      onZoomChange(doc.id, nextScale, nextScale <= 1.0001);
+      onZoomChange(doc.id, nextScale, false);
     };
 
     const handleWheel = (e: WheelEvent) => {
@@ -263,11 +263,8 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
-        let deltaY = e.deltaY;
-        if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) deltaY *= 16;
-        else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) deltaY *= container.clientHeight;
-        deltaY = Math.max(-80, Math.min(80, deltaY));
-        targetZoomScale = Math.max(1.0, targetZoomScale * Math.exp(-deltaY * 0.0012));
+        const deltaY = e.deltaY;
+        targetZoomScale = Math.max(0.2, targetZoomScale * Math.exp(-deltaY / 100));
 
         targetClientX = e.clientX;
         targetClientY = e.clientY;
