@@ -77,6 +77,12 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   const [groups, setGroups] = useState<BookGroup[]>([]);
   const [selectedNavKey, setSelectedNavKey] = useState<string>('all'); // 'all', 'trash', or groupId
 
+  const navigateLibrary = (key: string) => {
+    if ((key === 'trash') !== (selectedNavKey === 'trash')) setIsSelectionMode(false);
+    setSelectedNavKey(key);
+    setSelectedBookIds([]);
+  };
+
   // Selection & Batch Delete
   const [isSelectionMode, setIsSelectionMode] = useState<boolean>(false);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
@@ -658,8 +664,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
               {/* All Books */}
               <button
                 onClick={() => {
-                  setSelectedNavKey('all');
-                  setSelectedBookIds([]);
+                  navigateLibrary('all');
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   selectedNavKey === 'all'
@@ -726,8 +731,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                         : 'text-zinc-700 hover:bg-zinc-100/80'
                     }`}
                     onClick={() => {
-                      setSelectedNavKey(grp.id);
-                      setSelectedBookIds([]);
+                      navigateLibrary(grp.id);
                     }}
                   >
                     <div className="flex items-center gap-1.5 truncate pr-1">
@@ -785,8 +789,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
               {/* Trash */}
               <button
                 onClick={() => {
-                  setSelectedNavKey('trash');
-                  setSelectedBookIds([]);
+                  navigateLibrary('trash');
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   selectedNavKey === 'trash'
@@ -955,6 +958,18 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                 </div>
 
                 {selectedBookIds.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    {selectedNavKey === 'trash' && (
+                      <button type="button" onClick={() => {
+                        const trashIds = new Set(trashBooks.map(book => book.id));
+                        selectedBookIds.filter(id => trashIds.has(id)).forEach(restoreBookFromTrash);
+                        setSelectedBookIds([]);
+                        setIsSelectionMode(false);
+                        refreshData();
+                      }} className="flex items-center gap-1.5 px-3 py-1 bg-[#f5c41a] hover:bg-[#e0b216] text-zinc-950 rounded-lg font-bold cursor-pointer" title="Khôi phục tất cả sách đã chọn">
+                        <RotateCcw size={13} /><span>Khôi phục</span>
+                      </button>
+                    )}
                   <button
                     onClick={handleDeleteSelected}
                     className="flex items-center gap-1.5 px-3 py-1 bg-[#f5c41a] hover:bg-red-600 text-zinc-950 hover:text-white rounded-lg font-bold transition-colors shadow-2xs cursor-pointer"
@@ -962,6 +977,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                     <Trash2 size={13} />
                     <span>Xóa {selectedBookIds.length} sách đã chọn</span>
                   </button>
+                  </div>
                 )}
               </div>
             )}
@@ -1071,14 +1087,14 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={(e) => handleDuplicateBook(book, e)}
-                                className="w-6.5 h-6.5 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
+                                className="w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
                                 title="Sao chép (Tạo bản sao mới)"
                               >
                                 <Copy size={12} className="stroke-[2]" />
                               </button>
                               <button
                                 onClick={(e) => handleOpenEditBook(book, e)}
-                                className="w-6.5 h-6.5 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
+                                className="w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
                                 title="Đổi tên / Chuyển nhóm"
                               >
                                 <SquarePen size={13} className="stroke-[2]" />
@@ -1246,7 +1262,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                         </div>
 
                         {/* Right: Actions */}
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div data-book-actions="true" className="flex items-center gap-2 shrink-0 w-[204px] justify-end">
                           {selectedNavKey === 'trash' ? (
                             <>
                               <button
@@ -1255,7 +1271,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                                   restoreBookFromTrash(book.id);
                                   refreshData();
                                 }}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-[#f5c41a] text-zinc-950 rounded-lg text-xs font-bold hover:bg-[#e0b216] cursor-pointer"
+                                className="w-24 justify-center shrink-0 flex items-center gap-1 px-2.5 py-1 bg-[#f5c41a] text-zinc-950 rounded-lg text-xs font-bold hover:bg-[#e0b216] cursor-pointer"
                               >
                                 <RotateCcw size={12} />
                                 <span className="hidden sm:inline">Khôi phục</span>
@@ -1266,7 +1282,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                                   permanentlyDeleteBook(book.id);
                                   refreshData();
                                 }}
-                                className="w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-red-50 text-zinc-500 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition-all shadow-2xs cursor-pointer"
+                                className="shrink-0 w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-red-50 text-zinc-500 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition-all shadow-2xs cursor-pointer"
                                 title="Xóa vĩnh viễn"
                               >
                                 <Trash2 size={13} />
@@ -1276,14 +1292,14 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                             <>
                               <button
                                 onClick={(e) => handleDuplicateBook(book, e)}
-                                className="w-6.5 h-6.5 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
+                                className="shrink-0 w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
                                 title="Sao chép (Tạo bản sao mới)"
                               >
                                 <Copy size={12} className="stroke-[2]" />
                               </button>
                               <button
                                 onClick={(e) => handleOpenEditBook(book, e)}
-                                className="w-6.5 h-6.5 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
+                                className="shrink-0 w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-all shadow-2xs cursor-pointer shrink-0"
                                 title="Đổi tên / Chuyển nhóm"
                               >
                                 <SquarePen size={13} className="stroke-[2]" />
@@ -1294,7 +1310,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                                   moveBookToTrash(book.id);
                                   refreshData();
                                 }}
-                                className="w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-red-50 text-zinc-500 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition-all shadow-2xs cursor-pointer"
+                                className="shrink-0 w-7 h-7 border border-zinc-200 rounded-lg bg-white hover:bg-red-50 text-zinc-500 hover:text-red-600 hover:border-red-200 flex items-center justify-center transition-all shadow-2xs cursor-pointer"
                                 title="Chuyển vào thùng rác"
                               >
                                 <Trash2 size={13} />
@@ -1305,7 +1321,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                                   onSelectBook(book);
                                   onClose();
                                 }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-[#f5c41a] hover:bg-[#e0b216] text-zinc-950 rounded-lg font-bold text-xs shadow-2xs cursor-pointer whitespace-nowrap"
+                                className="w-24 justify-center shrink-0 flex items-center gap-1 px-3 py-1.5 bg-[#f5c41a] hover:bg-[#e0b216] text-zinc-950 rounded-lg font-bold text-xs shadow-2xs cursor-pointer whitespace-nowrap"
                               >
                                 <span>{openBookIds?.includes(book.id) ? 'Chuyển đến' : 'Đọc tiếp'}</span>
                               </button>
@@ -1483,8 +1499,8 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         {confirmDeleteModal?.isOpen && (
           <div className="absolute inset-0 z-70 bg-transparent flex items-center justify-center p-4 animate-in fade-in duration-150">
             <div data-library-child-backdrop="true" className="absolute inset-0 bg-white/25 backdrop-blur-[3px]" onClick={handleCloseConfirmModal} />
-            <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 border border-zinc-200/90">
-              <div className={`px-4 py-3.5 flex items-center justify-between ${confirmDeleteModal.isTrash ? 'bg-red-600 text-white' : 'bg-[#f5c41a] text-zinc-950'}`}>
+            <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 border-0">
+              <div className="px-4 py-3.5 flex items-center justify-between bg-[#f5c41a] text-zinc-950">
                 <div className="font-bold text-xs">
                   <span>
                     {confirmDeleteModal.isTrash ? 'Xác nhận dọn sạch thùng rác' : 'Xác nhận xóa sách đã chọn'}

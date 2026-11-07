@@ -386,8 +386,9 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
                 className="rounded-full shadow-md border border-black/30 flex items-center justify-center cursor-grab active:cursor-grabbing group"
                 style={{
                   background: theme.noteBg,
-                  width: `${24 * scale / (note.referenceScale || 1)}px`,
-                  height: `${24 * scale / (note.referenceScale || 1)}px`,
+                  zoom: scale / (note.referenceScale || 1),
+                  width: '24px',
+                  height: '24px',
                 }}
                 title={
                   note.text
@@ -396,7 +397,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
                 }
               >
                 <MessageSquare
-                  size={13 * scale / (note.referenceScale || 1)}
+                  size={13}
                   className="text-black fill-black"
                 />
               </div>
@@ -588,21 +589,24 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const headerH = 28 * noteScale;
-  const footerH = 24 * noteScale;
-  const pad = 10 * noteScale;
-  const cornerR = 12 * noteScale;
-  const bodyFontSize = 12 * noteScale;
-  const bodyLineH = 18 * noteScale;
+  const headerH = 28;
+  const footerH = 24;
+  const pad = 10;
+  const cornerR = 12;
+  const bodyFontSize = 12;
+  const bodyLineH = 18;
   const iconSize = 13;
 
   return (
     <div
       ref={noteBoxRef}
-      className="relative shadow-2xl border border-black/20 flex flex-col font-['Inter',sans-serif] select-none"
+      className="relative shadow-2xl flex flex-col font-['Inter',sans-serif] select-none"
       style={{
-        width: `${size.width}px`,
-        height: `${size.height}px`,
+        // One native layout scale for the entire paper, including all controls.
+        // Stored dimensions remain in page space; no per-child scaling accumulates.
+        zoom: noteScale,
+        width: `${size.width / noteScale}px`,
+        height: `${size.height / noteScale}px`,
         borderRadius: `${cornerR}px`,
       }}
       onClick={(e) => {
@@ -611,6 +615,9 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       }}
       onFocusCapture={() => elevatePageZIndex(pageNumber)}
     >
+      <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" aria-hidden="true">
+        <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="11.5" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
+      </svg>
       {/* Corner and Edge handles for free-form resizing */}
       <div onMouseDown={(e) => handleResizeStart(e, 'nw')} className="absolute -top-1.5 -left-1.5 w-5 h-5 cursor-nwse-resize z-[100]" />
       <div onMouseDown={(e) => handleResizeStart(e, 'ne')} className="absolute -top-1.5 -right-1.5 w-5 h-5 cursor-nesw-resize z-[100]" />
@@ -622,15 +629,17 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       <div onMouseDown={(e) => handleResizeStart(e, 'n')} className="absolute -top-1.5 left-4 right-4 h-3 cursor-ns-resize z-[100]" />
 
       <div
-        className="absolute inset-0 overflow-hidden pointer-events-none flex flex-col"
+        className="absolute inset-px overflow-hidden pointer-events-none flex flex-col"
         style={{ borderRadius: `${cornerR}px` }}
       >
         {/* LAYER 1: Top Header Bar */}
         <div
           onMouseDown={(e) => startDrag(e, note)}
-          className="pointer-events-auto flex items-center justify-between cursor-grab active:cursor-grabbing border-b border-black/10 select-none text-black shrink-0"
+          className="pointer-events-auto flex items-center justify-between cursor-grab active:cursor-grabbing select-none text-black shrink-0"
           style={{
             background: theme.headerBg,
+            paddingBottom: '1px',
+            boxShadow: 'inset 0 -1px 0 rgba(0,0,0,0.1)',
             height: `${headerH}px`,
             paddingLeft: `${pad}px`,
             paddingRight: `${pad}px`,
@@ -639,7 +648,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
         >
           <div
             className="flex items-center gap-1.5 font-bold tracking-tight min-w-0 flex-1"
-            style={{ fontSize: `${11.5 * noteScale}px` }}
+            style={{ fontSize: '11.5px' }}
           >
             <Move size={iconSize} className="opacity-70" />
             {editingTitle ? (
@@ -723,9 +732,11 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
 
         {/* LAYER 3: Bottom Palette Bar */}
         <div
-          className="pointer-events-auto border-t border-black/10 flex items-center justify-between shrink-0"
+          className="pointer-events-auto flex items-center justify-between shrink-0"
           style={{
             background: theme.contentBg,
+            paddingTop: '1px',
+            boxShadow: 'inset 0 1px 0 rgba(0,0,0,0.1)',
             height: `${footerH}px`,
             paddingLeft: `${pad}px`,
             paddingRight: `${pad}px`,
@@ -736,7 +747,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
               <button
                 key={c.id}
                 onClick={() => onUpdateNote(note.id, { color: c.contentBg })}
-                className={`rounded-full border border-black/30 transition-transform cursor-pointer ${
+                className={`rounded-full border-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.3)] transition-transform cursor-pointer ${
                   theme.id === c.id ? 'scale-125 ring-1.5 ring-black/70' : 'hover:scale-110 opacity-80'
                 }`}
                 style={{

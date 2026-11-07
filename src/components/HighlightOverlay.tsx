@@ -1,3 +1,4 @@
+import { HighlightNoteOverlay } from './HighlightNoteOverlay';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { HighlightAnnotation, HIGHLIGHT_COLORS, HighlightColor, NormalizedRect } from '../types';
@@ -79,7 +80,9 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
   const focusHighlight = (id: string) => {
     window.dispatchEvent(new CustomEvent('highlight-note-focus', { detail: { owner: previewOwner, id } }));
   };
+  const isPinching = () => !!document.querySelector('.pdf-viewport-container[data-zoom-gesture="true"]');
   const openNotePreview = (id: string) => {
+    if (isPinching()) return;
     focusHighlight(id);
     if (previewIdRef.current !== id) setPreviewMode('auto');
     setHoveredNoteHlId(id);
@@ -108,6 +111,23 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
       setPreviewMode('auto');
     }
   }, [highlights, pageNumber, hoveredNoteHlId]);
+
+  useEffect(() => {
+    if (!hoveredNoteHlId || previewMode !== 'auto') return;
+    const onMove = (event: MouseEvent) => {
+      if (isPinching()) return;
+      const target = event.target as Node;
+      const overlay = [...document.querySelectorAll<HTMLElement>('[data-highlight-note-overlay]')]
+        .find(el => el.dataset.highlightNoteOverlay === hoveredNoteHlId && el.dataset.highlightNoteOwner === previewOwner);
+      if (overlay?.contains(target)) return;
+      const highlight = highlights.find(hl => hl.id === hoveredNoteHlId);
+      const scope = document.getElementById(elevatedContainerId || `elevated-annotation-container-${pageNumber}`)?.closest('[data-page-container="true"]') || document;
+      if (highlight?.rects.some((_, i) => scope.querySelector(`#${CSS.escape(`hl-${hoveredNoteHlId}-rect-${i}`)}`)?.contains(target) || scope.querySelector(`#${CSS.escape(`elevated-hl-${hoveredNoteHlId}-rect-${i}`)}`)?.contains(target))) return;
+      setHoveredNoteHlId(null);
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [hoveredNoteHlId, previewMode, highlights, previewOwner, elevatedContainerId, pageNumber]);
 
   const [mountedContainer, setMountedContainer] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -173,7 +193,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
               if (hl.note && activeHighlightId !== hl.id) openNotePreview(hl.id);
             }}
             onMouseLeave={() => {
-              if (previewMode === 'auto') setHoveredNoteHlId(prev => prev === hl.id ? null : prev);
+              if (previewMode === 'auto' && !isPinching()) setHoveredNoteHlId(prev => prev === hl.id ? null : prev);
             }}
             onMouseDown={(e) => {
               e.stopPropagation();
@@ -205,49 +225,25 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
           >
             {/* Visual indicator icon if there's an attached note */}
             {idx === 0 && hl.note && (
-              <div
-                className="absolute -top-3.5 -right-2.5 z-30 pointer-events-auto"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setHoveredNoteHlId(null);
-                  setActiveHighlightId(activeHighlightId === hl.id ? null : hl.id);
+              <HighlightNoteOverlay
+                anchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-0`}
+                scopeId={elevatedContainerId || `elevated-annotation-container-${pageNumber}`}
+                owner={previewOwner} highlightId={hl.id} mode={previewMode}
+                showPopup={hoveredNoteHlId === hl.id && activeHighlightId !== hl.id}
+                onEnter={() => { if (activeHighlightId !== hl.id) openNotePreview(hl.id); }}
+                onLeave={() => {
+                  if (previewMode === 'auto' && !isPinching()) setHoveredNoteHlId(prev => prev === hl.id ? null : prev);
                 }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setHoveredNoteHlId(null);
-                  setActiveHighlightId(activeHighlightId === hl.id ? null : hl.id);
-                }}
-                onContextMenu={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setHoveredNoteHlId(null);
+                onEdit={() => {
+                  focusHighlight(hl.id);
+                  closeNotePreview();
                   setActiveHighlightId(activeHighlightId === hl.id ? null : hl.id);
                 }}
               >
-                <button
-                  type="button"
-                  className="w-5 h-5 bg-[#f5c41a] hover:bg-[#e5a84c] text-neutral-950 font-bold rounded-full shadow-md text-[10px] flex items-center justify-center border-2 border-white cursor-pointer transition-transform hover:scale-110 active:scale-95"
-                  title="Xem/Sửa ghi chú"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setHoveredNoteHlId(null);
-                    setActiveHighlightId(activeHighlightId === hl.id ? null : hl.id);
-                  }}
-                  onContextMenu={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    setHoveredNoteHlId(null);
-                    setActiveHighlightId(activeHighlightId === hl.id ? null : hl.id);
-                  }}
-                >
-                  <MessageSquare size={10} className="fill-neutral-950 stroke-neutral-950" />
-                </button>
-
                 {/* Quick note hover tooltip preview */}
                 {hoveredNoteHlId === hl.id && activeHighlightId !== hl.id && (
                   <div 
-                    className="highlight-note-preview absolute bottom-full right-0 w-64 max-w-[280px] pb-1.5 z-[99999] pointer-events-auto text-xs font-['Inter',sans-serif] cursor-default"
+                    className="highlight-note-preview w-full max-w-[280px] pointer-events-auto text-xs font-['Inter',sans-serif] cursor-default"
                     data-highlight-note-preview={hl.id} data-preview-mode={previewMode}
                     style={{ pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
                     onMouseDown={e => e.stopPropagation()}
@@ -281,7 +277,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
+              </HighlightNoteOverlay>
             )}
           </div>
         ))}
