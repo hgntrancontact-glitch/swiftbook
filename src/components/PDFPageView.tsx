@@ -942,6 +942,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
 
       {/* Freehand & Smart Drawing Overlay */}
       <DrawingCanvas
+        scale={scale}
         fileId={fileId}
         pageNumber={pageNumber}
         width={effectiveWidth}
@@ -1095,79 +1096,14 @@ function areEqual(prevProps: PDFPageViewProps, nextProps: PDFPageViewProps) {
 
   const p = prevProps.pageNumber;
 
-  // Highlights comparison (fast reference check + page-filtered items)
-  if (prevProps.highlights !== nextProps.highlights) {
-    const prevH = prevProps.highlights.filter((h) => h.pageNumber === p);
-    const nextH = nextProps.highlights.filter((h) => h.pageNumber === p);
-    if (prevH.length !== nextH.length) return false;
-    for (let i = 0; i < prevH.length; i++) {
-      if (prevH[i].id !== nextH[i].id || prevH[i].color !== nextH[i].color) return false;
-    }
-  }
-
-  // TextNotes comparison
-  if (prevProps.textNotes !== nextProps.textNotes) {
-    const prevTN = prevProps.textNotes.filter((x) => x.pageNumber === p);
-    const nextTN = nextProps.textNotes.filter((x) => x.pageNumber === p);
-    if (prevTN.length !== nextTN.length) return false;
-    for (let i = 0; i < prevTN.length; i++) {
-      if (
-        prevTN[i].id !== nextTN[i].id ||
-        prevTN[i].text !== nextTN[i].text ||
-        prevTN[i].x !== nextTN[i].x ||
-        prevTN[i].y !== nextTN[i].y ||
-        prevTN[i].isMinimized !== nextTN[i].isMinimized
-      ) return false;
-    }
-  }
-
-  // Drawings comparison
-  if (prevProps.drawings !== nextProps.drawings) {
-    const prevD = prevProps.drawings.filter((x) => x.pageNumber === p);
-    const nextD = nextProps.drawings.filter((x) => x.pageNumber === p);
-    if (prevD.length !== nextD.length) return false;
-    for (let i = 0; i < prevD.length; i++) {
-      if (
-        prevD[i].id !== nextD[i].id ||
-        prevD[i].color !== nextD[i].color ||
-        prevD[i].size !== nextD[i].size ||
-        prevD[i].points.length !== nextD[i].points.length
-      ) return false;
-    }
-  }
-
-  // Boxes comparison
-  if (prevProps.boxes !== nextProps.boxes) {
-    const prevB = prevProps.boxes.filter((x) => x.pageNumber === p);
-    const nextB = nextProps.boxes.filter((x) => x.pageNumber === p);
-    if (prevB.length !== nextB.length) return false;
-    for (let i = 0; i < prevB.length; i++) {
-      if (
-        prevB[i].id !== nextB[i].id ||
-        prevB[i].x !== nextB[i].x ||
-        prevB[i].y !== nextB[i].y ||
-        prevB[i].width !== nextB[i].width ||
-        prevB[i].height !== nextB[i].height ||
-        prevB[i].color !== nextB[i].color
-      ) return false;
-    }
-  }
-
-  // FreeTexts comparison
-  if (prevProps.freeTexts !== nextProps.freeTexts) {
-    const prevFT = prevProps.freeTexts.filter((x) => x.pageNumber === p);
-    const nextFT = nextProps.freeTexts.filter((x) => x.pageNumber === p);
-    if (prevFT.length !== nextFT.length) return false;
-    for (let i = 0; i < prevFT.length; i++) {
-      if (
-        prevFT[i].id !== nextFT[i].id ||
-        prevFT[i].text !== nextFT[i].text ||
-        prevFT[i].x !== nextFT[i].x ||
-        prevFT[i].y !== nextFT[i].y ||
-        prevFT[i].fontSize !== nextFT[i].fontSize ||
-        prevFT[i].color !== nextFT[i].color
-      ) return false;
-    }
+  // Annotation updates are immutable. Comparing only a few fields (or point
+  // counts) skipped coordinate, opacity and size changes, leaving hit targets
+  // and displayed geometry at the previous position after a drag.
+  for (const key of ['highlights', 'textNotes', 'drawings', 'boxes', 'freeTexts'] as const) {
+    if (prevProps[key] === nextProps[key]) continue;
+    const before = prevProps[key].filter(item => item.pageNumber === p);
+    const after = nextProps[key].filter(item => item.pageNumber === p);
+    if (before.length !== after.length || before.some((item, i) => item !== after[i])) return false;
   }
 
   return true;

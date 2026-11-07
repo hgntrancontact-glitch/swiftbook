@@ -62,7 +62,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
 
     // Ignore clicks on existing annotations or interactive elements
     const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-    if (el?.closest?.('.annotation-interactive-element, button, .sticky-note-paper, .stroke-interactive-group, .box-interactive-element, .free-text-item-container, .box-floating-toolbar, .unified-group-toolbar, .floating-submenu')) {
+    if (el?.closest?.('.annotation-interactive-element, button, .sticky-note-paper, .stroke-interactive-group, .stroke-vector-group, .box-interactive-element, .free-text-item-container, .box-floating-toolbar, .unified-group-toolbar, .floating-submenu')) {
       return;
     }
 

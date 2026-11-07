@@ -18,6 +18,8 @@ export interface HighlightAnnotation {
 }
 
 export interface TextNoteAnnotation {
+  /** Page scale when pixel-sized properties were created; absent legacy values use page units. */
+  referenceScale?: number;
   id: string;
   pageNumber: number;
   x: number; // percentage (0-100)
@@ -31,6 +33,8 @@ export interface TextNoteAnnotation {
 }
 
 export interface BoxAnnotation {
+  /** Page scale when pixel-sized properties were created; absent legacy values use page units. */
+  referenceScale?: number;
   id: string;
   pageNumber: number;
   x: number; // percentage (0-100)
@@ -93,6 +97,8 @@ export interface DrawingPoint {
 }
 
 export interface DrawingStroke {
+  /** Page scale when pixel-sized properties were created; absent legacy values use page units. */
+  referenceScale?: number;
   id: string;
   pageNumber: number;
   points: DrawingPoint[];

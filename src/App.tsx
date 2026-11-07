@@ -308,6 +308,21 @@ export function App() {
     setOpenDocs((prev) => prev.map((doc) => (doc.id === docId ? updater(doc) : doc)));
   }, []);
 
+  // Older saves stored tool sizes in screen pixels. Capture their initial
+  // measured page scale once, then persist it alongside the unchanged values.
+  const handleResolveAnnotationScale = useCallback((docId: string, referenceScale: number) => {
+    updateDoc(docId, d => {
+      if (![...d.drawings, ...d.boxes, ...d.textNotes].some(item => !item.referenceScale)) return d;
+      const initialize = (state: HistorySnapshot) => ({
+        ...state,
+        drawings: state.drawings.map(item => item.referenceScale ? item : { ...item, referenceScale }),
+        boxes: state.boxes.map(item => item.referenceScale ? item : { ...item, referenceScale }),
+        textNotes: state.textNotes.map(item => item.referenceScale ? item : { ...item, referenceScale }),
+      });
+      return { ...d, ...initialize(d), pastStates: d.pastStates.map(initialize), futureStates: d.futureStates.map(initialize) };
+    });
+  }, [updateDoc]);
+
   // History snapshot recording for a document (Undo/Redo isolation)
   const recordDocHistory = useCallback((docId: string) => {
     setOpenDocs((prev) =>
@@ -1678,6 +1693,7 @@ export function App() {
                   onActivate={handleActivateDoc}
                   onPageChange={handlePageChange}
                   onZoomChange={handleZoomChange}
+                  onResolveAnnotationScale={handleResolveAnnotationScale}
                   onUpdateBoxConfig={handleUpdateBoxConfig}
                   onTextSelected={handleTextSelected}
                   onAddHighlight={handleAddHighlightDirect}

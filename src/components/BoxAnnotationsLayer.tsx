@@ -388,6 +388,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
         height: Math.min(100, currentBox.height),
         color: activeBorderColor,
         borderWidth: boxConfig.borderWidth || 2,
+        referenceScale: scale,
         borderStyle: boxConfig.borderStyle || 'solid',
         fillColor: hasBg ? `${activeBorderColor}25` : 'transparent',
       });
@@ -469,6 +470,8 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
       {/* Existing Boxes */}
       {pageBoxes.map((box) => {
         const isSelected = selectedIds ? selectedIds.includes(box.id) : selectedBoxId === box.id;
+        const lineWidth = (box.borderWidth || 2) * scale / (box.referenceScale || 1);
+        const dashUnit = scale / (box.referenceScale || 1);
         const isDragging = draggingBoxId === box.id;
         const isDashed = box.borderStyle === 'dashed';
         const hasFill = box.fillColor && box.fillColor !== 'transparent';
@@ -590,10 +593,19 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
               top: `${box.y}%`,
               width: `${box.width}%`,
               height: `${box.height}%`,
-              border: `${box.borderWidth || 2}px ${box.borderStyle || 'solid'} ${box.color || '#ef4444'}`,
+              border: 'none',
               backgroundColor: box.fillColor || 'transparent',
             }}
           >
+            {/* CSS borders round subpixel widths to whole pixels and disappear
+                at small zoom. SVG preserves the annotation's true thickness. */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" data-annotation-box-border="true">
+              <rect x={lineWidth / 2} y={lineWidth / 2}
+                width={`calc(100% - ${lineWidth}px)`} height={`calc(100% - ${lineWidth}px)`}
+                fill="none" stroke={box.color || '#ef4444'} strokeWidth={lineWidth}
+                strokeDasharray={box.borderStyle === 'dashed' ? `${6 * dashUnit} ${4 * dashUnit}` : box.borderStyle === 'dotted' ? `${lineWidth} ${lineWidth * 1.5}` : undefined}
+              />
+            </svg>
             {/* Option (Alt) Clone Ghost Badge */}
             {altGhost && altGhost.id === box.id && (
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded shadow pointer-events-none whitespace-nowrap z-50">

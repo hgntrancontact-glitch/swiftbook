@@ -348,7 +348,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
           >
             <div className="flex items-center justify-between text-xs font-bold text-neutral-800 mb-2">
               <span>Độ dày nét vẽ</span>
-              <span className="bg-neutral-100 text-neutral-900 px-2 py-0.5 rounded-md font-mono text-[11px] border border-neutral-200">
+              <span className="bg-neutral-100 text-neutral-900 px-2 py-0.5 rounded-md text-[11px]" style={{ fontFamily: '"Open Sans", sans-serif' }}>
                 {activeTool === 'eraser' ? eraserSize : penSize}px
               </span>
             </div>

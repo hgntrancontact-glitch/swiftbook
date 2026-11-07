@@ -124,7 +124,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             key={`${isElevated ? 'elevated-' : 'base-'}${hl.id}-interactive-${idx}`}
             id={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${idx}`}
             className={`absolute pointer-events-auto cursor-pointer select-none ${
-              isSelected ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''
+              isSelected ? 'ring-2 ring-blue-500' : ''
             }`}
             style={{
               left: `${rect.x}%`,
@@ -354,23 +354,15 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
 
   return (
     <>
-      {/* Base Highlight Layer: Strictly kept at z-20 underneath StickyNotesLayer (z-30) */}
-      <div
-        className="absolute inset-0 pointer-events-none select-none overflow-visible z-20"
-        style={{
-          transformStyle: 'preserve-3d',
-          WebkitBackfaceVisibility: 'hidden',
-          transform: 'translateZ(0px)',
-        }}
-      >
         {/* SVG Uniform Highlight Layer - Fixed, no seam lines, no overlapping dividing marks */}
         <svg
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
-          className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+          className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20"
+          data-annotation-highlights="true"
           style={{ mixBlendMode: 'multiply' }}
         >
-          {baseHighlights.map((hl) => {
+          {pageHighlights.map((hl) => {
             const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
             const displayRects = mergeContiguousRects(hl.rects);
 
@@ -391,6 +383,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
           })}
         </svg>
 
+      <div className="absolute inset-0 pointer-events-none select-none overflow-visible z-20">
         {/* Interactive Fixed Base Highlight Elements */}
         {baseHighlights.map((hl) => renderHighlightInteractive(hl, false))}
       </div>
@@ -401,33 +394,6 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
         typeof document !== 'undefined' &&
         createPortal(
           <div className="absolute inset-0 pointer-events-none select-none overflow-visible">
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
-              style={{ mixBlendMode: 'multiply' }}
-            >
-              {elevatedHighlights.map((hl) => {
-                const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
-                const displayRects = mergeContiguousRects(hl.rects);
-
-                return (
-                  <g key={`elevated-hl-svg-${hl.id}`} opacity={0.42}>
-                    {displayRects.map((rect, idx) => (
-                      <rect
-                        key={`elevated-hl-rect-${hl.id}-${idx}`}
-                        x={rect.x}
-                        y={rect.y}
-                        width={rect.width}
-                        height={rect.height}
-                        fill={colorConfig.hex}
-                      />
-                    ))}
-                  </g>
-                );
-              })}
-            </svg>
-
             {elevatedHighlights.map((hl) => renderHighlightInteractive(hl, true))}
           </div>,
           targetElevatedContainer

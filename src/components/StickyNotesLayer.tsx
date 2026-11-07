@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { TextNoteAnnotation, NOTE_PAPER_COLORS, NoteColorTheme } from '../types';
 import { MessageSquare, Trash2, Move, Minimize2, StickyNote } from 'lucide-react';
 import { findBestMatchingPage, elevatePageZIndex, resetPageZIndex } from '../utils/pageBoundaryHelper';
@@ -93,6 +93,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
       x,
       y,
       text: '',
+      referenceScale: scale,
       color: NOTE_PAPER_COLORS[0].contentBg,
       isMinimized: false,
     });
@@ -355,8 +356,8 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
                 className="rounded-full shadow-md border border-black/30 flex items-center justify-center cursor-grab active:cursor-grabbing hover:scale-110 active:scale-95 transition-transform group"
                 style={{
                   background: theme.noteBg,
-                  width: '24px',
-                  height: '24px',
+                  width: `${24 * scale / (note.referenceScale || 1)}px`,
+                  height: `${24 * scale / (note.referenceScale || 1)}px`,
                 }}
                 title={
                   note.text
@@ -365,7 +366,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
                 }
               >
                 <MessageSquare
-                  size={13}
+                  size={13 * scale / (note.referenceScale || 1)}
                   className="text-black fill-black group-hover:scale-105 transition-transform"
                 />
               </div>
@@ -410,31 +411,32 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   containerRef,
   scale = 1.0,
 }) => {
+  const noteScale = scale / (note.referenceScale || 1);
   const getDims = () => {
     const cont = containerRef.current;
     const contW = cont && cont.offsetWidth > 0 ? cont.offsetWidth : 595 * scale;
     const contH = cont && cont.offsetHeight > 0 ? cont.offsetHeight : 842 * scale;
 
-    let wPx = 224;
-    let hPx = 160;
+    let wPx = 224 * noteScale;
+    let hPx = 160 * noteScale;
 
     if (typeof note.width === 'number' && note.width > 0) {
       if (note.width <= 100) {
-        wPx = Math.round((note.width / 100) * contW);
+        wPx = (note.width / 100) * contW;
       } else {
-        wPx = Math.round(note.width);
+        wPx = note.width * noteScale;
       }
     }
     if (typeof note.height === 'number' && note.height > 0) {
       if (note.height <= 100) {
-        hPx = Math.round((note.height / 100) * contH);
+        hPx = (note.height / 100) * contH;
       } else {
-        hPx = Math.round(note.height);
+        hPx = note.height * noteScale;
       }
     }
 
-    wPx = Math.max(160, Math.min(contW * 0.95, wPx));
-    hPx = Math.max(100, Math.min(contH * 0.95, hPx));
+    wPx = Math.max(160 * noteScale, Math.min(contW * 0.95, wPx));
+    hPx = Math.max(100 * noteScale, Math.min(contH * 0.95, hPx));
 
     return {
       wPct: (wPx / contW) * 100,
@@ -451,10 +453,10 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   });
   const noteBoxRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const d = getDims();
     setSize({ width: d.wPx, height: d.hPx });
-  }, [note.width, note.height, scale]);
+  }, [note.width, note.height, note.referenceScale, scale]);
 
   const handleResizeStart = (
     e: React.MouseEvent,
@@ -488,15 +490,15 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       let newH = startH;
 
       if (dir.includes('e')) {
-        newW = Math.max(160, Math.min(rect.width * 0.95, startW + dx));
+        newW = Math.max(160 * noteScale, Math.min(rect.width * 0.95, startW + dx));
       } else if (dir.includes('w')) {
-        newW = Math.max(160, Math.min(rect.width * 0.95, startW - dx));
+        newW = Math.max(160 * noteScale, Math.min(rect.width * 0.95, startW - dx));
       }
 
       if (dir.includes('s')) {
-        newH = Math.max(100, Math.min(rect.height * 0.95, startH + dy));
+        newH = Math.max(100 * noteScale, Math.min(rect.height * 0.95, startH + dy));
       } else if (dir.includes('n')) {
-        newH = Math.max(100, Math.min(rect.height * 0.95, startH - dy));
+        newH = Math.max(100 * noteScale, Math.min(rect.height * 0.95, startH - dy));
       }
 
       let newNoteX = startNoteX;
@@ -542,12 +544,12 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const headerH = 28;
-  const footerH = 24;
-  const pad = 10;
-  const cornerR = 12;
-  const bodyFontSize = 12;
-  const bodyLineH = 18;
+  const headerH = 28 * noteScale;
+  const footerH = 24 * noteScale;
+  const pad = 10 * noteScale;
+  const cornerR = 12 * noteScale;
+  const bodyFontSize = 12 * noteScale;
+  const bodyLineH = 18 * noteScale;
   const iconSize = 13;
 
   return (
@@ -555,8 +557,8 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       ref={noteBoxRef}
       className="relative shadow-2xl border border-black/20 flex flex-col font-['Inter',sans-serif] animate-in fade-in zoom-in-95 duration-150 select-none"
       style={{
-        width: `${Math.round(size.width)}px`,
-        height: `${Math.round(size.height)}px`,
+        width: `${size.width}px`,
+        height: `${size.height}px`,
         borderRadius: `${cornerR}px`,
       }}
       onClick={(e) => {
@@ -593,7 +595,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
         >
           <div
             className="flex items-center gap-1.5 font-bold tracking-tight"
-            style={{ fontSize: '11.5px' }}
+            style={{ fontSize: `${11.5 * noteScale}px` }}
           >
             <Move size={iconSize} className="opacity-70" />
             <span>Note</span>

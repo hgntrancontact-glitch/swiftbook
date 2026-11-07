@@ -154,6 +154,7 @@ interface DrawingCanvasProps {
   pageNumber: number;
   width: number;
   height: number;
+  scale: number;
   isDrawingMode: boolean; // true if pen, highlighter, smart_pen or smart_highlighter
   isHighlighter: boolean; // true if highlighter or smart_highlighter
   isSmartPen?: boolean;
@@ -177,6 +178,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   pageNumber,
   width,
   height,
+  scale,
   isDrawingMode,
   isHighlighter,
   isSmartPen = false,
@@ -322,85 +324,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     ...(altGhost && Number(altGhost.pageNumber) === targetPageNum ? [altGhost] : []),
   ];
 
-  // Stroke drawing helper (straight lines for sharp polygons/smart shapes, bezier for freehand)
-  const drawSmoothStroke = (
-    ctx: CanvasRenderingContext2D,
-    points: DrawingPoint[],
-    w: number,
-    h: number,
-    isPolygon = false
-  ) => {
-    if (points.length < 2) return;
-
-    const p0 = { x: (points[0].x / 100) * w, y: (points[0].y / 100) * h };
-    const p1 = { x: (points[1].x / 100) * w, y: (points[1].y / 100) * h };
-
-    ctx.moveTo(p0.x, p0.y);
-
-    if (points.length === 2 || isPolygon) {
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo((points[i].x / 100) * w, (points[i].y / 100) * h);
-      }
-      return;
-    }
-
-    for (let i = 1; i < points.length - 1; i++) {
-      const curr = { x: (points[i].x / 100) * w, y: (points[i].y / 100) * h };
-      const next = { x: (points[i + 1].x / 100) * w, y: (points[i + 1].y / 100) * h };
-      const midX = (curr.x + next.x) / 2;
-      const midY = (curr.y + next.y) / 2;
-      ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
-    }
-
-    const last = {
-      x: (points[points.length - 1].x / 100) * w,
-      y: (points[points.length - 1].y / 100) * h,
-    };
-    ctx.lineTo(last.x, last.y);
-  };
-
-  // Redraw active stroke on canvas
-  const redrawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, width, height);
-
-    // Real-time canvas rendering for current active stroke during drawing
-    if (isPainting && currentStroke.length >= 2) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.strokeStyle = penColor;
-      ctx.lineWidth = activePenSizeRef.current || penSize;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-
-      if (isHighlighter) {
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.globalAlpha = penOpacity ?? 0.45;
-      } else {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = penOpacity ?? 1;
-      }
-
-      drawSmoothStroke(ctx, currentStroke, width, height, false);
-
-      ctx.stroke();
-      ctx.restore();
-    }
-  }, [isPainting, currentStroke, penColor, penSize, isHighlighter, penOpacity, width, height]);
-
-  useEffect(() => {
-    redrawCanvas();
-  }, [redrawCanvas]);
-
   // Global mousemove & mouseup listeners for stroke dragging across pages
   useEffect(() => {
     if (!draggingStrokeId || !dragStartRef.current) return;
 
     const handleWindowMouseMove = (e: MouseEvent | PointerEvent) => {
+      if (!dragStartRef.current || e.buttons !== 1) return;
       hasMovedRef.current = true;
 
       document.body.style.cursor = 'grabbing';
@@ -464,7 +393,15 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
            return;
         }
 
-        const stroke = strokesRef.current.find((s) => s.id === draggingStrokeId);
+        const savedStroke = strokesRef.current.find((s) => s.id === draggingStrokeId);
+        const originRect = getPageEl(savedStroke?.pageNumber || pageNumber)?.getBoundingClientRect();
+        const stroke = savedStroke && originRect && Number.isFinite(e.clientX) && Number.isFinite(e.clientY) ? {
+          ...savedStroke,
+          points: dragStartRef.current.initialPoints.map(p => ({
+            x: p.x + (e.clientX - dragStartRef.current!.startClientX) / originRect.width * 100,
+            y: p.y + (e.clientY - dragStartRef.current!.startClientY) / originRect.height * 100,
+          })),
+        } : savedStroke;
         const originPage = stroke?.pageNumber || pageNumber;
         const pageEl = getPageEl(originPage);
 
@@ -502,8 +439,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               const relX = strokeW > 0 ? (p.x - minX) / strokeW : 0;
               const relY = strokeH > 0 ? (p.y - minY) / strokeH : 0;
               return {
-                x: match.relXPct + relX * strokeW,
-                y: match.relYPct + relY * strokeH,
+                x: match.relXPct + relX * match.elementWidthPct,
+                y: match.relYPct + relY * match.elementHeightPct,
               };
             });
 
@@ -725,7 +662,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     setSelectedStrokeId(stroke.id);
     setResizingStrokeId(stroke.id);
     setResizingHandle(handle);
-    elevatePageZIndex(stroke.pageNumber || pageNumber);
+    elevatePageZIndex(stroke.pageNumber || pageNumber, fileId);
 
     resizeStartRef.current = {
       startClientX: e.clientX,
@@ -744,7 +681,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const handleGlobalDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-      if (el?.closest?.('#smart-shape-handles') || el?.closest?.('.stroke-interactive-group')) {
+      if (el?.closest?.('#smart-shape-handles') || el?.closest?.('.stroke-interactive-group, .stroke-vector-group')) {
         return;
       }
       if (canvasRef.current && (canvasRef.current === e.target || (el && canvasRef.current.contains(el)))) {
@@ -1003,6 +940,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         points: strokePointsToSave,
         color: penColor,
         size: activePenSizeRef.current || penSize,
+        referenceScale: scale,
         opacity: isHighlighter ? 0.45 : (penOpacity ?? 1),
         isHighlighter: isHighlighter,
         isSmartShape: isSmartShape,
@@ -1036,6 +974,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   };
 
   const startDragStroke = (e: React.MouseEvent | React.PointerEvent, stroke: DrawingStroke) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
 
@@ -1076,7 +1015,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     hasMovedRef.current = false;
     updateScaleFactor();
-    elevatePageZIndex(stroke.pageNumber || pageNumber);
+    elevatePageZIndex(stroke.pageNumber || pageNumber, fileId);
     setDraggingStrokeId(stroke.id);
     dragStartRef.current = {
       startClientX: e.clientX,
@@ -1114,14 +1053,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const isSmartShapeActive = Boolean(selectedStroke && isGeometricalShape(selectedStroke));
 
   return (
-    <div
-      className="absolute inset-0 select-none z-25 pointer-events-none"
-      style={{
-        transformStyle: 'preserve-3d',
-        WebkitBackfaceVisibility: 'hidden',
-        transform: 'translateZ(0px)',
-      }}
-    >
+    <>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+        className="absolute inset-0 w-full h-full pointer-events-none z-25 overflow-hidden select-none"
+        style={{ mixBlendMode: 'multiply' }} data-annotation-highlighters="true">
+        {pageStrokes.filter(stroke => stroke.isHighlighter && stroke.id !== draggingStrokeId).map(stroke => (
+          <path key={stroke.id} d={getSvgPathData(stroke.points, stroke.isSmartShape || stroke.points.length <= 6)}
+            fill="none" stroke={stroke.color} strokeWidth={stroke.size * scale / (stroke.referenceScale || 1)}
+            vectorEffect="non-scaling-stroke" strokeOpacity={stroke.opacity ?? 0.45}
+            strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+      </svg>
       {/* 1. Base Annotation Layer (Lớp dưới): Persistent vector rendering of all completed unselected page strokes */}
       <svg
         viewBox="0 0 100 100"
@@ -1135,7 +1077,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           const d = getSvgPathData(stroke.points, isPolygon);
           if (!d) return null;
 
-          const hitStrokeWidth = Math.max(24, (stroke.size + 20) * (cssScaleFactor || 1));
+          const hitStrokeWidth = Math.max(24, stroke.size * scale / (stroke.referenceScale || 1) + 20);
           const currentSelected = selectedIdsRef.current;
           const isSelected = currentSelected
             ? currentSelected.includes(stroke.id)
@@ -1148,13 +1090,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 d={d}
                 fill={isGeom && stroke.fillColor && stroke.fillColor !== 'transparent' ? stroke.fillColor : 'none'}
                 stroke={stroke.color}
-                strokeWidth={stroke.size * cssScaleFactor}
+                strokeWidth={stroke.size * scale / (stroke.referenceScale || 1)}
                 vectorEffect="non-scaling-stroke"
                 strokeOpacity={stroke.opacity ?? (stroke.isHighlighter ? 0.45 : 1)}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 style={{
-                  mixBlendMode: stroke.isHighlighter ? 'multiply' : 'normal',
+                  display: stroke.isHighlighter ? 'none' : undefined,
                   pointerEvents: 'none',
                 }}
               />
@@ -1222,7 +1164,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 const d = getSvgPathData(stroke.points, isPolygon);
                 if (!d) return null;
 
-                const hitStrokeWidth = Math.max(24, (stroke.size + 20) * (cssScaleFactor || 1));
+                const hitStrokeWidth = Math.max(24, stroke.size * scale / (stroke.referenceScale || 1) + 20);
 
                 return (
                   <g key={`elevated-stroke-render-${stroke.id}`} className="stroke-vector-group">
@@ -1231,13 +1173,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                       d={d}
                       fill={isGeom && stroke.fillColor && stroke.fillColor !== 'transparent' ? stroke.fillColor : 'none'}
                       stroke={stroke.color}
-                      strokeWidth={stroke.size * cssScaleFactor}
+                      strokeWidth={stroke.size * scale / (stroke.referenceScale || 1)}
                       vectorEffect="non-scaling-stroke"
                       strokeOpacity={stroke.opacity ?? (stroke.isHighlighter ? 0.45 : 1)}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       style={{
-                        mixBlendMode: stroke.isHighlighter ? 'multiply' : 'normal',
+                        display: stroke.isHighlighter ? 'none' : undefined,
                         pointerEvents: 'none',
                       }}
                     />
@@ -1321,6 +1263,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full pointer-events-none z-[9999] overflow-visible"
+          style={{ mixBlendMode: isHighlighter ? 'multiply' : 'normal' }}
         >
           <path
             d={getSvgPathData(currentStroke)}
@@ -1523,7 +1466,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             }
 
             return (
-              <div className="fixed inset-0 pointer-events-none z-[999999] overflow-visible">
+              <div className="fixed inset-0 pointer-events-none z-[999999] overflow-visible" style={{ mixBlendMode: activeStroke.isHighlighter ? 'multiply' : 'normal' }}>
                 <svg
                   className="w-full h-full pointer-events-none overflow-visible"
                   style={{ width: '100vw', height: '100vh' }}
@@ -1537,7 +1480,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                     }
                     stroke={activeStroke.color}
                     vectorEffect="non-scaling-stroke"
-                    strokeWidth={activeStroke.size * cssScaleFactor}
+                    strokeWidth={activeStroke.size * scale / (activeStroke.referenceScale || 1) * cssScaleFactor}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={activeStroke.opacity ?? (activeStroke.isHighlighter ? 0.45 : 1)}
@@ -1552,6 +1495,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           })(),
           document.body
         )}
-    </div>
+    </>
   );
 };

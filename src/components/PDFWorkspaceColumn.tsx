@@ -33,6 +33,7 @@ interface PDFWorkspaceColumnProps {
   onActivate: (docId: string) => void;
   onPageChange: (docId: string, page: number) => void;
   onZoomChange: (docId: string, scale: number, resetFitMode?: boolean) => void;
+  onResolveAnnotationScale: (docId: string, scale: number) => void;
   onUpdateBoxConfig: (docId: string, updates: Partial<BoxConfig>) => void;
   onTextSelected: (
     docId: string,
@@ -78,6 +79,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   onActivate,
   onPageChange,
   onZoomChange,
+  onResolveAnnotationScale,
   onUpdateBoxConfig,
   onTextSelected,
   onAddHighlight,
@@ -167,6 +169,13 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   }, [doc.pdfDoc, doc.fileId, layoutKey]);
   const baseScale = fitPageScale(doc.viewMode, pages, containerSize?.width || 600, containerSize?.height || 600);
   const actualScale = baseScale * doc.scale;
+
+  useLayoutEffect(() => {
+    if (!containerSize || measuredPages?.key !== layoutKey) return;
+    if ([...doc.drawings, ...doc.boxes, ...doc.textNotes].some(item => !item.referenceScale)) {
+      onResolveAnnotationScale(doc.id, actualScale);
+    }
+  }, [containerSize, measuredPages, layoutKey, actualScale, doc.id, doc.drawings, doc.boxes, doc.textNotes, onResolveAnnotationScale]);
 
   const clearLiveZoom = () => {
     wrapperRef.current?.style.removeProperty('--pdf-live-zoom');

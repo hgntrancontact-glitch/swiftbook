@@ -1177,7 +1177,7 @@ export async function renderPageWithAnnotations(
     boxes: BoxAnnotation[];
     freeTexts: FreeTextAnnotation[];
   },
-  screenScale?: number
+  _screenScale?: number
 ): Promise<HTMLCanvasElement> {
 
   // Ensure custom and web fonts are fully loaded before rendering
@@ -1221,10 +1221,9 @@ export async function renderPageWithAnnotations(
     return canvas;
   }
 
-  // Calculate authoritative ratio between export canvas pixels and web screen CSS pixels
-  // (canvasWidth / webWidth = scale / webScale)
-  const webScale = typeof screenScale === 'number' && screenScale > 0 ? screenScale : 1.0;
-  const canvasToWebRatio = scale / webScale;
+  // Annotation geometry belongs to the page, never to the viewer's current
+  // zoom. Pixel-sized legacy tools have a stored reference scale below.
+  const canvasToWebRatio = scale;
 
   const pageHighlights = annotations.highlights.filter((h) => h.pageNumber === pageNumber);
   const pageDrawings = annotations.drawings.filter((d) => d.pageNumber === pageNumber);
@@ -1274,7 +1273,7 @@ export async function renderPageWithAnnotations(
     ctx.save();
     ctx.beginPath();
     ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = Math.max(1, stroke.size * canvasToWebRatio);
+    ctx.lineWidth = Math.max(1, stroke.size * scale / (stroke.referenceScale || 1));
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -1318,7 +1317,7 @@ export async function renderPageWithAnnotations(
     const by = (box.y / 100) * height;
     const bw = (box.width / 100) * width;
     const bh = (box.height / 100) * height;
-    const lineWidth = Math.max(1, (box.borderWidth || 2) * canvasToWebRatio);
+    const lineWidth = Math.max(1, (box.borderWidth || 2) * scale / (box.referenceScale || 1));
 
     ctx.save();
     if (box.fillColor && box.fillColor !== 'transparent') {
@@ -1329,7 +1328,7 @@ export async function renderPageWithAnnotations(
     ctx.strokeStyle = box.color || '#ef4444';
     ctx.lineWidth = lineWidth;
     if (box.borderStyle === 'dashed') {
-      ctx.setLineDash([6 * canvasToWebRatio, 4 * canvasToWebRatio]);
+      ctx.setLineDash([6 * scale / (box.referenceScale || 1), 4 * scale / (box.referenceScale || 1)]);
     } else if (box.borderStyle === 'dotted') {
       ctx.setLineDash([lineWidth, lineWidth * 1.5]);
     } else {
@@ -1353,7 +1352,7 @@ export async function renderPageWithAnnotations(
 
   // Sticky Notes
   pageNotes.forEach((note) => {
-    renderStickyNoteOnCanvas(ctx, width, height, canvasToWebRatio, note);
+    renderStickyNoteOnCanvas(ctx, width, height, scale / (note.referenceScale || 1), note);
   });
 
   return canvas;
