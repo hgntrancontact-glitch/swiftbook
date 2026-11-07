@@ -308,12 +308,15 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       visualAnchorRef.current = captureAnchor(clientX, clientY);
     };
     const cancel = () => {
+      const hadGesture = gestureActiveRef.current || timer !== null || frame !== null;
       if (timer) clearTimeout(timer);
       if (frame !== null) cancelAnimationFrame(frame);
       timer = null;
       frame = null;
       gestureActiveRef.current = false;
-      gestureEpochRef.current++;
+      // Layout reset and effect cleanup can both cancel the same gesture.
+      // The second cancellation must not invalidate the reset's release frame.
+      if (hadGesture) gestureEpochRef.current++;
     };
     const rebase = (scale: number) => {
       startScale = scale;
