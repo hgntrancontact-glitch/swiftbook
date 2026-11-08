@@ -1,6 +1,6 @@
 import { loadOCRLines } from '../utils/selectionOCR';
 import React, { useRef, useState, useEffect } from 'react';
-import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, type LineGesture, type SelectionLine } from '../utils/selectionLines';
+import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, selectedLineText, selectionLineCovered, type LineGesture, type SelectionLine } from '../utils/selectionLines';
 import { HighlightAnnotation, NormalizedRect, HighlightColor } from '../types';
 
 interface SimulatedSelectionLayerProps {
@@ -13,7 +13,7 @@ interface SimulatedSelectionLayerProps {
   onAddHighlight: (highlight: HighlightAnnotation) => void;
 }
 
-interface PendingBox { rects: NormalizedRect[]; selectionKind?: 'text' }
+interface PendingBox { rects: NormalizedRect[]; selectionKind?: 'text'; text?: string; textComplete?: boolean }
 
 export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = ({
   pdfDoc,
@@ -49,24 +49,39 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     };
     loadSelectionLines(pdfDoc, pageNumber).then(async lines => {
       if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
-      if (lines.length) { linesRef.current = lines; loadedPageRef.current = { doc: pdfDoc, page: pageNumber }; }
-      // Scans can contain just a selectable page number/watermark. A token
-      // text layer must not suppress OCR of the actual photographed content.
-      const sparseText = lines.length < 3 || lines.reduce((n, line) => n + (line.glyphs?.length || 0), 0) < 80;
-      if (sparseText && relevant()) {
-        const page = containerRef.current?.closest('[data-page-container="true"]');
-        const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
+      const nativeLines = lines;
+      const page = containerRef.current?.closest('[data-page-container="true"]');
+      const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
+      const sparseText = lines.length < 3 || lines.reduce((n,line) => n + (line.glyphs?.length || 0),0) < 80;
+      const heights = lines.map(l=>l.height).sort((a,b)=>a-b);
+      const height = heights[Math.floor(heights.length/2)] || 0.015;
+      const missing: SelectionLine[] = [];
+      let uncoveredRows=0;
+      if(canvas) for(const x of [0.25,0.5,0.75]) for(const visual of rasterSelectionLines(canvas,x,0.5,height,true)) {
+        const covered = [...nativeLines,...missing].filter(line => {
+          const oy=Math.min(line.y+line.height,visual.y+visual.height)-Math.max(line.y,visual.y);
+          return oy>=Math.min(line.height,visual.height)*0.5;
+        }).map(line=>[Math.max(line.x,visual.x),Math.min(line.x+line.width,visual.x+visual.width)])
+          .filter(([left,right])=>right>left).sort((a,b)=>a[0]-b[0]);
+        let right=visual.x,total=0;
+        for(const [left,end] of covered) {total+=Math.max(0,end-Math.max(left,right));right=Math.max(right,end);}
+        if(total<visual.width*0.7) {
+          uncoveredRows++;
+          if(!selectionLineCovered(visual,nativeLines)) missing.push(visual);
+        }
+      }
+      lines = [...nativeLines,...missing];
+      if(lines.length) { linesRef.current=lines; loadedPageRef.current={doc:pdfDoc,page:pageNumber}; }
+      // Mixed native/scanned pages also need recognition when the visual rows
+      // expose missing text coverage; glyph count alone cannot detect them.
+      if ((sparseText || uncoveredRows >= 3) && relevant()) {
         if (canvas) {
           const recognized = await loadOCRLines(pdfDoc, pageNumber, canvas, relevant);
           if (recognized.length) {
             // OCR fills scanned regions; it must not replace a native PDF line
             // with a different ink-height box after the worker finishes.
-            const native = lines;
-            lines = [...native, ...recognized.filter(ocr => !native.some(line => {
-              const overlapX = Math.min(line.x + line.width, ocr.x + ocr.width) - Math.max(line.x, ocr.x);
-              const overlapY = Math.min(line.y + line.height, ocr.y + ocr.height) - Math.max(line.y, ocr.y);
-              return overlapX >= ocr.width * 0.7 && overlapY >= Math.min(line.height, ocr.height) * 0.5;
-            }))].sort((a, b) => a.y - b.y || a.x - b.x);
+            const native = nativeLines;
+            lines = [...native, ...recognized.filter(ocr => !selectionLineCovered(ocr,native))].sort((a, b) => a.y - b.y || a.x - b.x);
           }
         }
       }
@@ -126,7 +141,16 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     const page = containerRef.current!.closest('[data-page-container="true"]');
     const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
     const matchingLines = loadedPageRef.current?.doc === pdfDoc && loadedPageRef.current.page === pageNumber ? linesRef.current : [];
-    const lines = matchingLines.length ? matchingLines : rasterSelectionLines(canvas, x, y, fallbackHeight);
+    // Native text geometry remains authoritative. A scan's visual row bands
+    // fill OCR omissions, including rows whose confidence is too low to read.
+    const native = matchingLines.filter(line => line.source === 'pdf');
+    const sparse = native.length < 3 || native.reduce((n,l) => n + (l.glyphs?.length || 0),0) < 80;
+    const visual = sparse ? rasterSelectionLines(canvas,x,y,fallbackHeight) : [];
+    const lines = [...matchingLines, ...visual.filter(v => !matchingLines.some(l => {
+      const ox = Math.min(l.x+l.width,v.x+v.width)-Math.max(l.x,v.x);
+      const oy = Math.min(l.y+l.height,v.y+v.height)-Math.max(l.y,v.y);
+      return ox >= v.width*0.6 && oy >= Math.min(l.height,v.height)*0.5;
+    }))];
     gestureRef.current = beginLineGesture(lines, x, y, fallbackHeight);
     draggedRef.current = false;
 
@@ -157,7 +181,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
 
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
-      if (gestureRef.current) moveLineGesture(gestureRef.current, y);
+      if (gestureRef.current) moveLineGesture(gestureRef.current, y, x);
       const dist = Math.hypot((x - startPos.x) * rect.width, (y - startPos.y) * rect.height);
       if (dist > 3) {
         draggedRef.current = true;
@@ -179,11 +203,11 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
 
       const endX = (e.clientX - rect.left) / rect.width;
       const endY = (e.clientY - rect.top) / rect.height;
-      if (gestureRef.current) moveLineGesture(gestureRef.current, endY);
+      if (gestureRef.current) moveLineGesture(gestureRef.current, endY, endX);
       const dist = Math.hypot((endX - startPos.x) * rect.width, (endY - startPos.y) * rect.height);
       if (dist > 8 && draggedRef.current) {
         const rects = getSelectionRects(startPos, { x: endX, y: endY });
-        if (rects.length) setPendingSelection({ rects, selectionKind: gestureRef.current?.textSelection ? 'text' : undefined });
+        if (rects.length) setPendingSelection({ rects, selectionKind: gestureRef.current?.textSelection ? 'text' : undefined, ...(gestureRef.current ? selectedLineText(gestureRef.current, startPos.x, endX, 2 / containerRef.current!.clientWidth) : {}) });
       }
 
       setIsDragging(false);
@@ -208,7 +232,8 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     const newHighlight: HighlightAnnotation = {
       id: crypto.randomUUID(),
       pageNumber,
-      text: '', // Simulated selection
+      text: pendingSelection.text || '',
+      textComplete: pendingSelection.textComplete,
       color: colorToUse,
       rects: pendingSelection.rects,
       selectionKind: pendingSelection.selectionKind,

@@ -539,6 +539,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
             ref={wrapperRef}
             id={`pdf-transform-wrapper-${doc.id}`}
             data-scale={actualScale}
+            data-user-zoom={doc.scale}
             className={`flex flex-col relative shrink-0 ${doc.viewMode === 'continuous' ? 'mx-auto' : 'm-auto'}`}
             style={{ width: 'fit-content' }}
           >

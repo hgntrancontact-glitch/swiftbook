@@ -16,7 +16,7 @@ interface Props {
   children: React.ReactNode;
 }
 
-// Screen-space dimensions: never multiply/divide these by document zoom.
+// Baseline screen dimensions at 100%; bounded, gentle scaling never inverts zoom.
 const ICON_SIZE = 20;
 const ICON_GAP = 1;
 const POPUP_WIDTH = 256;
@@ -36,6 +36,14 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     if (!anchor || !icon) return;
     const position = () => {
       const r = anchor.getBoundingClientRect();
+      const wrapper = anchor.closest<HTMLElement>('[data-user-zoom]');
+      const userZoom = Number(wrapper?.dataset.userZoom || 1) * (Number(wrapper?.style.getPropertyValue('--pdf-live-zoom')) || 1);
+      const factor = 1 + 0.16 * Math.tanh(0.65 * Math.log(Math.max(0.2, Math.min(50,userZoom))));
+      const iconSize = ICON_SIZE * factor;
+      icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize}px`;
+      icon.style.borderWidth = `${2*factor}px`;
+      const glyph = icon.querySelector('svg');
+      if (glyph) glyph.style.width = glyph.style.height = `${10*factor}px`;
       const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
       const popup = popupRef.current;
       if (!popup) return;
@@ -56,27 +64,29 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const iconLeft = Math.max(screenLeft, (viewport?.left || 0) + 4);
       const iconRight = Math.min(screenRight, (viewport?.right || window.innerWidth) - 4);
       const visible = r.bottom > iconTop && r.top < iconBottom && r.right > iconLeft && r.left < iconRight;
-      const cardWidth = Math.max(1, Math.min(POPUP_WIDTH, screenRight - screenLeft));
+      const cardWidth = Math.max(1, Math.min(POPUP_WIDTH * factor, screenRight - screenLeft));
       let top = iconTop, bottom = iconBottom, left = iconLeft, right = iconRight;
       // A partly visible column may provide position bounds, but cannot change
       // the screen-sized card's width. Use the screen as the narrow-column fallback.
       if (right - left < cardWidth) { left = screenLeft; right = screenRight; }
-      if (bottom - top < ICON_SIZE + POPUP_GAP + 40) { top = screenTop; bottom = screenBottom; }
+      if (bottom - top < iconSize + POPUP_GAP + 40) { top = screenTop; bottom = screenBottom; }
       popup.style.width = `${cardWidth}px`;
+      const card = popup.firstElementChild as HTMLElement | null;
+      if (card) { card.style.zoom = String(factor); card.style.width = `${cardWidth/factor}px`; }
       // The hidden card stays mounted, so its natural size is known before
       // hover. The header never scrolls away; only the note body is constrained.
       const body = popup.querySelector<HTMLElement>('[data-highlight-note-body]');
       const header = popup.querySelector<HTMLElement>('[data-highlight-note-header]');
-      const naturalHeight = body && header ? body.scrollHeight + header.getBoundingClientRect().height + 26 : popup.scrollHeight;
-      const aboveIcon = r.top - ICON_SIZE - ICON_GAP;
+      const naturalHeight = body && header ? (body.scrollHeight + 26) * factor + header.getBoundingClientRect().height : popup.scrollHeight;
+      const aboveIcon = r.top - iconSize - ICON_GAP;
       const belowIcon = r.bottom + ICON_GAP;
       const aboveSpace = aboveIcon - POPUP_GAP - top;
-      const belowSpace = bottom - belowIcon - ICON_SIZE - POPUP_GAP;
+      const belowSpace = bottom - belowIcon - iconSize - POPUP_GAP;
       let direction = directionRef.current;
       const currentSpace = direction === 'above' ? aboveSpace : belowSpace;
       const otherSpace = direction === 'above' ? belowSpace : aboveSpace;
       if (naturalHeight > currentSpace && otherSpace >= naturalHeight) direction = direction === 'above' ? 'below' : 'above';
-      else if (naturalHeight > aboveSpace && naturalHeight > belowSpace && otherSpace > currentSpace + ICON_SIZE) direction = direction === 'above' ? 'below' : 'above';
+      else if (naturalHeight > aboveSpace && naturalHeight > belowSpace && otherSpace > currentSpace + iconSize) direction = direction === 'above' ? 'below' : 'above';
       directionRef.current = direction;
       const minimumHeight = Math.min(bottom - top, (header?.getBoundingClientRect().height || 28) + 40);
       // Zoom changes the anchor's height and the gaps on either side, not
@@ -84,18 +94,18 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       // viewport; constrain the body only when the viewport itself is too short.
       const height = Math.max(minimumHeight, Math.min(naturalHeight, bottom - top));
       popup.style.maxHeight = `${height}px`;
-      popup.style.setProperty('--highlight-popup-height', `${height}px`);
+      popup.style.setProperty('--highlight-popup-height', `${height / factor}px`);
       popup.style.overflow = 'hidden';
-      const ix = Math.max(screenLeft, Math.min(screenRight - ICON_SIZE, Math.max(iconLeft, Math.min(iconRight - ICON_SIZE, r.right - ICON_SIZE / 2))));
-      const iy = Math.max(screenTop, Math.min(screenBottom - ICON_SIZE, Math.max(iconTop, Math.min(iconBottom - ICON_SIZE, direction === 'above' ? aboveIcon : belowIcon))));
+      const ix = Math.max(screenLeft, Math.min(screenRight - iconSize, Math.max(iconLeft, Math.min(iconRight - iconSize, r.right - iconSize / 2))));
+      const iy = Math.max(screenTop, Math.min(screenBottom - iconSize, Math.max(iconTop, Math.min(iconBottom - iconSize, direction === 'above' ? aboveIcon : belowIcon))));
       const popupWidth = popup.getBoundingClientRect().width;
-      let x = Math.max(left, Math.min(right - popupWidth, ix + ICON_SIZE - popupWidth));
-      const y = Math.max(top, Math.min(bottom - height, direction === 'above' ? iy - POPUP_GAP - height : iy + ICON_SIZE + POPUP_GAP));
+      let x = Math.max(left, Math.min(right - popupWidth, ix + iconSize - popupWidth));
+      const y = Math.max(top, Math.min(bottom - height, direction === 'above' ? iy - POPUP_GAP - height : iy + iconSize + POPUP_GAP));
       // In the viewport-clamped fallback, keep the card beside the icon if
       // necessary instead of covering the trigger with the larger card.
-      if (y < iy + ICON_SIZE && y + height > iy) {
+      if (y < iy + iconSize && y + height > iy) {
         if (ix - POPUP_GAP - popupWidth >= left) x = ix - POPUP_GAP - popupWidth;
-        else if (ix + ICON_SIZE + POPUP_GAP + popupWidth <= right) x = ix + ICON_SIZE + POPUP_GAP;
+        else if (ix + iconSize + POPUP_GAP + popupWidth <= right) x = ix + iconSize + POPUP_GAP;
       }
       icon.style.left = `${ix}px`;
       icon.style.top = `${iy}px`;
@@ -106,18 +116,18 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       popup.style.visibility = showPopup && (visible || mode !== 'auto') ? 'visible' : 'hidden';
       const bridge = bridgeRef.current;
       if (bridge) {
-        const beside = y < iy + ICON_SIZE && y + height > iy && (x + popupWidth <= ix || x >= ix + ICON_SIZE);
+        const beside = y < iy + iconSize && y + height > iy && (x + popupWidth <= ix || x >= ix + iconSize);
         if (beside) {
-          const edge = x + popupWidth <= ix ? x + popupWidth : ix + ICON_SIZE;
+          const edge = x + popupWidth <= ix ? x + popupWidth : ix + iconSize;
           bridge.style.left = `${edge}px`;
           bridge.style.top = `${Math.max(y, iy)}px`;
           bridge.style.width = `${Math.max(0, x + popupWidth <= ix ? ix - edge : x - edge)}px`;
-          bridge.style.height = `${Math.max(0, Math.min(y + height, iy + ICON_SIZE) - Math.max(y, iy))}px`;
+          bridge.style.height = `${Math.max(0, Math.min(y + height, iy + iconSize) - Math.max(y, iy))}px`;
         } else {
           bridge.style.left = `${x}px`;
-          bridge.style.top = `${direction === 'above' ? y + height : iy + ICON_SIZE}px`;
+          bridge.style.top = `${direction === 'above' ? y + height : iy + iconSize}px`;
           bridge.style.width = `${popupWidth}px`;
-          bridge.style.height = `${Math.max(0, direction === 'above' ? iy - y - height : y - iy - ICON_SIZE)}px`;
+          bridge.style.height = `${Math.max(0, direction === 'above' ? iy - y - height : y - iy - iconSize)}px`;
         }
         bridge.style.visibility = showPopup && visible ? 'visible' : 'hidden';
       }
@@ -140,7 +150,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     }
     const mutation = new MutationObserver(position);
     const wrapper = anchor.closest('[data-scale]');
-    if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale'] });
+    if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
     mutation.observe(anchor, { attributes: true, attributeFilter: ['style'] });
     if (popupRef.current) mutation.observe(popupRef.current, { childList: true, characterData: true, subtree: true });
     window.addEventListener('scroll', position, true);

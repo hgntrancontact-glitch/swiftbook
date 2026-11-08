@@ -1,5 +1,5 @@
 import { canvasViewportTransform } from './pageCoordinates';
-import type { SelectionLine } from './selectionLines';
+import { rasterSelectionLines, type SelectionLine } from './selectionLines';
 import type { Worker } from 'tesseract.js';
 
 // One lazy local worker. No document/image bytes leave the browser. The queue
@@ -44,14 +44,25 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
     const { data } = await engine.recognize(image, { rotateAuto: false, rotateRadians: 0 }, { blocks: true, text: true });
     const lines: SelectionLine[] = [];
     for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
-      if (!line.text.trim() || line.confidence < 35) continue;
+      if (!line.text.trim()) continue;
       const { x0, y0, x1, y1 } = line.bbox;
-      const glyphs = line.words.flatMap(word => word.symbols.map(symbol => ({
+      const glyphs = line.words.flatMap((word,index) => [...(index ? [{x:line.words[index-1].bbox.x1/image.width,right:word.bbox.x0/image.width,text:" "}] : []), ...word.symbols.map(symbol => ({
         x: symbol.bbox.x0 / image.width, right: symbol.bbox.x1 / image.width, text: symbol.text,
-      })));
-      lines.push({ x: x0 / image.width, y: y0 / image.height, width: (x1 - x0) / image.width, height: (y1 - y0) / image.height, glyphs });
+      }))]);
+      lines.push({ x: x0 / image.width, y: y0 / image.height, width: (x1 - x0) / image.width, height: (y1 - y0) / image.height, glyphs, source: 'ocr', textReliable: line.confidence >= 35, aspect: image.width / image.height });
     }
-    return lines.sort((a, b) => a.y - b.y || a.x - b.x);
+    const heights=lines.map(l=>l.height).sort((a,b)=>a-b);
+    const height=heights[Math.floor(heights.length/2)] || 0.015;
+    // Recognition confidence is not a mask for what is selectable. Missing
+    // OCR rows retain measured ink geometry, with explicitly unknown text.
+    for(const x of [0.25,0.5,0.75]) for(const visual of rasterSelectionLines(image,x,0.5,height)) {
+      if(!lines.some(l=> {
+        const ox=Math.min(l.x+l.width,visual.x+visual.width)-Math.max(l.x,visual.x);
+        const oy=Math.min(l.y+l.height,visual.y+visual.height)-Math.max(l.y,visual.y);
+        return ox>=Math.min(l.width,visual.width)*0.6 && oy>=Math.min(l.height,visual.height)*0.5;
+      })) lines.push(visual);
+    }
+    return lines.sort((a,b)=>a.y-b.y || a.x-b.x);
   }).catch(error => { cache!.delete(page); console.warn('Could not recognize selection lines', error); return []; }).finally(() => { image.width = image.height = 0; });
   queue = pending;
   cache.set(page, pending);
