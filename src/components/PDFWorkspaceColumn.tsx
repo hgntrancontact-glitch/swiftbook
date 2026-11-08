@@ -14,7 +14,7 @@ import {
 } from '../types';
 import { BookSpreadView } from './BookSpreadView';
 import { PDFPageView, pageDimensionCache } from './PDFPageView';
-import { fitPageScale, viewportPages, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
+import { fitPageScale, viewportPages, horizontalPanShift, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
 import { ContinuousView } from './ContinuousView';
 import { ChevronLeft, ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
 
@@ -184,6 +184,25 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     panRef.current = { x: 0, y: 0 };
     if (wrapperRef.current) wrapperRef.current.style.translate = '';
   };
+  const panHorizontally = (delta: number) => {
+    const container = containerRef.current;
+    const wrapper = wrapperRef.current;
+    if (!container || !wrapper) return false;
+    const style = getComputedStyle(container);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const viewportLeft = container.getBoundingClientRect().left + container.clientLeft + paddingLeft;
+    const viewportWidth = container.clientWidth - paddingLeft - paddingRight;
+    const rect = wrapper.getBoundingClientRect();
+    const shift = horizontalPanShift(rect.left, rect.width, viewportLeft, viewportWidth, delta);
+    // Consolidate native horizontal scroll and the zoom translation into one
+    // bounded offset. This keeps both edges reachable even if native overflow
+    // excludes a translated part of the page. Vertical scrolling is untouched.
+    panRef.current.x += shift - container.scrollLeft;
+    container.scrollLeft = 0;
+    wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
+    return rect.width > viewportWidth + 1;
+  };
   const captureAnchor = (clientX: number, clientY: number): Anchor | null => {
     const container = containerRef.current;
     if (!container) return null;
@@ -231,6 +250,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       panRef.current.x += container.scrollLeft - oldX - dx;
       panRef.current.y += container.scrollTop - oldY - dy;
       wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
+      panHorizontally(0);
     }
   };
   const alignCurrentPage = () => {
@@ -292,6 +312,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       else if (anchor) restoreAnchor(anchor);
       releaseGesture();
     }
+    if (!gestureActiveRef.current && !pendingCommitRef.current) panHorizontally(0);
     previousLayoutRef.current = { key: resetKey, baseScale, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs };
   }, [resetKey, baseScale, doc.scale, doc.zoomRevision, doc.currentPage, totalVisibleDocs]);
 
@@ -356,7 +377,22 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       }
     };
     const wheel = (event: WheelEvent) => {
-      if (!event.ctrlKey) return;
+      if (!event.ctrlKey) {
+        if (event.metaKey) return;
+        const horizontal = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+        if (!horizontal) return;
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientWidth : 1;
+        if (!panHorizontally(horizontal * unit)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        // Cancelling the horizontal default also cancels its diagonal Y delta.
+        // Preserve that component without converting ordinary scroll to zoom.
+        if (!event.shiftKey && event.deltaY) {
+          const verticalUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
+          container.scrollTop += event.deltaY * verticalUnit;
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (!gestureActiveRef.current) {
@@ -503,19 +539,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
           padding: doc.viewMode === 'continuous' ? '16px 24px' : `24px 24px ${safeBottomInset}px`,
           overflowAnchor: 'none',
           scrollBehavior: 'auto',
-        }}
-        onWheelCapture={(e) => {
-          if (e.ctrlKey || e.metaKey) return;
-          const viewport = e.currentTarget;
-          const hasHorizontalOverflow = viewport.scrollWidth > viewport.clientWidth + 1;
-          const horizontalDelta = e.deltaX || (e.shiftKey ? e.deltaY : 0);
-          if (!hasHorizontalOverflow || horizontalDelta === 0) return;
-
-          e.stopPropagation();
-          if (e.shiftKey && e.deltaX === 0) {
-            e.preventDefault();
-            viewport.scrollLeft += e.deltaY;
-          }
         }}
         onPointerDownCapture={handleActivateThisColumn}
         onMouseDownCapture={handleActivateThisColumn}

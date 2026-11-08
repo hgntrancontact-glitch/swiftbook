@@ -6,6 +6,15 @@ export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 50;
 export type PageSize = { width: number; height: number };
 
+// Client-space movement, including any translation left by cursor-anchored
+// zoom. Native scrollWidth cannot describe content translated past the left edge.
+export function horizontalPanShift(left: number, width: number, viewportLeft: number, viewportWidth: number, delta: number): number {
+  if (width <= viewportWidth + 1) return viewportLeft + (viewportWidth - width) / 2 - left;
+  const minimum = viewportLeft + viewportWidth - left - width;
+  const maximum = viewportLeft - left;
+  return Math.max(minimum, Math.min(maximum, -delta));
+}
+
 export function viewportPages(mode: ViewMode, currentPage: number, totalPages: number): number[] {
   if (mode !== 'double') return [currentPage];
   const left = currentPage % 2 ? currentPage : currentPage - 1;
