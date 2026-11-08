@@ -44,8 +44,8 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const body = popup.querySelector<HTMLElement>('[data-highlight-note-body]');
       const header = popup.querySelector<HTMLElement>('[data-highlight-note-header]');
       const naturalHeight = body && header ? body.scrollHeight + header.getBoundingClientRect().height + 26 : popup.scrollHeight;
-      const aboveIcon = r.top - 24;
-      const belowIcon = r.bottom + 4;
+      const aboveIcon = r.top - 21;
+      const belowIcon = r.bottom + 1;
       const aboveSpace = aboveIcon - 6 - top;
       const belowSpace = bottom - belowIcon - 20 - 6;
       let direction = directionRef.current;
