@@ -9,10 +9,12 @@ export type PageSize = { width: number; height: number };
 // Client-space movement, including any translation left by cursor-anchored
 // zoom. Native scrollWidth cannot describe content translated past the left edge.
 export function horizontalPanShift(left: number, width: number, viewportLeft: number, viewportWidth: number, delta: number): number {
-  if (width <= viewportWidth + 1) return viewportLeft + (viewportWidth - width) / 2 - left;
-  const minimum = viewportLeft + viewportWidth - left - width;
-  const maximum = viewportLeft - left;
-  return Math.max(minimum, Math.min(maximum, -delta));
+  const center = viewportLeft + (viewportWidth - width) / 2;
+  // Pinch may deliberately leave content off-centre to preserve the cursor.
+  // A wheel moves back from that position gradually; it never snaps to a bound.
+  const minimum = width <= viewportWidth + 1 ? Math.min(left, center) : Math.min(left, viewportLeft + viewportWidth - width);
+  const maximum = width <= viewportWidth + 1 ? Math.max(left, center) : Math.max(left, viewportLeft);
+  return Math.max(minimum, Math.min(maximum, left - delta)) - left;
 }
 
 export function viewportPages(mode: ViewMode, currentPage: number, totalPages: number): number[] {

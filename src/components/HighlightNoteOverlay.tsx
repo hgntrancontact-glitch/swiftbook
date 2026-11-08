@@ -37,9 +37,13 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const position = () => {
       const r = anchor.getBoundingClientRect();
       const wrapper = anchor.closest<HTMLElement>('[data-user-zoom]');
-      const userZoom = Number(wrapper?.dataset.userZoom || 1) * (Number(wrapper?.style.getPropertyValue('--pdf-live-zoom')) || 1);
-      const factor = 1 + 0.16 * Math.tanh(0.65 * Math.log(Math.max(0.2, Math.min(50,userZoom))));
+      const page=anchor.closest<HTMLElement>('[data-page-container="true"]');
+      const layoutWidth=page ? parseFloat(page.style.width) : 0;
+      const liveRatio=page && layoutWidth ? page.getBoundingClientRect().width/layoutWidth : 1;
+      const userZoom = Number(wrapper?.dataset.userZoom || 1) * liveRatio;
+      const factor = 1 + 0.08 * Math.tanh(Math.log(Math.max(0.2, Math.min(50,userZoom))));
       const iconSize = ICON_SIZE * factor;
+      if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor);
       icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize}px`;
       icon.style.borderWidth = `${2*factor}px`;
       const glyph = icon.querySelector('svg');
@@ -64,6 +68,11 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const iconLeft = Math.max(screenLeft, (viewport?.left || 0) + 4);
       const iconRight = Math.min(screenRight, (viewport?.right || window.innerWidth) - 4);
       const visible = r.bottom > iconTop && r.top < iconBottom && r.right > iconLeft && r.left < iconRight;
+      if(!visible && !showPopup) {
+        icon.style.visibility='hidden';popup.style.visibility='hidden';
+        if(bridgeRef.current) bridgeRef.current.style.visibility='hidden';
+        return;
+      }
       const cardWidth = Math.max(1, Math.min(POPUP_WIDTH * factor, screenRight - screenLeft));
       let top = iconTop, bottom = iconBottom, left = iconLeft, right = iconRight;
       // A partly visible column may provide position bounds, but cannot change
@@ -141,7 +150,9 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     };
     const root = rootRef.current;
     root?.addEventListener('wheel', wheel, { passive: false });
-    const resize = new ResizeObserver(position);
+    let frame=0;
+    const schedule=()=> {if(!frame) frame=requestAnimationFrame(()=>{frame=0;position();});};
+    const resize = new ResizeObserver(schedule);
     resize.observe(anchor);
     if (popupRef.current) {
       resize.observe(popupRef.current);
@@ -154,14 +165,15 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     mutation.observe(anchor, { attributes: true, attributeFilter: ['style'] });
     if (popupRef.current) mutation.observe(popupRef.current, { childList: true, characterData: true, subtree: true });
     window.addEventListener('scroll', position, true);
-    window.addEventListener('resize', position);
+    window.addEventListener('resize', schedule);
     position();
     return () => {
       root?.removeEventListener('wheel', wheel);
+      cancelAnimationFrame(frame);
       resize.disconnect();
       mutation.disconnect();
       window.removeEventListener('scroll', position, true);
-      window.removeEventListener('resize', position);
+      window.removeEventListener('resize', schedule);
     };
   }, [anchorId, scopeId, mode, showPopup]);
 

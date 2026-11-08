@@ -42,6 +42,9 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
     }
     if (!isRelevant()) { cache!.delete(page); return []; }
     const { data } = await engine.recognize(image, { rotateAuto: false, rotateRadians: 0 }, { blocks: true, text: true });
+    // Recognition may finish after another pinch/page change has started.
+    // Do not run the pixel-analysis pass on the input-critical thread then.
+    if (!isRelevant()) { cache!.delete(page); return []; }
     const lines: SelectionLine[] = [];
     for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
       if (!line.text.trim()) continue;
@@ -53,16 +56,32 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
     }
     const heights=lines.map(l=>l.height).sort((a,b)=>a-b);
     const height=heights[Math.floor(heights.length/2)] || 0.015;
-    // Recognition confidence is not a mask for what is selectable. Missing
-    // OCR rows retain measured ink geometry, with explicitly unknown text.
-    for(const x of [0.25,0.5,0.75]) for(const visual of rasterSelectionLines(image,x,0.5,height)) {
-      if(!lines.some(l=> {
-        const ox=Math.min(l.x+l.width,visual.x+visual.width)-Math.max(l.x,visual.x);
-        const oy=Math.min(l.y+l.height,visual.y+visual.height)-Math.max(l.y,visual.y);
-        return ox>=Math.min(l.width,visual.width)*0.6 && oy>=Math.min(l.height,visual.height)*0.5;
-      })) lines.push(visual);
+    // Ink geometry decides the line bounds, recognition supplies its text.
+    // OCR line boxes can contain a detached margin speck or several cards.
+    const visual: SelectionLine[]=[];
+    for(const x of [0.25,0.5,0.75]) for(const band of rasterSelectionLines(image,x,0.5,height,true)) {
+      if(!visual.some(v=>Math.abs(v.x-band.x)<0.002 && Math.abs(v.y-band.y)<0.002 && Math.abs(v.width-band.width)<0.002)) visual.push(band);
     }
-    return lines.sort((a,b)=>a.y-b.y || a.x-b.x);
+    const refined: SelectionLine[]=[];
+    for(const line of lines) {
+      const bands=visual.filter(v=> {
+        const oy=Math.min(v.y+v.height,line.y+line.height)-Math.max(v.y,line.y);
+        const ox=Math.min(v.x+v.width,line.x+line.width)-Math.max(v.x,line.x);
+        return oy>=Math.min(v.height,line.height)*0.55 && ox>=Math.min(v.width,line.width)*0.5;
+      });
+      if(!bands.length) {refined.push(line);continue;}
+      for(const band of bands) {
+        const glyphs=line.glyphs?.filter(g=>(g.x+g.right)/2>=band.x-0.001 && (g.x+g.right)/2<=band.x+band.width+0.001);
+        if(!glyphs?.some(g=>/[\p{L}\p{N}]/u.test(g.text))) continue;
+        refined.push({...line,...band,source:'ocr',glyphs});
+      }
+    }
+    for(const band of visual) if(!refined.some(l=> {
+      const oy=Math.min(l.y+l.height,band.y+band.height)-Math.max(l.y,band.y);
+      const ox=Math.min(l.x+l.width,band.x+band.width)-Math.max(l.x,band.x);
+      return oy>=Math.min(l.height,band.height)*0.5 && ox>=Math.min(l.width,band.width)*0.6;
+    })) refined.push(band);
+    return refined.sort((a,b)=>a.y-b.y || a.x-b.x);
   }).catch(error => { cache!.delete(page); console.warn('Could not recognize selection lines', error); return []; }).finally(() => { image.width = image.height = 0; });
   queue = pending;
   cache.set(page, pending);

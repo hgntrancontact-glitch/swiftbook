@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { horizontalPanShift } from '../src/utils/pdfViewport';
 
-test('a fitting page stays centered regardless of wheel delta', () => {
-  for (const delta of [-5000,0,5000]) assert.equal(horizontalPanShift(100,600,24,1392,delta),320);
+test('a fitting page moves gradually toward centre only on a wheel', () => {
+  assert.equal(horizontalPanShift(100,600,24,1392,0),0);
+  assert.equal(horizontalPanShift(100,600,24,1392,-30),30);
+  assert.equal(horizontalPanShift(100,600,24,1392,30),0);
+  assert.equal(horizontalPanShift(100,600,24,1392,-5000),320);
 });
 
 test('a page translated outside native scroll bounds can reach both edges', () => {
@@ -21,7 +24,8 @@ test('pan is linear inside the bounds and stops at each edge', () => {
   assert.equal(horizontalPanShift(24+1392-1800,1800,24,1392,30),0);
 });
 
-test('resizing or zooming back to fit corrects an old offset', () => {
-  assert.equal(horizontalPanShift(-900,1000,24,1392,0),1120);
-  assert.equal(horizontalPanShift(-900,1800,24,1392,0),516);
+test('a cursor-anchored offset is not snapped when a gesture ends', () => {
+  assert.equal(horizontalPanShift(-900,1000,24,1392,0),0);
+  assert.equal(horizontalPanShift(-900,1800,24,1392,0),0);
+  assert.equal(horizontalPanShift(-900,1800,24,1392,-30),30);
 });

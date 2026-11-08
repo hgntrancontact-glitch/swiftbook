@@ -226,9 +226,35 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
       if (!ink[i] && start >= 0) {
         const height = (i - start) / sample.height * (bottom - top);
         if (i-start>=2 && height<fallbackHeight*2.5) {
-          let inkLeft=to,inkRight=from;
-          for(let row=start;row<i;row++) for(let col=from;col<to;col++) if(darkAt(row,col)) {inkLeft=Math.min(inkLeft,col);inkRight=Math.max(inkRight,col+1);}
-          if(inkRight>inkLeft) lines.push({x:inkLeft/sample.width,y:start/sample.height,width:(inkRight-inkLeft)/sample.width,height,source:'visual',aspect:canvas.width/canvas.height});
+          let components: {left:number;right:number;count:number}[]=[];
+          for(let col=from;col<to;col++) {
+            let count=0;
+            for(let row=start;row<i;row++) if(darkAt(row,col)) count++;
+            if(!count) continue;
+            const previous=components.at(-1);
+            if(previous && col-previous.right <= 1) {previous.right=col+1;previous.count+=count;}
+            else components.push({left:col,right:col+1,count});
+          }
+          const major=components.filter(c=>c.count>=(i-start)*0.6);
+          if(major.length) components=components.filter(c=>c.count>=(i-start)*0.6
+            || (c.right>=major[0].left-(i-start)*0.75 && c.left<=major.at(-1)!.right+(i-start)*0.75));
+          const occupied: typeof components=[];
+          for(const component of components) {
+            const previous=occupied.at(-1);
+            if(previous && component.left-previous.right<=Math.max(2,(i-start)*2)) {previous.right=component.right;previous.count+=component.count;}
+            else occupied.push({...component});
+          }
+          // A distant speck, watermark or neighbouring card is not the left
+          // edge of this line. Keep disconnected ink runs as separate boxes.
+          for(const chunk of occupied) if(chunk.count>=Math.max(6,(i-start)*0.7)) {
+            let inkTop=i,inkBottom=start;
+            for(let row=start;row<i;row++) {
+              let count=0;
+              for(let col=chunk.left;col<chunk.right;col++) if(darkAt(row,col)) count++;
+              if(count>=Math.max(2,(chunk.right-chunk.left)*0.005)) {inkTop=Math.min(inkTop,row);inkBottom=Math.max(inkBottom,row+1);}
+            }
+            if(inkBottom>inkTop) lines.push({x:chunk.left/sample.width,y:inkTop/sample.height,width:(chunk.right-chunk.left)/sample.width,height:(inkBottom-inkTop)/sample.height,source:'visual',aspect:canvas.width/canvas.height});
+          }
         }
         start = -1;
       }
@@ -237,13 +263,14 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
     for (const line of lines) {
       const previous = merged.at(-1);
       const gap = previous ? line.y - previous.y - previous.height : Infinity;
-      if (previous && Math.min(previous.height, line.height) < Math.max(previous.height, line.height) * 0.45
+      if (previous && Math.min(previous.x+previous.width,line.x+line.width)-Math.max(previous.x,line.x)>Math.min(previous.width,line.width)*0.5
+        && Math.min(previous.height, line.height) < Math.max(previous.height, line.height) * 0.45
         && gap < Math.max(previous.height, line.height) * 0.4
         && line.y + line.height - previous.y < Math.max(previous.height, line.height) * 1.6) {
         previous.height = line.y + line.height - previous.y;
       } else merged.push({ ...line });
     }
-    return merged;
+    return merged.filter(line=>line.height>=fallbackHeight*0.4 && line.width>=line.height/(line.aspect || 0.75)*0.4);
   } catch { return []; }
 }
 
@@ -265,7 +292,7 @@ export function selectionRegions(lines: SelectionLine[]): SelectionLine[][] {
       const cut = (edges[i] + edges[i-1]) / 2;
       const a = items.filter(l => l.x + l.width <= cut), b = items.filter(l => l.x >= cut);
       const spans = items.filter(l => l.x < cut && l.x + l.width > cut);
-      if (a.length<2 || b.length<2 || spans.some(l => l.width < (right-left) * 0.72)) continue;
+      if (!a.length || !b.length || ((a.length<2 || b.length<2) && gap<height*4) || spans.some(l => l.width < (right-left) * 0.72)) continue;
       // A gap between unrelated paragraphs at different heights is not a column.
       const overlap = Math.min(Math.max(...a.map(l => l.y+l.height)), Math.max(...b.map(l => l.y+l.height)))
         - Math.max(Math.min(...a.map(l => l.y)), Math.min(...b.map(l => l.y)));
@@ -273,7 +300,25 @@ export function selectionRegions(lines: SelectionLine[]): SelectionLine[][] {
       const score = gap * Math.min(a.length, b.length) / (1 + spans.length);
       if (!best || score > best.score) best = { cut, score, a, b, spans };
     }
-    if (!best) return [items];
+    if (!best) {
+      const pairedRows = new Set<number>();
+      const byY = [...items].sort((a,b)=>a.y-b.y || a.x-b.x);
+      for(let i=0;i<byY.length;i++) for(let j=i+1;j<byY.length;j++) {
+        const a=byY[i],b=byY[j];
+        if(b.y>a.y+Math.max(a.height,b.height)*0.5) break;
+        const gap=Math.max(a.x,b.x)-Math.min(a.x+a.width,b.x+b.width);
+        if(gap>height*0.9) pairedRows.add(Math.round((a.y+a.height/2)/Math.max(a.height,0.0001)));
+      }
+      if(pairedRows.size<2) return [items];
+      let bottom=byY[0].y+byY[0].height, cut=-1, widest=0;
+      for(let i=1;i<byY.length;i++) {
+        const gap=byY[i].y-bottom;
+        if(gap>widest && gap>Math.min(byY[i].height,byY[i-1].height)*0.65) {widest=gap;cut=i;}
+        bottom=Math.max(bottom,byY[i].y+byY[i].height);
+      }
+      if(cut<0) return [items];
+      return [...partition(byY.slice(0,cut),depth+1),...partition(byY.slice(cut),depth+1)];
+    }
     return [...partition(best.a, depth+1), ...partition(best.b, depth+1), ...(best.spans.length ? [best.spans] : [])];
   };
   // Tagged table cells are independent selection regions even with narrow
@@ -289,7 +334,7 @@ export function selectionRegions(lines: SelectionLine[]): SelectionLine[][] {
     // Trust tags only when their order agrees with the actual progression of
     // this spatial lane. Corrupt tagging must not send a drag to another area.
     const tagged = geometric.every(l => l.order !== undefined);
-    if (tagged && geometric.every((l,i) => !i || l.order! >= geometric[i-1].order!)) return [...geometric].sort((a,b) => a.order!-b.order! || a.x-b.x);
+    if (tagged && geometric.every((l,i) => !i || l.order! >= geometric[i-1].order!)) return [...geometric].sort((a,b) => a.order!-b.order! || a.y-b.y || a.x-b.x);
     return geometric;
   });
   result.sort((a,b) => {
@@ -304,7 +349,10 @@ export function selectionRegions(lines: SelectionLine[]): SelectionLine[][] {
 
 export function beginLineGesture(lines: SelectionLine[], x: number, y: number, fallbackHeight: number): LineGesture {
   const candidates = lines.filter(line => x >= line.x - 0.012 && x <= line.x + line.width + 0.012);
-  const nearest = candidates.reduce<SelectionLine | undefined>((best, line) => !best || Math.abs(y-line.y-line.height/2) < Math.abs(y-best.y-best.height/2) ? line : best, undefined);
+  const nativeHit=candidates.filter(line=>line.source==='pdf' && y>=line.y && y<=line.y+line.height);
+  const readableHit=candidates.filter(line=>line.glyphs?.length && y>=line.y && y<=line.y+line.height);
+  const preferred=nativeHit.length?nativeHit:readableHit.length?readableHit:candidates;
+  const nearest = preferred.reduce<SelectionLine | undefined>((best, line) => !best || Math.abs(y-line.y-line.height/2) < Math.abs(y-best.y-best.height/2) ? line : best, undefined);
   if (nearest && Math.abs(y-nearest.y-nearest.height/2) <= nearest.height * 0.85) {
     const region = selectionRegions(lines).find(region => region.includes(nearest))!;
     const start = region.indexOf(nearest);
@@ -326,6 +374,25 @@ export function moveLineGesture(gesture: LineGesture, y: number, x?: number): vo
     gesture.region = active;
     // Only explicitly hit regions participate; intervening, unrelated blocks
     // are not selected because of adjacent IDs or proximity.
+    if(!active.includes(gesture.origin)) {
+      const hit=active.reduce((a,b)=>Math.abs(y-a.y-a.height/2)<Math.abs(y-b.y-b.height/2)?a:b);
+      const left=Math.max(gesture.origin.x,hit.x),right=Math.min(gesture.origin.x+gesture.origin.width,hit.x+hit.width);
+      if(right-left>Math.min(gesture.origin.width,hit.width)*0.5) {
+        // Short/wrapped rows and full-width headings can belong to different
+        // layout regions while remaining in one vertical reading flow. Select
+        // only their geometric interval, never a suffix of the entire page.
+        const top=Math.min(gesture.origin.y+gesture.origin.height/2,hit.y+hit.height/2);
+        const bottom=Math.max(gesture.origin.y+gesture.origin.height/2,hit.y+hit.height/2);
+        const route=gesture.all.filter(line=> {
+          const center=line.y+line.height/2;
+          const overlap=Math.min(right,line.x+line.width)-Math.max(left,line.x);
+          return center>=top-0.00001 && center<=bottom+0.00001 && overlap>=Math.min(right-left,line.width)*0.5;
+        }).sort((a,b)=>a.y-b.y || a.x-b.x);
+        if(route.includes(gesture.origin) && route.includes(hit)) {
+          gesture.lines=route;gesture.start=route.indexOf(gesture.origin);gesture.current=route.indexOf(hit);return;
+        }
+      }
+    }
     const next = active.includes(gesture.origin) ? originRegion
       : regions.indexOf(originRegion)<regions.indexOf(active) ? [...originRegion,...active] : [...active,...originRegion];
     if (next.length!==gesture.lines.length || next.some((l,i)=>l!==gesture.lines[i])) {

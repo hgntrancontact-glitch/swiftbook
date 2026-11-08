@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { beginLineGesture, moveLineGesture, lineSelectionRects, selectedLineText, selectionRegions, selectionLineCovered, type SelectionLine } from '../src/utils/selectionLines';
@@ -90,4 +91,35 @@ test('a fallback row spanning known native columns cannot bridge their gutter', 
   const native=[line(0.05,0.2,0.2),line(0.5,0.2,0.2)];
   assert.equal(selectionLineCovered({x:0.05,y:0.2,width:0.65,height:0.015,source:'visual'},native),true);
   assert.equal(selectionLineCovered({x:0.1,y:0.4,width:0.6,height:0.015,source:'visual'},native),false);
+});
+
+
+for (const fixture of JSON.parse(readFileSync(new URL('./selectionCards.fixture.json',import.meta.url),'utf8'))) {
+  test(`independent cards with heading/footer, measured PDF page ${fixture.page}`, () => {
+    const lines: SelectionLine[]=fixture.lines;
+    const first=lines[fixture.target[0]],last=lines[fixture.target.at(-1)];
+    const regions=selectionRegions(lines);
+    const region=regions.find(r=>r.includes(first))!;
+    assert.ok(fixture.target.every(i=>region.includes(lines[i])));
+    const gesture=beginLineGesture(lines,first.x+first.width*0.1,first.y+first.height/2,0.02);
+    moveLineGesture(gesture,last.y+last.height/2,last.x+last.width*.9);
+    const selected=lineSelectionRects(gesture,first.x+first.width*.1,last.x+last.width*.9);
+    assert.equal(selected.length,fixture.target.length);
+    assert.ok(selected.every(l=>fixture.target.some(i=>Math.abs(lines[i].y-l.y)<0.00001)));
+  });
+}
+
+
+test('a wrapped scan row cannot select the rest of the page when its region changes', () => {
+ const fixture=JSON.parse(readFileSync(new URL('./selectionScan.fixture.json',import.meta.url),'utf8'));
+ const lines:SelectionLine[]=fixture.lines,[a,b]=fixture.target,first=lines[a],last=lines[b];
+ for(const reverse of [false,true]) {
+  const start=reverse?last:first,end=reverse?first:last;
+  const sx=start.x+start.width*(reverse?.8:.1),ex=end.x+end.width*(reverse?.1:.8);
+  const gesture=beginLineGesture(lines,sx,start.y+start.height/2,.02);
+  moveLineGesture(gesture,end.y+end.height/2,ex);
+  const rects=lineSelectionRects(gesture,sx,ex);
+  assert.equal(rects.length,2);
+  assert.ok(rects.every(l=>Math.abs(l.y-first.y)<.00001 || Math.abs(l.y-last.y)<.00001));
+ }
 });

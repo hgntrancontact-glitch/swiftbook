@@ -33,22 +33,29 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
 
   const linesRef = useRef<SelectionLine[]>([]);
   const loadedPageRef = useRef<{ doc: any; page: number } | null>(null);
+  const preparingRef = useRef<{doc:any;page:number} | null>(null);
+  const preparedRef = useRef<{doc:any;page:number} | null>(null);
   const gestureRef = useRef<LineGesture | null>(null);
   const draggedRef = useRef(false);
   const inputRef = useRef({ pdfDoc, pageNumber });
   inputRef.current = { pdfDoc, pageNumber };
   const prepareLines = () => {
     if (!isActive || !isNearViewport || !containerRef.current) return;
+    if(containerRef.current.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomGesture === 'true') return;
+    if([preparingRef.current,preparedRef.current].some(key=>key?.doc===pdfDoc && key.page===pageNumber)) return;
     const rect = containerRef.current.getBoundingClientRect();
     const viewport = containerRef.current.closest('.pdf-viewport-container')?.getBoundingClientRect();
     if (viewport && (rect.bottom <= viewport.top || rect.top >= viewport.bottom || rect.right <= viewport.left || rect.left >= viewport.right)) return;
+    const preparation={doc:pdfDoc,page:pageNumber};
+    preparingRef.current=preparation;
     const relevant = () => {
       const box = containerRef.current?.getBoundingClientRect();
       const view = containerRef.current?.closest('.pdf-viewport-container')?.getBoundingClientRect();
-      return inputRef.current.pdfDoc === pdfDoc && inputRef.current.pageNumber === pageNumber && !!box && !!view && box.bottom > view.top && box.top < view.bottom;
+      return inputRef.current.pdfDoc === pdfDoc && inputRef.current.pageNumber === pageNumber && containerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomGesture !== 'true' && !!box && !!view && box.bottom > view.top && box.top < view.bottom;
     };
     loadSelectionLines(pdfDoc, pageNumber).then(async lines => {
       if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
+      if(!relevant()) return;
       const nativeLines = lines;
       const page = containerRef.current?.closest('[data-page-container="true"]');
       const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
@@ -87,9 +94,16 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       }
       if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
       linesRef.current = lines; loadedPageRef.current = { doc: pdfDoc, page: pageNumber };
-    });
+      if(canvas && relevant()) preparedRef.current=preparation;
+    }).finally(()=> {if(preparingRef.current===preparation) preparingRef.current=null;});
   };
-  useEffect(() => { prepareLines(); }, [pdfDoc, pageNumber, isActive, isNearViewport]);
+  useEffect(() => {
+    prepareLines();
+    const viewport=containerRef.current?.closest('.pdf-viewport-container');
+    const finished=()=>prepareLines();
+    viewport?.addEventListener('pdf-zoom-end',finished);
+    return ()=>viewport?.removeEventListener('pdf-zoom-end',finished);
+  }, [pdfDoc, pageNumber, isActive, isNearViewport]);
 
   useEffect(() => {
     if (!isActive) {
@@ -309,7 +323,6 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
             e.stopPropagation();
             commitHighlight();
           }}
-          title="Nhấp đúp chuột phải (hoặc đúp chuột trái) để lưu Highlight. Nhấp chuột trái ra ngoài để hủy."
         >
           {pendingSelection.rects.map((r, i) => (
             <div

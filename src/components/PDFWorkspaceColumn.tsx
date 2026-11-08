@@ -201,7 +201,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     panRef.current.x += shift - container.scrollLeft;
     container.scrollLeft = 0;
     wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
-    return rect.width > viewportWidth + 1;
+    return rect.width > viewportWidth + 1 || Math.abs(rect.left + rect.width / 2 - viewportLeft - viewportWidth / 2) > 0.5;
   };
   const captureAnchor = (clientX: number, clientY: number): Anchor | null => {
     const container = containerRef.current;
@@ -250,7 +250,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       panRef.current.x += container.scrollLeft - oldX - dx;
       panRef.current.y += container.scrollTop - oldY - dy;
       wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
-      panHorizontally(0);
     }
   };
   const alignCurrentPage = () => {
@@ -312,7 +311,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       else if (anchor) restoreAnchor(anchor);
       releaseGesture();
     }
-    if (!gestureActiveRef.current && !pendingCommitRef.current) panHorizontally(0);
     previousLayoutRef.current = { key: resetKey, baseScale, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs };
   }, [resetKey, baseScale, doc.scale, doc.zoomRevision, doc.currentPage, totalVisibleDocs]);
 
