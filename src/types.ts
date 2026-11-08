@@ -5,6 +5,8 @@ export interface NormalizedRect {
   y: number;
   width: number;
   height: number;
+  /** Vertical change across a scanned text line, in the same units as y. */
+  rise?: number;
 }
 
 export interface HighlightAnnotation {

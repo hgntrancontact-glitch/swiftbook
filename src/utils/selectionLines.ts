@@ -1,5 +1,5 @@
 export interface SelectionGlyph { x: number; right: number; text: string }
-export interface SelectionLine { x: number; y: number; width: number; height: number; glyphs?: SelectionGlyph[]; source?: 'pdf' | 'ocr' | 'visual'; block?: string; cell?: string; order?: number; aspect?: number; textReliable?: boolean }
+export interface SelectionLine { x: number; y: number; width: number; height: number; rise?: number; glyphs?: SelectionGlyph[]; source?: 'pdf' | 'ocr' | 'visual'; block?: string; cell?: string; order?: number; aspect?: number; textReliable?: boolean }
 export interface LineGesture { lines: SelectionLine[]; start: number; current: number; textSelection: boolean; all?: SelectionLine[]; origin?: SelectionLine; region?: SelectionLine[] }
 const textLines = new WeakMap<object, Map<number, Promise<SelectionLine[]>>>();
 
@@ -163,7 +163,65 @@ export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<Sel
 
 // Visual geometry fills missing OCR rows. It does not invent recognized text.
 // Sample the full page so dragging beyond the initial rows cannot skip content.
-const rasterCache = new WeakMap<HTMLCanvasElement, { key: string; width: number; height: number; pixels: Uint8ClampedArray }>();
+const rasterCache = new WeakMap<HTMLCanvasElement, { key: string; width: number; height: number; pixels: Uint8ClampedArray; fits: Map<string,SelectionLine>; slopes:Map<string,number> }>();
+
+// Fit one straight baseline to ink, rather than treating the union of all
+// characters/dotted leaders as a horizontal box. Projection sharpness avoids
+// mistaking different ascender heights for a sloping line.
+export function fitInkSlope(points: {x:number;y:number}[], width: number): number {
+  if(width<80 || points.length<40) return 0;
+  const score=(slope:number)=> {
+    const rows=new Map<number,number>();
+    for(const p of points) {
+      const y=p.y-slope*p.x,base=Math.floor(y),part=y-base;
+      rows.set(base,(rows.get(base)||0)+1-part);
+      rows.set(base+1,(rows.get(base+1)||0)+part);
+    }
+    return [...rows.values()].reduce((n,v)=>n+v*v,0);
+  };
+  const flat=score(0);let best=flat,slope=0;
+  for(let s=-.024;s<=.0241;s+=.002) {const v=score(s);if(v>best){best=v;slope=s;}}
+  const coarse=slope;
+  for(let s=coarse-.002;s<=coarse+.0021;s+=.00025) {const v=score(s);if(v>best){best=v;slope=s;}}
+  return best>flat*1.025 && Math.abs(slope*width)>.8 ? slope : 0;
+}
+
+export function refineRasterLine(canvas: HTMLCanvasElement, line: SelectionLine): SelectionLine {
+  const image=rasterCache.get(canvas);
+  if(!image) return line;
+  const key=[line.x,line.y,line.width,line.height].join(':');
+  const fitted=image.fits.get(key);if(fitted) return {...line,...fitted};
+  const {width,height,pixels}=image;
+  const left=Math.max(0,Math.floor(line.x*width)),right=Math.min(width,Math.ceil((line.x+line.width)*width));
+  const top=Math.max(0,Math.floor(line.y*height)),bottom=Math.min(height,Math.ceil((line.y+line.height)*height));
+  const points:{x:number;y:number}[]=[];
+  for(let y=top;y<bottom;y++) for(let x=left;x<right;x+=2) {
+    const i=(y*width+x)*4;
+    if(pixels[i+3]>128 && pixels[i]*.299+pixels[i+1]*.587+pixels[i+2]*.114<175) points.push({x:x-left,y});
+  }
+  const slope=fitInkSlope(points,right-left);
+  if(!slope) {image.fits.set(key,line);return line;}
+  const rows=new Map<number,number>();
+  for(const p of points){const y=Math.round(p.y-slope*p.x);rows.set(y,(rows.get(y)||0)+1);}
+  const threshold=Math.max(2,...[...rows.values()].map(n=>n*.04));
+  const core=[...rows].filter(([,n])=>n>=threshold).sort((a,b)=>a[0]-b[0]);
+  const groups:{top:number;bottom:number;mass:number}[]=[];
+  for(const [y,n] of core) {
+    const previous=groups.at(-1);
+    if(previous && y-previous.bottom<=2){previous.bottom=y;previous.mass+=n;}
+    else groups.push({top:y,bottom:y,mass:n});
+  }
+  const main=groups.sort((a,b)=>b.mass-a.mass)[0];
+  // Faint watermark pixels or a sliver of an adjacent row must not inflate
+  // this row. Retain small diacritics close to its dominant ink band.
+  const occupied=[...rows].filter(([y,n])=>main && y>=main.top-3 && y<=main.bottom+3 && n>=2).map(([y])=>y);
+  if(!occupied.length) return line;
+  const rise=slope*(right-left)/height;
+  const y=(Math.min(...occupied)+Math.min(0,rise*height))/height;
+  const end=(Math.max(...occupied)+1+Math.max(0,rise*height))/height;
+  const result={...line,y,height:end-y,rise};
+  image.fits.set(key,result);return result;
+}
 export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: number, y: number, fallbackHeight: number, fullPage = false): SelectionLine[] {
   if (!canvas?.width || !canvas.height) return [];
   try {
@@ -178,14 +236,17 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
     let cached = rasterCache.get(canvas);
     if (!cached || cached.key !== cacheKey) {
     ctx.drawImage(canvas, left * canvas.width, top * canvas.height, (right - left) * canvas.width, (bottom - top) * canvas.height, 0, 0, sample.width, sample.height);
-    cached = {key:cacheKey,width:sample.width,height:sample.height,pixels:ctx.getImageData(0,0,sample.width,sample.height).data};
+    cached = {key:cacheKey,width:sample.width,height:sample.height,pixels:ctx.getImageData(0,0,sample.width,sample.height).data,fits:new Map(),slopes:new Map()};
     rasterCache.set(canvas,cached);
     }
     const pixels = cached.pixels;
-    const darkAt = (row: number, col: number) => {
+    const originalDarkAt = (row: number, col: number) => {
+      if(row<0 || row>=sample.height) return false;
       const i = (row * sample.width + col) * 4;
       return pixels[i + 3] > 128 && pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114 < 175;
     };
+    let pageSlope=0,mid=0;
+    const darkAt=(row:number,col:number)=>originalDarkAt(Math.round(row+pageSlope*(col-mid)),col);
     // Find the text column around the initial point. Sampling a whole column
     // gives the same glyph height when dragging forwards or backwards, even
     // when only one end of the sentence contains ascenders/descenders.
@@ -207,7 +268,9 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
         gapStart = -1;
       }
     }
-    const ink: boolean[] = [];
+    let ink: boolean[] = [];
+    const project=()=> {
+    const ink:boolean[]=[];
     for (let row = 0; row < sample.height; row++) {
       let count = 0, changes = 0, darkBefore = false;
       for (let col = from; col < to; col++) {
@@ -218,6 +281,22 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
       }
       ink.push(count >= Math.max(3, Math.min(10, (to - from) * 0.004)) && count < (to - from) * 0.65 && changes >= 4);
     }
+    return ink;
+    };
+    ink=project();
+    // Deskew the sampling grid before detecting rows. Otherwise the tail of
+    // one tilted line can touch the head of the next and become one tall band,
+    // dropping its short/indented words before per-line fitting even runs.
+    const slopeKey=`${from}:${to}`;
+    let slope=cached.slopes.get(slopeKey);
+    if(slope===undefined) {
+      const points:{x:number;y:number}[]=[];
+      for(let row=0;row<sample.height;row+=2) if(ink[row]) for(let col=from;col<to;col+=4)
+        if(originalDarkAt(row,col)) points.push({x:col-from,y:row});
+      slope=fitInkSlope(points,to-from);cached.slopes.set(slopeKey,slope);
+    }
+    pageSlope=slope;mid=(from+to)/2;
+    if(pageSlope) ink=project();
     for (let i = 1; i < ink.length - 1; i++) if (ink[i - 1] && ink[i + 1]) ink[i] = true;
     const lines: SelectionLine[] = [];
     let start = -1;
@@ -270,7 +349,11 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
         previous.height = line.y + line.height - previous.y;
       } else merged.push({ ...line });
     }
-    return merged.filter(line=>line.height>=fallbackHeight*0.4 && line.width>=line.height/(line.aspect || 0.75)*0.4);
+    return merged.filter(line=>line.height>=fallbackHeight*0.4 && line.width>=line.height/(line.aspect || 0.75)*0.4).map(line=> {
+      const rise=pageSlope*line.width*sample.width/sample.height;
+      const shift=pageSlope*(line.x*sample.width-mid)/sample.height;
+      return refineRasterLine(canvas,{...line,y:line.y+shift+Math.min(0,rise),height:line.height+Math.abs(rise),...(rise?{rise}:{})});
+    });
   } catch { return []; }
 }
 
@@ -448,8 +531,11 @@ export function lineSelectionRects(gesture: LineGesture, startX: number, endX: n
     const gapBefore=before ? Math.max(0,line.y-before.y-before.height) : line.height;
     const gapAfter=after ? Math.max(0,after.y-line.y-line.height) : line.height;
     const pad=Math.min(line.height*0.08,gapBefore/3,gapAfter/3);
-    const y=Math.max(0,line.y-pad),height=Math.min(1,line.y+line.height+pad)-y;
-    return right>x?[{...line,x,y,width:right-x,height,glyphs}]:[];
+    const rise=(line.rise || 0)*(right-x)/line.width;
+    const topAtStart=line.y+Math.max(0,-(line.rise || 0))+(line.rise || 0)*(x-line.x)/line.width;
+    const y=Math.max(0,topAtStart+Math.min(0,rise)-pad);
+    const height=Math.min(1,topAtStart+Math.max(0,rise)+line.height-Math.abs(line.rise || 0)+pad)-y;
+    return right>x?[{...line,x,y,width:right-x,height,...(line.rise ? {rise}:{}),glyphs}]:[];
   });
 }
 

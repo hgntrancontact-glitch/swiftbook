@@ -1,5 +1,5 @@
 import { canvasViewportTransform } from './pageCoordinates';
-import { rasterSelectionLines, type SelectionLine } from './selectionLines';
+import { rasterSelectionLines, refineRasterLine, type SelectionLine } from './selectionLines';
 import type { Worker } from 'tesseract.js';
 
 // One lazy local worker. No document/image bytes leave the browser. The queue
@@ -84,7 +84,8 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
       for(const band of groups) {
         const glyphs=line.glyphs?.filter(g=>(g.x+g.right)/2>=band.x-0.001 && (g.x+g.right)/2<=band.x+band.width+0.001);
         if(!glyphs?.some(g=>/[\p{L}\p{N}]/u.test(g.text))) continue;
-        refined.push({...line,...band,source:'ocr',glyphs});
+        const fitted=refineRasterLine(image,{...band,rise:undefined});
+        refined.push({...line,...fitted,source:'ocr',glyphs});
       }
     }
     for(const band of visual) if(!refined.some(l=> {

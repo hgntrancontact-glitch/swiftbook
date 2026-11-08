@@ -1,3 +1,4 @@
+import { highlightClip } from '../utils/highlightGeometry';
 import { loadOCRLines } from '../utils/selectionOCR';
 import React, { useRef, useState, useEffect } from 'react';
 import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, selectedLineText, selectionLineCovered, type LineGesture, type SelectionLine } from '../utils/selectionLines';
@@ -179,10 +180,10 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     return lineSelectionRects(gesture, p1.x, p2.x)
       .map(rect => {
         const x = Math.max(0, rect.x), y = Math.max(0, rect.y);
-        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: Math.min(1, rect.y + rect.height) - y };
+        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: Math.min(1, rect.y + rect.height) - y, ...(rect.rise ? {rise:rect.rise}: {}) };
       })
       .filter(rect => rect.height > 0 && rect.width * containerRef.current!.clientWidth > 2)
-      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100 }));
+      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100, ...(rect.rise ? {rise:rect.rise*100}: {}) }));
   };
 
   // Robust window mousemove and mouseup listeners during dragging
@@ -303,6 +304,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
               top: `${r.y}%`,
               width: `${r.width}%`,
               height: `${r.height}%`,
+              clipPath: highlightClip(r),
               backgroundColor: 'rgba(59, 130, 246, 0.3)',
               pointerEvents: 'none',
               zIndex: 50,
@@ -334,6 +336,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
                 top: `${r.y}%`,
                 width: `${r.width}%`,
                 height: `${r.height}%`,
+                clipPath: highlightClip(r),
                 backgroundColor: 'rgba(59, 130, 246, 0.35)',
                 // REMOVED border to satisfy user request!
                 zIndex: 45,

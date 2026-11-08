@@ -1,3 +1,4 @@
+import { highlightClip, highlightCorners } from '../utils/highlightGeometry';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import { HighlightNoteOverlay } from './HighlightNoteOverlay';
 import React, { useState, useRef, useEffect } from 'react';
@@ -181,6 +182,8 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
           <div
             key={`${isElevated ? 'elevated-' : 'base-'}${hl.id}-interactive-${idx}`}
             id={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${idx}`}
+            data-highlight-rise={rect.rise || 0}
+            data-highlight-height={rect.height}
             className={`absolute pointer-events-auto cursor-pointer select-none ${
               isSelected ? 'ring-2 ring-blue-500' : ''
             }`}
@@ -189,6 +192,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
               top: `${rect.y}%`,
               width: `${rect.width}%`,
               height: `${rect.height}%`,
+              clipPath: highlightClip(rect),
             }}
             onMouseEnter={() => {
               if (hl.note && activeHighlightId !== hl.id) openNotePreview(hl.id);
@@ -250,7 +254,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => e.stopPropagation()}
                   >
-                    <div className={`rounded-xl p-2.5 border flex flex-col min-h-0 ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
+                    <div className={`rounded-xl p-2 border flex flex-col min-h-0 ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
                       style={previewMode === 'transparent' ? { backgroundColor: 'rgba(255,255,255,0.16)' } : undefined}>
 
                     <div data-highlight-note-header className="flex items-center gap-1.5 shrink-0 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto">
@@ -425,12 +429,9 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             return (
               <g key={`hl-svg-${hl.id}`} opacity={0.42}>
                 {displayRects.map((rect, idx) => (
-                  <rect
+                  <polygon
                     key={`hl-rect-${hl.id}-${idx}`}
-                    x={rect.x}
-                    y={rect.y}
-                    width={rect.width}
-                    height={rect.height}
+                    points={highlightCorners(rect).map(p=>p.join(',')).join(' ')}
                     fill={colorConfig.hex}
                   />
                 ))}

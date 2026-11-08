@@ -1,3 +1,4 @@
+import { highlightCorners } from './highlightGeometry';
 import { canvasViewportTransform } from './pageCoordinates';
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
@@ -1263,7 +1264,11 @@ export async function renderPageWithAnnotations(
       const ry = (rect.y / 100) * height;
       const rw = (rect.width / 100) * width;
       const rh = (rect.height / 100) * height;
-      ctx.fillRect(rx, ry, rw, rh);
+      if(rect.rise) {
+        ctx.beginPath();
+        highlightCorners(rect).forEach(([x,y],i)=>{if(i)ctx.lineTo(x/100*width,y/100*height);else ctx.moveTo(x/100*width,y/100*height);});
+        ctx.closePath();ctx.fill();
+      } else ctx.fillRect(rx, ry, rw, rh);
     });
     ctx.restore();
   });
