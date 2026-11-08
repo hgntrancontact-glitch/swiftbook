@@ -1,3 +1,4 @@
+import { canvasViewportTransform } from './pageCoordinates';
 import type { SelectionLine } from './selectionLines';
 import type { Worker } from 'tesseract.js';
 
@@ -27,18 +28,20 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
     const engine = await worker;
     if (!isRelevant()) { cache!.delete(page); return []; }
     // OCR geometry must not depend on the zoom where the page was first read.
-    // A small on-screen canvas is re-rendered offscreen once at a useful size.
-    if (Math.max(image.width, image.height) < 1800 && 'getPage' in doc) {
+    // Use the same offscreen viewport whether the first gesture happens at
+    // 20% or 400%; backing-canvas rounding must not become page coordinates.
+    if ('getPage' in doc) {
       const pageProxy = await (doc as { getPage: (n: number) => Promise<any> }).getPage(page);
       const base = pageProxy.getViewport({ scale: 1 });
       const viewport = pageProxy.getViewport({ scale: 2200 / Math.max(base.width, base.height) });
       image.width = Math.ceil(viewport.width); image.height = Math.ceil(viewport.height);
-      const task = pageProxy.render({ canvasContext: image.getContext('2d'), viewport, background: '#fff' });
+      const task = pageProxy.render({ canvasContext: image.getContext('2d'), viewport, background: '#fff',
+        transform: canvasViewportTransform(viewport, image) });
       const check = setInterval(() => { if (!isRelevant()) task.cancel(); }, 100);
       try { await task.promise; } finally { clearInterval(check); }
     }
     if (!isRelevant()) { cache!.delete(page); return []; }
-    const { data } = await engine.recognize(image, {}, { blocks: true, text: true });
+    const { data } = await engine.recognize(image, { rotateAuto: false, rotateRadians: 0 }, { blocks: true, text: true });
     const lines: SelectionLine[] = [];
     for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
       if (!line.text.trim() || line.confidence < 35) continue;

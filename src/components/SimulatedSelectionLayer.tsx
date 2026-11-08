@@ -58,7 +58,16 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
         const canvas = [...(page?.querySelectorAll<HTMLCanvasElement>('canvas[data-rendered-scale]') || [])].find(canvas => getComputedStyle(canvas).visibility !== 'hidden' && getComputedStyle(canvas).opacity !== '0');
         if (canvas) {
           const recognized = await loadOCRLines(pdfDoc, pageNumber, canvas, relevant);
-          if (recognized.length) lines = recognized;
+          if (recognized.length) {
+            // OCR fills scanned regions; it must not replace a native PDF line
+            // with a different ink-height box after the worker finishes.
+            const native = lines;
+            lines = [...native, ...recognized.filter(ocr => !native.some(line => {
+              const overlapX = Math.min(line.x + line.width, ocr.x + ocr.width) - Math.max(line.x, ocr.x);
+              const overlapY = Math.min(line.y + line.height, ocr.y + ocr.height) - Math.max(line.y, ocr.y);
+              return overlapX >= ocr.width * 0.7 && overlapY >= Math.min(line.height, ocr.height) * 0.5;
+            }))].sort((a, b) => a.y - b.y || a.x - b.x);
+          }
         }
       }
       if (inputRef.current.pdfDoc !== pdfDoc || inputRef.current.pageNumber !== pageNumber) return;
@@ -130,7 +139,11 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     const gesture = gestureRef.current;
     if (!gesture || !containerRef.current) return [];
     return lineSelectionRects(gesture, p1.x, p2.x)
-      .filter(rect => rect.width * containerRef.current!.clientWidth > 2)
+      .map(rect => {
+        const x = Math.max(0, rect.x), y = Math.max(0, rect.y);
+        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: Math.min(1, rect.y + rect.height) - y };
+      })
+      .filter(rect => rect.height > 0 && rect.width * containerRef.current!.clientWidth > 2)
       .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100 }));
   };
 

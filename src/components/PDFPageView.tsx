@@ -1,3 +1,4 @@
+import { canvasViewportTransform } from '../utils/pageCoordinates';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import {
   HighlightAnnotation,
@@ -504,7 +505,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (!context) throw new Error('Could not create PDF canvas context');
         context.fillStyle = '#fff';
         context.fillRect(0, 0, back.width, back.height);
-        task = page.render({ canvasContext: context, viewport });
+        task = page.render({ canvasContext: context, viewport, transform: canvasViewportTransform(viewport, back) });
         renderTaskRef.current = task;
         await task.promise;
         if (obsolete()) return;

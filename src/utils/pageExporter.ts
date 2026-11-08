@@ -1,3 +1,4 @@
+import { canvasViewportTransform } from './pageCoordinates';
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -1210,6 +1211,7 @@ export async function renderPageWithAnnotations(
   await page.render({
     canvasContext: ctx,
     viewport,
+    transform: canvasViewportTransform(viewport, canvas),
   }).promise;
 
   // Immediately release PDF.js internal decoded page caches

@@ -3,7 +3,10 @@ export interface SelectionLine { x: number; y: number; width: number; height: nu
 export interface LineGesture { lines: SelectionLine[]; start: number; current: number; textSelection: boolean }
 const textLines = new WeakMap<object, Map<number, Promise<SelectionLine[]>>>();
 
-// Geometry only: do not replace PDF text, add OCR text, or change highlight metadata.
+// PDF.js owns text positioning (including font ascent and page rotation).
+// Measure its text-layer boxes once in a neutral, unzoomed coordinate space,
+// then convert them to the page viewport. Never infer the vertical box from
+// font metadata or from the current viewer's transformed DOM.
 export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<SelectionLine[]> {
   let pages = textLines.get(pdfDoc);
   if (!pages) { pages = new Map(); textLines.set(pdfDoc, pages); }
@@ -12,44 +15,72 @@ export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<Sel
   const pending = (async () => {
     const page = await pdfDoc.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 1 });
+    const measureViewport = page.getViewport({ scale: 2, rotation: 0 });
     const content = await page.getTextContent();
-    const boxes: SelectionLine[] = [];
-    const measure = document.createElement("canvas").getContext("2d")!;
-    for (const item of content.items) {
-      if (!item.str?.trim() || !item.transform) continue;
-      const a = viewport.transform, b = item.transform;
-      const xx = a[0] * b[0] + a[2] * b[1];
-      const xy = a[1] * b[0] + a[3] * b[1];
-      if (Math.abs(xy) > Math.abs(xx) * 0.3) continue;
-      const h = Math.hypot(a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3]);
-      const x = a[0] * b[4] + a[2] * b[5] + a[4];
-      const baseline = a[1] * b[4] + a[3] * b[5] + a[5];
-      const ascent = content.styles[item.fontName]?.ascent ?? 0.8;
-      const descent = content.styles[item.fontName]?.descent ?? -0.2;
-      if (!h || !item.width) continue;
-      // Fit measured character advances to the PDF item's exact width. This
-      // preserves proportional fonts and avoids a character-count width guess.
-      measure.font = `${h}px ${content.styles[item.fontName]?.fontFamily || 'sans-serif'}`;
-      const chars = Array.from(item.str as string);
-      const advances = chars.map((_, i) => measure.measureText(chars.slice(0, i + 1).join('')).width);
-      const total = advances.at(-1) || 1;
-      const glyphs = chars.map((text, i) => ({ text, x: (x + (advances[i - 1] || 0) / total * Math.abs(item.width)) / viewport.width,
-        right: (x + advances[i] / total * Math.abs(item.width)) / viewport.width }));
-      boxes.push({ glyphs, x: x / viewport.width, y: (baseline - h * ascent) / viewport.height,
-        width: Math.abs(item.width) / viewport.width, height: h * (ascent - descent) / viewport.height });
-    }
-    const lines: SelectionLine[] = [];
-    for (const box of boxes.sort((a, b) => a.y - b.y || a.x - b.x)) {
-      const line = lines.find(line => Math.abs(line.y + line.height / 2 - box.y - box.height / 2) < Math.max(line.height, box.height) * 0.35
-        && Math.max(line.x, box.x) - Math.min(line.x + line.width, box.x + box.width) < Math.max(line.height, box.height) * viewport.height / viewport.width * 2.5);
-      if (!line) { lines.push({ ...box }); continue; }
-      const right = Math.max(line.x + line.width, box.x + box.width);
-      const bottom = Math.max(line.y + line.height, box.y + box.height);
-      line.x = Math.min(line.x, box.x); line.y = Math.min(line.y, box.y);
-      line.width = right - line.x; line.height = bottom - line.y;
-      line.glyphs = [...(line.glyphs || []), ...(box.glyphs || [])].sort((a, b) => a.x - b.x);
-    }
-    return lines.sort((a, b) => a.y - b.y);
+    if (!content.items.some((item: any) => item.str?.trim())) return [];
+    const { pdfjsLib } = await import('./pdfWorker');
+    const host = document.createElement('div');
+    host.className = 'pdf-text-layer';
+    host.setAttribute('aria-hidden', 'true');
+    host.inert = true;
+    host.style.cssText = 'position:fixed;left:0;top:0;right:auto;bottom:auto;visibility:hidden;pointer-events:none;line-height:1;';
+    host.style.setProperty('--scale-factor', String(measureViewport.scale));
+    document.body.append(host);
+    const divs: HTMLElement[] = [];
+    try {
+      await pdfjsLib.renderTextLayer({ textContentSource: content, container: host, viewport: measureViewport, textDivs: divs }).promise;
+      // PDF.js rounds its layer dimensions on browsers supporting CSS round().
+      // Our page layout is fractional; undo only that layer-size rounding before
+      // reading percentage-positioned spans, otherwise the measuring scale leaks
+      // into normalized page coordinates.
+      host.style.width = `${measureViewport.width}px`;
+      host.style.height = `${measureViewport.height}px`;
+      const origin = host.getBoundingClientRect();
+      const items = content.items.filter((item: any) => typeof item.str === 'string');
+      const runs: { box: SelectionLine; baseline: number; fontHeight: number }[] = [];
+      const measure = document.createElement('canvas').getContext('2d')!;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i], div = divs[i];
+        if (!item.str?.trim() || !div?.isConnected || !item.width) continue;
+        const a = viewport.transform, b = item.transform;
+        const xx = a[0] * b[0] + a[2] * b[1], xy = a[1] * b[0] + a[3] * b[1];
+        if (Math.abs(xy) > Math.abs(xx) * 0.3) continue;
+        const h = Math.hypot(a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3]);
+        if (!h) continue;
+        const x = a[0] * b[4] + a[2] * b[5] + a[4];
+        const baseline = a[1] * b[4] + a[3] * b[5] + a[5];
+        const r = div.getBoundingClientRect();
+        const corners = [[r.left - origin.left, r.top - origin.top], [r.right - origin.left, r.top - origin.top],
+          [r.left - origin.left, r.bottom - origin.top], [r.right - origin.left, r.bottom - origin.top]]
+          .map(([cx, cy]) => viewport.convertToViewportPoint(...measureViewport.convertToPdfPoint(cx, cy)));
+        const top = Math.min(...corners.map(point => point[1]));
+        const bottom = Math.max(...corners.map(point => point[1]));
+        // Preserve the existing horizontal character range and selected content.
+        // Only the vertical bounds now come from the PDF reader's layout box.
+        measure.font = `${h}px ${content.styles[item.fontName]?.fontFamily || 'sans-serif'}`;
+        const chars = Array.from(item.str as string);
+        const advances = chars.map((_, j) => measure.measureText(chars.slice(0, j + 1).join('')).width);
+        const total = advances.at(-1) || 1;
+        const glyphs = chars.map((text, j) => ({ text,
+          x: (x + (advances[j - 1] || 0) / total * Math.abs(item.width)) / viewport.width,
+          right: (x + advances[j] / total * Math.abs(item.width)) / viewport.width }));
+        runs.push({ baseline, fontHeight: h, box: { glyphs, x: x / viewport.width, y: top / viewport.height,
+          width: Math.abs(item.width) / viewport.width, height: (bottom - top) / viewport.height } });
+      }
+      const groups: typeof runs = [];
+      for (const run of runs.sort((a, b) => a.baseline - b.baseline || a.box.x - b.box.x)) {
+        const box = run.box;
+        const group = groups.find(group => Math.abs(group.baseline - run.baseline) < Math.max(group.fontHeight, run.fontHeight) * 0.15
+          && (Math.max(group.box.x, box.x) - Math.min(group.box.x + group.box.width, box.x + box.width)) * viewport.width < Math.max(group.fontHeight, run.fontHeight) * 2.5);
+        if (!group) { groups.push({ ...run, box: { ...box } }); continue; }
+        const line = group.box;
+        const right = Math.max(line.x + line.width, box.x + box.width), bottom = Math.max(line.y + line.height, box.y + box.height);
+        line.x = Math.min(line.x, box.x); line.y = Math.min(line.y, box.y);
+        line.width = right - line.x; line.height = bottom - line.y;
+        line.glyphs = [...(line.glyphs || []), ...(box.glyphs || [])].sort((a, b) => a.x - b.x);
+      }
+      return groups.map(group => group.box).sort((a, b) => a.y - b.y || a.x - b.x);
+    } finally { host.remove(); }
   })().catch(() => []);
   pages.set(pageNumber, pending);
   return pending;
