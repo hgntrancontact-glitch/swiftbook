@@ -216,7 +216,7 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
         if (dark !== darkBefore) changes++;
         darkBefore = dark;
       }
-      ink.push(count > (to - from) * 0.015 && count < (to - from) * 0.65 && changes >= 6);
+      ink.push(count >= Math.max(3, Math.min(10, (to - from) * 0.004)) && count < (to - from) * 0.65 && changes >= 4);
     }
     for (let i = 1; i < ink.length - 1; i++) if (ink[i - 1] && ink[i + 1]) ink[i] = true;
     const lines: SelectionLine[] = [];
@@ -343,8 +343,18 @@ export function selectionRegions(lines: SelectionLine[]): SelectionLine[][] {
     if(ar.bottom<=br.top || br.bottom<=ar.top) return ar.top-br.top;
     return ar.left-br.left || ar.top-br.top;
   });
-  regionCache.set(lines,result);
-  return result;
+  const flows=result.map(region=> {
+    const left=Math.min(...region.map(l=>l.x)),right=Math.max(...region.map(l=>l.x+l.width));
+    const top=Math.min(...region.map(l=>l.y)),bottom=Math.max(...region.map(l=>l.y+l.height));
+    const additions=lines.filter(line=>!region.includes(line) && !line.cell
+      && line.x>=left-0.002 && line.x+line.width<=right+0.002 && line.y>=top && line.y<=bottom+line.height*2
+      && !lines.some(other=>other!==line && !region.includes(other) && other!==line
+        && Math.abs(other.y+other.height/2-line.y-line.height/2)<Math.min(other.height,line.height)*0.7
+        && (other.x+other.width<line.x || other.x>line.x+line.width)));
+    return [...new Set([...region,...additions])].sort((a,b)=>a.y-b.y || a.x-b.x);
+  });
+  regionCache.set(lines,flows);
+  return flows;
 }
 
 export function beginLineGesture(lines: SelectionLine[], x: number, y: number, fallbackHeight: number): LineGesture {
@@ -370,7 +380,7 @@ export function moveLineGesture(gesture: LineGesture, y: number, x?: number): vo
     const target = regions.find(region => region.some(l => x >= l.x && x <= l.x+l.width && y >= l.y-l.height*0.3 && y <= l.y+l.height*1.3));
     const originRegion = regions.find(region => region.includes(gesture.origin!))!;
     const previousRegion = regions.find(region => region.some(l => gesture.region?.includes(l)));
-    const active = target || previousRegion || originRegion;
+    const active = originRegion.some(l=>x>=l.x && x<=l.x+l.width && y>=l.y-l.height*.3 && y<=l.y+l.height*1.3) ? originRegion : target || previousRegion || originRegion;
     gesture.region = active;
     // Only explicitly hit regions participate; intervening, unrelated blocks
     // are not selected because of adjacent IDs or proximity.
@@ -434,7 +444,12 @@ export function lineSelectionRects(gesture: LineGesture, startX: number, endX: n
   return lines.slice(first,last+1).flatMap((line,i)=> {
     const x=i===0?from:line.x,right=first+i===last?to:line.x+line.width;
     const glyphs=line.glyphs?.filter(g=>(g.x+g.right)/2>=x && (g.x+g.right)/2<=right);
-    return right>x?[{...line,x,width:right-x,glyphs}]:[];
+    const before=lines.slice(0,first+i).at(-1),after=lines[first+i+1];
+    const gapBefore=before ? Math.max(0,line.y-before.y-before.height) : line.height;
+    const gapAfter=after ? Math.max(0,after.y-line.y-line.height) : line.height;
+    const pad=Math.min(line.height*0.08,gapBefore/3,gapAfter/3);
+    const y=Math.max(0,line.y-pad),height=Math.min(1,line.y+line.height+pad)-y;
+    return right>x?[{...line,x,y,width:right-x,height,glyphs}]:[];
   });
 }
 

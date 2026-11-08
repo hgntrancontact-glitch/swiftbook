@@ -70,7 +70,18 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
         return oy>=Math.min(v.height,line.height)*0.55 && ox>=Math.min(v.width,line.width)*0.5;
       });
       if(!bands.length) {refined.push(line);continue;}
-      for(const band of bands) {
+      const groups: SelectionLine[]=[];
+      for(const band of bands.sort((a,b)=>a.x-b.x)) {
+        const previous=groups.at(-1);
+        const gap=previous ? band.x-previous.x-previous.width : Infinity;
+        const sameBaseline=previous && Math.abs(band.y+band.height-previous.y-previous.height)<Math.max(band.height,previous.height)*0.6;
+        const inkBetween=previous && line.glyphs?.some(g=>g.text.trim() && g.x>=previous.x+previous.width && g.right<=band.x);
+        if(previous && sameBaseline && (inkBetween || gap<Math.max(previous.height,band.height)/(line.aspect || .75)*1.5)) {
+          const right=Math.max(previous.x+previous.width,band.x+band.width),bottom=Math.max(previous.y+previous.height,band.y+band.height);
+          previous.y=Math.min(previous.y,band.y);previous.height=bottom-previous.y;previous.width=right-previous.x;
+        } else groups.push({...band});
+      }
+      for(const band of groups) {
         const glyphs=line.glyphs?.filter(g=>(g.x+g.right)/2>=band.x-0.001 && (g.x+g.right)/2<=band.x+band.width+0.001);
         if(!glyphs?.some(g=>/[\p{L}\p{N}]/u.test(g.text))) continue;
         refined.push({...line,...band,source:'ocr',glyphs});

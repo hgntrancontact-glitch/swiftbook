@@ -8,11 +8,12 @@ interface AnnotationToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
   scopeId?: string;
   preserveAnchorGap?: boolean;
   preferredAbove?: boolean;
+  align?: 'left' | 'center';
 }
 
 // Tool UI lives in screen coordinates; the annotation remains in page coordinates.
 export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarProps>(
-  ({ anchorId, anchorIds, scopeId, preserveAnchorGap = false, preferredAbove = true, children, className, style, ...props }, forwardedRef) => {
+  ({ anchorId, anchorIds, scopeId, preserveAnchorGap = false, preferredAbove = true, align = 'center', children, className, style, ...props }, forwardedRef) => {
     const toolbarRef = useRef<HTMLDivElement | null>(null);
     useLayoutEffect(() => {
       const toolbar = toolbarRef.current;
@@ -32,7 +33,9 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         toolbar.style.maxHeight = '';
         toolbar.style.overflowY = '';
         let size = toolbar.getBoundingClientRect();
-        const left = Math.max(8, Math.min(window.innerWidth - size.width - 8, (bounds.left + bounds.right - size.width) / 2));
+        const leftLimit = align === 'left' ? Math.max(8, (viewport?.left || 0) + 8) : 8;
+        const rightLimit = align === 'left' ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
+        const left = Math.max(leftLimit, Math.min(Math.max(leftLimit, rightLimit - size.width), align === 'left' ? bounds.left : (bounds.left + bounds.right - size.width) / 2));
         let above = preferredAbove;
         if (above && bounds.top - size.height - 10 < topLimit && bounds.bottom + size.height + 10 <= bottomLimit) above = false;
         if (!above && bounds.bottom + size.height + 10 > bottomLimit && bounds.top - size.height - 10 >= topLimit) above = true;
@@ -72,7 +75,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         window.removeEventListener('scroll', update, true);
         window.removeEventListener('resize', update);
       };
-    }, [anchorId, anchorIds?.join('|'), scopeId, preserveAnchorGap, preferredAbove]);
+    }, [anchorId, anchorIds?.join('|'), scopeId, preserveAnchorGap, preferredAbove, align]);
 
     return createPortal(
       <div {...props} ref={node => {

@@ -292,6 +292,8 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             anchorIds={hl.rects.map((_, i) => `${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${i}`)}
             scopeId={elevatedContainerId || `elevated-annotation-container-${pageNumber}`}
             preserveAnchorGap
+            align="left"
+            preferredAbove={false}
             className="highlight-popup-toolbar bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 text-neutral-800 pointer-events-auto font-['Inter',sans-serif]"
             style={{ width: 288 }}
             onClick={(e) => e.stopPropagation()}

@@ -16,24 +16,25 @@ interface Props {
   children: React.ReactNode;
 }
 
-// Baseline screen dimensions at 100%; bounded, gentle scaling never inverts zoom.
+// Page-relative dimensions, calibrated at document zoom 100%.
 const ICON_SIZE = 20;
-const ICON_GAP = 1;
 const POPUP_WIDTH = 256;
 const POPUP_GAP = 6;
 
-// The anchor stays in page space. The icon and readable popup use screen pixels.
+// The portal uses client coordinates, with UI dimensions scaled by document zoom.
 export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mode, showPopup, onEnter, onLeave, onEdit, children }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const bridgeRef = useRef<HTMLDivElement>(null);
   const directionRef = useRef<'above' | 'below'>('above');
+  const placementRef = useRef<{direction:'above'|'below';offsetX:number} | null>(null);
   useLayoutEffect(() => {
     const scope = document.getElementById(scopeId)?.closest('[data-page-container="true"]') || document;
     const anchor = scope.querySelector<HTMLElement>(`#${CSS.escape(anchorId)}`);
     const icon = iconRef.current;
     if (!anchor || !icon) return;
+    if (!showPopup) placementRef.current=null;
     const position = () => {
       const r = anchor.getBoundingClientRect();
       const wrapper = anchor.closest<HTMLElement>('[data-user-zoom]');
@@ -41,11 +42,12 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const layoutWidth=page ? parseFloat(page.style.width) : 0;
       const liveRatio=page && layoutWidth ? page.getBoundingClientRect().width/layoutWidth : 1;
       const userZoom = Number(wrapper?.dataset.userZoom || 1) * liveRatio;
-      const factor = 1 + 0.08 * Math.tanh(Math.log(Math.max(0.2, Math.min(50,userZoom))));
+      const factor = Math.max(0.2,userZoom);
       const iconSize = ICON_SIZE * factor;
       if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor);
       icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize}px`;
       icon.style.borderWidth = `${2*factor}px`;
+      icon.style.boxShadow=`0 ${2*factor}px ${4*factor}px rgba(0,0,0,.16)`;
       const glyph = icon.querySelector('svg');
       if (glyph) glyph.style.width = glyph.style.height = `${10*factor}px`;
       const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
@@ -73,72 +75,53 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
         if(bridgeRef.current) bridgeRef.current.style.visibility='hidden';
         return;
       }
-      const cardWidth = Math.max(1, Math.min(POPUP_WIDTH * factor, screenRight - screenLeft));
-      let top = iconTop, bottom = iconBottom, left = iconLeft, right = iconRight;
-      // A partly visible column may provide position bounds, but cannot change
-      // the screen-sized card's width. Use the screen as the narrow-column fallback.
-      if (right - left < cardWidth) { left = screenLeft; right = screenRight; }
-      if (bottom - top < iconSize + POPUP_GAP + 40) { top = screenTop; bottom = screenBottom; }
-      popup.style.width = `${cardWidth}px`;
-      const card = popup.firstElementChild as HTMLElement | null;
-      if (card) { card.style.zoom = String(factor); card.style.width = `${cardWidth/factor}px`; }
-      // The hidden card stays mounted, so its natural size is known before
-      // hover. The header never scrolls away; only the note body is constrained.
-      const body = popup.querySelector<HTMLElement>('[data-highlight-note-body]');
-      const header = popup.querySelector<HTMLElement>('[data-highlight-note-header]');
-      const naturalHeight = body && header ? (body.scrollHeight + 26) * factor + header.getBoundingClientRect().height : popup.scrollHeight;
-      const aboveIcon = r.top - iconSize - ICON_GAP;
-      const belowIcon = r.bottom + ICON_GAP;
-      const aboveSpace = aboveIcon - POPUP_GAP - top;
-      const belowSpace = bottom - belowIcon - iconSize - POPUP_GAP;
-      let direction = directionRef.current;
-      const currentSpace = direction === 'above' ? aboveSpace : belowSpace;
-      const otherSpace = direction === 'above' ? belowSpace : aboveSpace;
-      if (naturalHeight > currentSpace && otherSpace >= naturalHeight) direction = direction === 'above' ? 'below' : 'above';
-      else if (naturalHeight > aboveSpace && naturalHeight > belowSpace && otherSpace > currentSpace + iconSize) direction = direction === 'above' ? 'below' : 'above';
-      directionRef.current = direction;
-      const minimumHeight = Math.min(bottom - top, (header?.getBoundingClientRect().height || 28) + 40);
-      // Zoom changes the anchor's height and the gaps on either side, not
-      // the card's size. If neither side fits, clamp its position inside the
-      // viewport; constrain the body only when the viewport itself is too short.
-      const height = Math.max(minimumHeight, Math.min(naturalHeight, bottom - top));
-      popup.style.maxHeight = `${height}px`;
-      popup.style.setProperty('--highlight-popup-height', `${height / factor}px`);
-      popup.style.overflow = 'hidden';
-      const ix = Math.max(screenLeft, Math.min(screenRight - iconSize, Math.max(iconLeft, Math.min(iconRight - iconSize, r.right - iconSize / 2))));
-      const iy = Math.max(screenTop, Math.min(screenBottom - iconSize, Math.max(iconTop, Math.min(iconBottom - iconSize, direction === 'above' ? aboveIcon : belowIcon))));
-      const popupWidth = popup.getBoundingClientRect().width;
-      let x = Math.max(left, Math.min(right - popupWidth, ix + iconSize - popupWidth));
-      const y = Math.max(top, Math.min(bottom - height, direction === 'above' ? iy - POPUP_GAP - height : iy + iconSize + POPUP_GAP));
-      // In the viewport-clamped fallback, keep the card beside the icon if
-      // necessary instead of covering the trigger with the larger card.
-      if (y < iy + iconSize && y + height > iy) {
-        if (ix - POPUP_GAP - popupWidth >= left) x = ix - POPUP_GAP - popupWidth;
-        else if (ix + iconSize + POPUP_GAP + popupWidth <= right) x = ix + iconSize + POPUP_GAP;
+      // Scale the entire card once. Its base width and maximum body height
+      // are document-space values, not a viewport-dependent size negotiation.
+      const cardWidth=POPUP_WIDTH*factor;
+      popup.style.width=`${cardWidth}px`;
+      popup.style.maxHeight=`${420*factor}px`;
+      popup.style.setProperty('--highlight-popup-height','420px');
+      popup.style.borderRadius=`${12*factor}px`;
+      popup.style.overflow='hidden';
+      const card=popup.firstElementChild as HTMLElement | null;
+      if(card) {card.style.zoom=String(factor);card.style.width=`${POPUP_WIDTH}px`;}
+      const height=popup.getBoundingClientRect().height;
+      const gap=POPUP_GAP*factor;
+      let direction=placementRef.current?.direction || directionRef.current;
+      if(!placementRef.current) {
+        const above=r.top-iconSize-gap-height-iconTop;
+        const below=iconBottom-r.bottom-iconSize-gap-height;
+        direction=above>=0 || above>=below ? 'above':'below';
       }
-      icon.style.left = `${ix}px`;
-      icon.style.top = `${iy}px`;
-      icon.style.visibility = visible ? 'visible' : 'hidden';
-      icon.dataset.popupDirection = direction;
-      popup.style.left = `${x}px`;
-      popup.style.top = `${y}px`;
-      popup.style.visibility = showPopup && (visible || mode !== 'auto') ? 'visible' : 'hidden';
-      const bridge = bridgeRef.current;
-      if (bridge) {
-        const beside = y < iy + iconSize && y + height > iy && (x + popupWidth <= ix || x >= ix + iconSize);
-        if (beside) {
-          const edge = x + popupWidth <= ix ? x + popupWidth : ix + iconSize;
-          bridge.style.left = `${edge}px`;
-          bridge.style.top = `${Math.max(y, iy)}px`;
-          bridge.style.width = `${Math.max(0, x + popupWidth <= ix ? ix - edge : x - edge)}px`;
-          bridge.style.height = `${Math.max(0, Math.min(y + height, iy + iconSize) - Math.max(y, iy))}px`;
-        } else {
-          bridge.style.left = `${x}px`;
-          bridge.style.top = `${direction === 'above' ? y + height : iy + iconSize}px`;
-          bridge.style.width = `${popupWidth}px`;
-          bridge.style.height = `${Math.max(0, direction === 'above' ? iy - y - height : y - iy - iconSize)}px`;
-        }
-        bridge.style.visibility = showPopup && visible ? 'visible' : 'hidden';
+      const ix=r.right-iconSize/2;
+      const iy=direction==='above' ? r.top-iconSize+2*factor : r.bottom-2*factor;
+      if(showPopup && !placementRef.current) {
+        const requested=ix+iconSize-cardWidth;
+        const initialX=cardWidth<=iconRight-iconLeft ? Math.max(iconLeft,Math.min(iconRight-cardWidth,requested)) : requested;
+        placementRef.current={direction,offsetX:(initialX-requested)/factor};
+      }
+      directionRef.current=direction;
+      const x=ix+iconSize-cardWidth+(placementRef.current?.offsetX || 0)*factor;
+      const y=direction==='above' ? iy-gap-height : iy+iconSize+gap;
+      // Scrolling clips the anchored card exactly like page content. It never
+      // flips sides or sticks to a screen edge just to remain visible.
+      const clip=(element:HTMLElement,ex:number,ey:number,width:number,h:number)=> {
+        element.style.clipPath=`inset(${Math.max(0,iconTop-ey)}px ${Math.max(0,ex+width-iconRight)}px ${Math.max(0,ey+h-iconBottom)}px ${Math.max(0,iconLeft-ex)}px)`;
+      };
+      icon.style.left=`${ix}px`;icon.style.top=`${iy}px`;
+      icon.style.visibility='visible';icon.dataset.popupDirection=direction;
+      clip(icon,ix,iy,iconSize,iconSize);
+      popup.style.left=`${x}px`;popup.style.top=`${y}px`;
+      popup.style.visibility=showPopup ? 'visible':'hidden';
+      popup.dataset.popupDirection=direction;
+      clip(popup,x,y,cardWidth,height);
+      const bridge=bridgeRef.current;
+      if(bridge) {
+        const by=direction==='above' ? y+height : iy+iconSize;
+        bridge.style.left=`${x}px`;bridge.style.top=`${by}px`;
+        bridge.style.width=`${cardWidth}px`;bridge.style.height=`${gap}px`;
+        bridge.style.visibility=showPopup ? 'visible':'hidden';
+        clip(bridge,x,by,cardWidth,gap);
       }
     };
     // Portals are outside the PDF scroll tree. Route wheel/pinch back to the
@@ -190,7 +173,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       </button>
       {<>
         <div ref={bridgeRef} className="fixed z-[90000]" style={{ visibility: 'hidden', pointerEvents: mode === 'auto' ? 'auto' : 'none' }} />
-        <div ref={popupRef} data-highlight-note-popup-frame={highlightId} className={`fixed rounded-xl z-[90001] ${mode === 'transparent' ? 'shadow-md' : 'shadow-2xl'}`} style={{ left: 0, top: 0, visibility: 'hidden', pointerEvents: mode === 'transparent' ? 'none' : 'auto' }}>
+        <div ref={popupRef} data-highlight-note-popup-frame={highlightId} className="fixed rounded-xl z-[90001]" style={{ left: 0, top: 0, visibility: 'hidden', pointerEvents: mode === 'transparent' ? 'none' : 'auto' }}>
           {children}
         </div>
       </>}

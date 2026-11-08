@@ -1,3 +1,4 @@
+const paragraphFixture=JSON.parse(readFileSync(new URL('./selectionParagraph.fixture.json',import.meta.url),'utf8'));
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -76,7 +77,7 @@ test('explicit selection from a spanning heading into a column follows page orde
   moveLineGesture(gesture,0.237,0.25);
   const rects=lineSelectionRects(gesture,0.2,0.25);
   assert.equal(rects.length,3);
-  assert.equal(rects[0].y,heading.y);
+  assert.ok(rects[0].y<=heading.y && rects[0].y+rects[0].height>=heading.y+heading.height);
   assert.ok(rects.slice(1).every(l=>l.x<0.5));
 });
 
@@ -105,7 +106,7 @@ for (const fixture of JSON.parse(readFileSync(new URL('./selectionCards.fixture.
     moveLineGesture(gesture,last.y+last.height/2,last.x+last.width*.9);
     const selected=lineSelectionRects(gesture,first.x+first.width*.1,last.x+last.width*.9);
     assert.equal(selected.length,fixture.target.length);
-    assert.ok(selected.every(l=>fixture.target.some(i=>Math.abs(lines[i].y-l.y)<0.00001)));
+    assert.ok(selected.every(l=>fixture.target.some(i=>Math.abs(lines[i].y+lines[i].height/2-l.y-l.height/2)<0.00001)));
   });
 }
 
@@ -120,6 +121,19 @@ test('a wrapped scan row cannot select the rest of the page when its region chan
   moveLineGesture(gesture,end.y+end.height/2,ex);
   const rects=lineSelectionRects(gesture,sx,ex);
   assert.equal(rects.length,2);
-  assert.ok(rects.every(l=>Math.abs(l.y-first.y)<.00001 || Math.abs(l.y-last.y)<.00001));
+  assert.ok(rects.every(l=>Math.abs(l.y+l.height/2-first.y-first.height/2)<.00001 || Math.abs(l.y+l.height/2-last.y-last.height/2)<.00001));
  }
+});
+
+
+test('paragraph selection includes short final rows with the pointer beyond their right edge', () => {
+ const lines:SelectionLine[]=paragraphFixture.lines as SelectionLine[];
+ const [firstIndex,lastIndex]=[paragraphFixture.target[0],paragraphFixture.target.at(-1)!];
+ const first=lines[firstIndex],last=lines[lastIndex];
+ const g=beginLineGesture(lines,first.x+.03,first.y+first.height/2,.025);
+ moveLineGesture(g,last.y+last.height/2,.95);
+ const rects=lineSelectionRects(g,first.x+.03,.95);
+ assert.equal(rects.length,paragraphFixture.target.length);
+ assert.ok(rects.every(r=>paragraphFixture.target.some(i=>Math.abs(r.y+r.height/2-lines[i].y-lines[i].height/2)<.00001)));
+ assert.ok(rects.every(r=>r.height>=first.height && r.height<=first.height*1.17));
 });
