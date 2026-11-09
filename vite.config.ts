@@ -18,8 +18,8 @@ export default defineConfig(({ command }) => {
         this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify(buildInfo, null, 2) });
       },
     }, react(), tailwindcss(), viteStaticCopy({ targets: [
-      { src: 'node_modules/pdfjs-dist/cmaps/*.bcmap', dest: 'pdf-assets/cmaps' },
-      { src: 'node_modules/pdfjs-dist/standard_fonts/*', dest: 'pdf-assets/standard_fonts' },
+      { src: 'node_modules/pdfjs-dist/cmaps/*.bcmap', dest: 'pdf-assets/cmaps', rename: { stripBase: true } },
+      { src: 'node_modules/pdfjs-dist/standard_fonts/*', dest: 'pdf-assets/standard_fonts', rename: { stripBase: true } },
       { src: 'node_modules/tesseract.js/dist/worker.min.js', dest: 'ocr', rename: { stripBase: true } },
       { src: 'node_modules/tesseract.js/dist/worker.min.js.LICENSE.txt', dest: 'ocr', rename: { stripBase: true } },
       { src: 'node_modules/tesseract.js-core/*.wasm*', dest: 'ocr', rename: { stripBase: true } },
