@@ -10,6 +10,7 @@ export interface NormalizedRect {
 }
 
 export interface HighlightAnnotation {
+  selectionGeometry?: 'line'; // Exact geometry of the temporary text selection.
   selectionKind?: 'text'; // Keep separate line rectangles for text-range highlights.
   /** False when visual geometry is available but some text could not be recognized. */
   textComplete?: boolean;

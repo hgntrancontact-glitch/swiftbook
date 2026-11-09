@@ -39,3 +39,13 @@ export function fitPageScale(mode: ViewMode, pages: PageSize[], width: number, h
   const usableHeight = mode === 'continuous' ? Math.max(1, height - CONTINUOUS_GAP) * 0.88 : height;
   return Math.max(0.0001, Math.min(Math.max(1, width - gap) / pageWidth, Math.max(1, usableHeight) / pageHeight));
 }
+
+// Native scroll bounds do not include cursor-zoom translation. Permit a small
+// useful gutter around fitting content and prevent accumulating empty space.
+export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number): number {
+  const gutter = Math.min(120, viewSize * 0.2);
+  const center = viewStart + (viewSize-size)/2;
+  const low = size <= viewSize ? center-gutter : viewStart+viewSize-size-gutter;
+  const high = size <= viewSize ? center+gutter : viewStart+gutter;
+  return Math.max(Math.min(start,low), Math.min(Math.max(start,high), start-delta))-start;
+}

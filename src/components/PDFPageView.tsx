@@ -296,6 +296,23 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   const renderSlotHandleRef = useRef<ReturnType<typeof requestPdfRenderSlot> | null>(null);
   const renderSlotReleaseRef = useRef<(() => void) | null>(null);
   const [isSelectingText, setIsSelectingText] = useState(false);
+  const [completedRaster, setCompletedRaster] = useState<{ canvas: HTMLCanvasElement; density: number; scale: number; doc: any; page: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!completedRaster) return;
+    const { canvas, density, scale: target, doc, page } = completedRaster;
+    if (doc !== pdfDoc || page !== pageNumber || pinchActiveRef.current || Math.abs(target-desiredScaleRef.current)>0.001) { setCompletedRaster(null); return; }
+    // Only this layout commit may touch the hidden DOM buffer. A renderer never
+    // writes into a canvas that React may still be presenting as the front.
+    const index = frontCanvasIndexRef.current === 0 ? 1 : 0;
+    const back = canvasRefs.current[index];
+    if (!back) return;
+    back.width = canvas.width; back.height = canvas.height;
+    back.getContext('2d', { alpha: false })!.drawImage(canvas, 0, 0);
+    back.dataset.renderedScale = String(target); back.dataset.rasterDensity = String(density);
+    frontDensityRef.current = density; lastRenderedScaleRef.current = target;
+    frontCanvasIndexRef.current = index; hasRenderedOnceRef.current = true;
+    setFrontCanvasIndex(index); setIsLoading(false); setHasError(false); setCompletedRaster(null);
+  }, [completedRaster, pdfDoc, pageNumber]);
   const renderInputRef = useRef({ pdfDoc, pageNumber, docId });
   renderInputRef.current = { pdfDoc, pageNumber, docId };
 
@@ -471,7 +488,6 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     let queuedAt = 0;
     let startedAt = 0;
     let outcome = 'cancelled';
-    const previousWork = renderCompletionRef.current;
     const request = { pdfDoc, page: pageNumber, scale: rasterScale, cancelled: false, done: false,
       cancel: () => { cancelled = true; request.cancelled = true; handle?.cancel(); task?.cancel(); } };
     rasterRequestRef.current = request;
@@ -483,13 +499,17 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       renderInputRef.current.pdfDoc !== pdfDoc || renderInputRef.current.pageNumber !== pageNumber ||
       Math.abs(desiredScaleRef.current - rasterScale) > 0.001;
     const work = async () => {
-      await previousWork;
+      // Detached canvases let cancelled requests finish without blocking the latest target.
       updatePriorityRef.current();
       if (obsolete()) { finishRequest(); return; }
       activeRenderRef.current = true;
       try {
         if (!hasRenderedOnceRef.current) setIsLoading(true);
         setHasError(false);
+        // Page loading has no canvas side effects; do not occupy a scarce
+        // raster slot while waiting for a cancelled/slow page request.
+        const page = await pdfDoc.getPage(pageNumber);
+        if (obsolete()) return;
         queuedAt = performance.now();
         handle = requestPdfRenderSlot(renderPriorityRef.current);
         renderSlotHandleRef.current = handle;
@@ -498,8 +518,6 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (!release || obsolete()) return;
         renderSlotReleaseRef.current = release;
         startedAt = performance.now();
-        const page = await pdfDoc.getPage(pageNumber);
-        if (obsolete()) return;
         const base = page.getViewport({ scale: 1 });
         const size = { width: base.width, height: base.height };
         setBaseDimension(size);
@@ -511,9 +529,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         // decode and deferred the sharp pass until the user scrolled here.
         const density = targetDensity;
         const viewport = page.getViewport({ scale: density });
-        const backIndex = frontCanvasIndexRef.current === 0 ? 1 : 0;
-        const back = canvasRefs.current[backIndex];
-        if (!back) return;
+        const back = document.createElement('canvas');
         back.width = Math.max(1, Math.round(viewport.width));
         back.height = Math.max(1, Math.round(viewport.height));
         const context = back.getContext('2d', { alpha: false });
@@ -526,17 +542,8 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (obsolete()) return;
         rememberPagePreview(`${docId}_${pageNumber}`, pdfDoc, back);
         rememberPageRaster(`${docId}_${pageNumber}`, pdfDoc, back, density, size);
-        frontDensityRef.current = density;
         outcome = 'committed';
-        back.dataset.renderedScale = String(rasterScale);
-        back.dataset.rasterDensity = String(density);
-        frontCanvasIndexRef.current = backIndex;
-        lastRenderedScaleRef.current = rasterScale;
-        hasRenderedOnceRef.current = true;
-        setFrontCanvasIndex(backIndex);
-        setIsLoading(false);
-        setHasError(false);
-        if (density < targetDensity - 0.0001) setRenderCount(count => count + 1);
+        setCompletedRaster({ canvas: back, density, scale: rasterScale, doc: pdfDoc, page: pageNumber });
       } catch (error: any) {
         if (!obsolete() && error?.name !== 'RenderingCancelledException') {
           console.error(`Error rendering page ${pageNumber}:`, error);
@@ -551,7 +558,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
             renderMs: startedAt ? performance.now() - startedAt : 0, outcome, active: activePdfRenderSlots });
           if (renderSamples.length > 200) renderSamples.shift();
         }
-        activeRenderRef.current = false;
+        if (rasterRequestRef.current === request) activeRenderRef.current = false;
         if (renderTaskRef.current === task) renderTaskRef.current = null;
         if (renderSlotHandleRef.current === handle) renderSlotHandleRef.current = null;
         if (renderSlotReleaseRef.current === release) renderSlotReleaseRef.current = null;

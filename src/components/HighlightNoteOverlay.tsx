@@ -29,6 +29,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
   const iconRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const popupHeightRef = useRef<number | null>(null);
+  const positionRef = useRef<(() => void) | null>(null);
   const bridgeRef = useRef<HTMLDivElement>(null);
   const directionRef = useRef<'above' | 'below'>('above');
   const placementRef = useRef<{direction:'above'|'below';offsetX:number} | null>(null);
@@ -36,7 +37,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
   useLayoutEffect(()=> {
     const scope=document.getElementById(scopeId)?.closest('[data-page-container="true"]') || document;
     const anchor=scope.querySelector<HTMLElement>(`#${CSS.escape(anchorId)}`);
-    setPortalTarget(anchor?.closest<HTMLElement>('[data-pdf-page-slot="true"]') || null);
+    setPortalTarget(anchor?.closest<HTMLElement>('[data-page-container="true"]') || null);
   },[anchorId,scopeId]);
   useLayoutEffect(() => {
     const scope = document.getElementById(scopeId)?.closest('[data-page-container="true"]') || document;
@@ -47,14 +48,22 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const position = () => {
       const r = anchor.getBoundingClientRect();
       const slot=portalTarget.getBoundingClientRect();
+      const layoutWidth = parseFloat(portalTarget.style.width) || slot.width;
+      const live = slot.width / Math.max(1, layoutWidth);
+      const root = rootRef.current;
+      if (root) {
+        root.style.width = portalTarget.style.width; root.style.height = portalTarget.style.height;
+        root.style.zoom = String(live); root.style.transformOrigin = '0 0';
+        root.style.transform = live === 1 ? '' : `scale(${1/live})`;
+      }
       const factor = getAnnotationZoom(anchor);
       const iconSize = ICON_SIZE * factor;
       if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor);
-      icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize}px`;
-      icon.style.borderWidth = `${2*factor}px`;
+      icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize/live}px`;
+      icon.style.borderWidth = `${2*factor/live}px`;
       icon.style.boxShadow=`0 ${2*factor}px ${4*factor}px rgba(0,0,0,.16)`;
       const glyph = icon.querySelector('svg');
-      if (glyph) glyph.style.width = glyph.style.height = `${ICON_GLYPH_SIZE*factor}px`;
+      if (glyph) glyph.style.width = glyph.style.height = `${ICON_GLYPH_SIZE*factor/live}px`;
       const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
       const popup = popupRef.current;
       if (!popup) return;
@@ -69,13 +78,13 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       // are document-space values, not a viewport-dependent size negotiation.
       const popupFactor=factor*HIGHLIGHT_NOTE_SIZE;
       const cardWidth=POPUP_WIDTH*popupFactor;
-      popup.style.width=`${cardWidth}px`;
-      popup.style.maxHeight=`${420*popupFactor}px`;
+      popup.style.width=`${cardWidth/live}px`;
+      popup.style.maxHeight=`${420*popupFactor/live}px`;
       popup.style.setProperty('--highlight-popup-height','420px');
-      popup.style.borderRadius=`${12*popupFactor}px`;
+      popup.style.borderRadius=`${12*popupFactor/live}px`;
       popup.style.overflow='hidden';
       const card=popup.firstElementChild as HTMLElement | null;
-      if(card) {card.style.zoom=String(popupFactor);card.style.width=`${POPUP_WIDTH}px`;}
+      if(card) {card.style.zoom=String(popupFactor/live);card.style.width=`${POPUP_WIDTH}px`;}
       // Closed notes need only their icon; measuring every hidden card forces
       // synchronous layout for each annotation during every pinch frame.
       if (showPopup || popupHeightRef.current === null) popupHeightRef.current = popup.getBoundingClientRect().height / popupFactor;
@@ -101,19 +110,20 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const y=direction==='above' ? iy-gap-height : iy+iconSize+gap;
       // Page-local coordinates let the browser scroll page and notes in the
       // same compositor layer. No scroll-event chase or viewport clamping.
-      icon.style.left=`${ix-slot.left}px`;icon.style.top=`${iy-slot.top}px`;
+      icon.style.left=`${(ix-slot.left)/live}px`;icon.style.top=`${(iy-slot.top)/live}px`;
       icon.style.visibility='visible';icon.dataset.popupDirection=direction;
-      popup.style.left=`${x-slot.left}px`;popup.style.top=`${y-slot.top}px`;
+      popup.style.left=`${(x-slot.left)/live}px`;popup.style.top=`${(y-slot.top)/live}px`;
       popup.style.visibility=showPopup ? 'visible':'hidden';
       popup.dataset.popupDirection=direction;
       const bridge=bridgeRef.current;
       if(bridge) {
         const by=direction==='above' ? y+height : iy+iconSize;
-        bridge.style.left=`${x-slot.left}px`;bridge.style.top=`${by-slot.top}px`;
-        bridge.style.width=`${cardWidth}px`;bridge.style.height=`${gap}px`;
+        bridge.style.left=`${(x-slot.left)/live}px`;bridge.style.top=`${(by-slot.top)/live}px`;
+        bridge.style.width=`${cardWidth/live}px`;bridge.style.height=`${gap/live}px`;
         bridge.style.visibility=showPopup ? 'visible':'hidden';
       }
     };
+    positionRef.current = position;
     // Keep wheel/pinch routing identical while hovering the note body.
     const viewport = anchor.closest<HTMLElement>('.pdf-viewport-container');
     const wheel = (event: WheelEvent) => {
@@ -133,11 +143,13 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const mutation = new MutationObserver(schedule);
     const wrapper = anchor.closest('[data-scale]');
     if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
+    mutation.observe(portalTarget, { attributes: true, attributeFilter: ['style'] });
     mutation.observe(anchor, { attributes: true, attributeFilter: ['style'] });
     if (popupRef.current) mutation.observe(popupRef.current, { childList: true, characterData: true, subtree: true });
     window.addEventListener('resize', schedule);
     position();
     return () => {
+      positionRef.current = null;
       root?.removeEventListener('wheel', wheel);
       cancelAnimationFrame(frame);
       resize.disconnect();
@@ -145,6 +157,10 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       window.removeEventListener('resize', schedule);
     };
   }, [anchorId, scopeId, mode, showPopup,portalTarget]);
+
+  // React commits the final page dimensions before paint. Rebase HTML zoom in
+  // that same commit rather than leaving one frame with the old live ratio.
+  useLayoutEffect(() => { positionRef.current?.(); });
 
   return portalTarget ? createPortal(
     <div ref={rootRef} data-highlight-note-overlay={highlightId} data-highlight-note-owner={owner} data-highlight-note-open={showPopup} className="absolute inset-0 pointer-events-none z-[90000]" onMouseEnter={onEnter} onMouseLeave={onLeave}>

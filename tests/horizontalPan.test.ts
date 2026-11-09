@@ -1,12 +1,28 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { horizontalPanShift } from '../src/utils/pdfViewport';
+import { horizontalPanShift, boundedPanShift } from '../src/utils/pdfViewport';
 
 test('a fitting page moves gradually toward centre only on a wheel', () => {
   assert.equal(horizontalPanShift(100,600,24,1392,0),0);
   assert.equal(horizontalPanShift(100,600,24,1392,-30),30);
   assert.equal(horizontalPanShift(100,600,24,1392,30),0);
   assert.equal(horizontalPanShift(100,600,24,1392,-5000),320);
+});
+
+test('both pan axes allow a fitting document to be repositioned within a finite gutter', () => {
+  for (const [start,size,view,extent] of [[300,600,0,1200],[150,300,0,600]]) {
+    const forward=boundedPanShift(start,size,view,extent,10000);
+    const back=boundedPanShift(start+forward,size,view,extent,-10000);
+    assert.ok(forward<0 && back>0);
+    assert.ok(back<=240);
+    assert.equal(boundedPanShift(start+forward,size,view,extent,10000),0);
+    assert.equal(boundedPanShift(start+forward+back,size,view,extent,-10000),0);
+  }
+});
+
+test('an offscreen zoom anchor can return into the pan range without being pushed farther away', () => {
+  assert.equal(boundedPanShift(-900,600,0,1200,100),0);
+  assert.equal(boundedPanShift(-900,600,0,1200,-100),100);
 });
 
 test('a page translated outside native scroll bounds can reach both edges', () => {

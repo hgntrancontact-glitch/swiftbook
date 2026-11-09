@@ -14,7 +14,7 @@ import {
 } from '../types';
 import { BookSpreadView } from './BookSpreadView';
 import { PDFPageView, pageDimensionCache } from './PDFPageView';
-import { fitPageScale, viewportPages, horizontalPanShift, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
+import { fitPageScale, viewportPages, boundedPanShift, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
 import { ContinuousView } from './ContinuousView';
 import { ChevronLeft, ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
 
@@ -184,24 +184,20 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     panRef.current = { x: 0, y: 0 };
     if (wrapperRef.current) wrapperRef.current.style.translate = '';
   };
-  const panHorizontally = (delta: number) => {
-    const container = containerRef.current;
-    const wrapper = wrapperRef.current;
-    if (!container || !wrapper) return false;
-    const style = getComputedStyle(container);
-    const paddingLeft = parseFloat(style.paddingLeft) || 0;
-    const paddingRight = parseFloat(style.paddingRight) || 0;
-    const viewportLeft = container.getBoundingClientRect().left + container.clientLeft + paddingLeft;
-    const viewportWidth = container.clientWidth - paddingLeft - paddingRight;
-    const rect = wrapper.getBoundingClientRect();
-    const shift = horizontalPanShift(rect.left, rect.width, viewportLeft, viewportWidth, delta);
-    // Consolidate native horizontal scroll and the zoom translation into one
-    // bounded offset. This keeps both edges reachable even if native overflow
-    // excludes a translated part of the page. Vertical scrolling is untouched.
-    panRef.current.x += shift - container.scrollLeft;
-    container.scrollLeft = 0;
+  const panViewport = (dx: number, dy: number) => {
+    const container = containerRef.current, wrapper = wrapperRef.current;
+    if (!container || !wrapper) return;
+    const style = getComputedStyle(container), rect = container.getBoundingClientRect(), content = wrapper.getBoundingClientRect();
+    const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
+    const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
+    const sx = boundedPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, dx);
+    const sy = boundedPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, dy);
+    const oldX = container.scrollLeft, oldY = container.scrollTop;
+    container.scrollLeft -= sx;
+    container.scrollTop -= sy;
+    panRef.current.x += container.scrollLeft-oldX+sx;
+    panRef.current.y += container.scrollTop-oldY+sy;
     wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
-    return rect.width > viewportWidth + 1 || Math.abs(rect.left + rect.width / 2 - viewportLeft - viewportWidth / 2) > 0.5;
   };
   const captureAnchor = (clientX: number, clientY: number): Anchor | null => {
     const container = containerRef.current;
@@ -372,18 +368,13 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey) {
         if (event.metaKey) return;
-        const horizontal = event.deltaX || (event.shiftKey ? event.deltaY : 0);
-        if (!horizontal) return;
-        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientWidth : 1;
-        if (!panHorizontally(horizontal * unit)) return;
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
+        const dx = (event.deltaX || (event.shiftKey ? event.deltaY : 0)) * unit;
+        const dy = event.shiftKey ? 0 : event.deltaY * unit;
+        if (!dx && !dy) return;
         event.preventDefault();
         event.stopPropagation();
-        // Cancelling the horizontal default also cancels its diagonal Y delta.
-        // Preserve that component without converting ordinary scroll to zoom.
-        if (!event.shiftKey && event.deltaY) {
-          const verticalUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
-          container.scrollTop += event.deltaY * verticalUnit;
-        }
+        panViewport(dx, dy);
         return;
       }
       event.preventDefault();

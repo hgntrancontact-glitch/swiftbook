@@ -453,7 +453,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
                 {activeTool === 'smart_pen' ? (
                   <PencilRuler size={15} className="text-indigo-600" />
                 ) : activeTool === 'smart_highlighter' || activeTool === 'highlighter' ? (
-                  <Highlighter size={15} className="text-amber-500" />
+                  <Highlighter size={15} className="text-black" />
                 ) : (
                   <Pencil size={15} />
                 )}

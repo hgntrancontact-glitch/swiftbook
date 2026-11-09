@@ -73,7 +73,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
 }) => {
   const pageHighlights = React.useMemo(() => highlights.filter((h) => h.pageNumber === pageNumber).map(hl => {
     const isText = hl.selectionKind === 'text' || !!hl.text || hl.rects.some(r => !!r.rise);
-    return { ...hl, selectionKind: isText ? 'text' as const : hl.selectionKind, rects: highlightDisplayRects(hl.rects, isText) };
+    return { ...hl, selectionKind: isText ? 'text' as const : hl.selectionKind, rects: hl.selectionGeometry === 'line' ? hl.rects : highlightDisplayRects(hl.rects, isText) };
   }), [highlights, pageNumber]);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [hoveredNoteHlId, setHoveredNoteHlId] = useState<string | null>(null);

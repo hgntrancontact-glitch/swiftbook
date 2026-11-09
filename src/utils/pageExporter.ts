@@ -1253,7 +1253,7 @@ export async function renderPageWithAnnotations(
   pageHighlights.forEach((hl) => {
     const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
     const isText = hl.selectionKind === 'text' || !!hl.text || hl.rects.some(r => !!r.rise);
-    const levelRects = highlightDisplayRects(hl.rects, isText);
+    const levelRects = hl.selectionGeometry === 'line' ? hl.rects : highlightDisplayRects(hl.rects, isText);
     const displayRects = isText ? levelRects : mergeContiguousRects(levelRects);
 
     ctx.save();

@@ -496,6 +496,20 @@ export function moveLineGesture(gesture: LineGesture, y: number, x?: number): vo
       gesture.current=next.indexOf(hit); return;
     }
   }
+  if (x !== undefined) {
+    // Font/style fragments can share a baseline. Y alone cannot move the
+    // endpoint between them, particularly on an upward diagonal drag.
+    const hits = gesture.lines.map((line, index) => ({ line, index }))
+      .filter(({ line }) => y >= line.y && y <= line.y + line.height);
+    if (hits.length) {
+      hits.sort((a, b) => {
+        const distance = (line: SelectionLine) => Math.max(line.x - x, 0, x - line.x - line.width);
+        return distance(a.line) - distance(b.line) || Math.abs(y-a.line.y-a.line.height/2)-Math.abs(y-b.line.y-b.line.height/2);
+      });
+      gesture.current = hits[0].index;
+      return;
+    }
+  }
   const center = (i:number) => gesture.lines[i].y+gesture.lines[i].height/2;
   while (gesture.current+1 < gesture.lines.length) {
     const i=gesture.current, margin=Math.min(gesture.lines[i].height,gesture.lines[i+1].height)*0.2;
@@ -530,7 +544,7 @@ export function lineSelectionRects(gesture: LineGesture, startX: number, endX: n
     const before=lines.slice(0,first+i).at(-1),after=lines[first+i+1];
     const gapBefore=before ? Math.max(0,line.y-before.y-before.height) : line.height;
     const gapAfter=after ? Math.max(0,after.y-line.y-line.height) : line.height;
-    const pad=Math.min(line.height*0.08,gapBefore/3,gapAfter/3);
+    const pad=Math.min(line.height*0.04,gapBefore/3,gapAfter/3);
     const rise=(line.rise || 0)*(right-x)/line.width;
     const topAtStart=line.y+Math.max(0,-(line.rise || 0))+(line.rise || 0)*(x-line.x)/line.width;
     const y=Math.max(0,topAtStart+Math.min(0,rise)-pad);

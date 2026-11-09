@@ -1,4 +1,4 @@
-import { highlightClip, highlightDisplayRects } from '../utils/highlightGeometry';
+import { highlightClip } from '../utils/highlightGeometry';
 import { loadOCRLines } from '../utils/selectionOCR';
 import React, { useRef, useState, useEffect } from 'react';
 import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, selectedLineText, selectionLineCovered, type LineGesture, type SelectionLine } from '../utils/selectionLines';
@@ -252,6 +252,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       color: colorToUse,
       rects: pendingSelection.rects,
       selectionKind: pendingSelection.selectionKind,
+      selectionGeometry: 'line',
       createdAt: Date.now(),
     };
 
@@ -294,7 +295,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     >
       {/* Live dragging rectangle */}
       {isDragging && startPos && currentPos && containerRef.current && (
-        highlightDisplayRects(getSelectionRects(startPos, currentPos), gestureRef.current?.textSelection).map((r, i) => (
+        getSelectionRects(startPos, currentPos).map((r, i) => (
           <div 
             key={i}
             data-selection-preview="live"
@@ -317,6 +318,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       {pendingSelection && !isDragging && (
         <div
           className="pending-simulated-selection absolute inset-0 cursor-pointer select-none"
+          onMouseDown={e => e.stopPropagation()}
           onContextMenu={handleContextMenu}
           onClick={(e) => {
             e.stopPropagation();
@@ -326,7 +328,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
             commitHighlight();
           }}
         >
-          {highlightDisplayRects(pendingSelection.rects, pendingSelection.selectionKind === 'text').map((r, i) => (
+          {pendingSelection.rects.map((r, i) => (
             <div
               key={i}
               data-selection-preview="pending"

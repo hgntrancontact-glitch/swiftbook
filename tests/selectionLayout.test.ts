@@ -9,6 +9,29 @@ function line(x: number, y: number, width = 0.27, text = 'ABCDEFGHIJKLMNOPQRSTUV
     glyphs: [...text].map((text, i, all) => ({ text, x: x + i * width / all.length, right: x + (i + 1) * width / all.length })) };
 }
 
+for (const startLeft of [true, false]) for (const upward of [true, false]) {
+  test(`diagonal selection is reversible: left ${startLeft}, upward ${upward}`, () => {
+    const lines = [line(.1,.2,.7),line(.1,.24,.7),line(.1,.28,.7)];
+    const sx = startLeft ? .2 : .65, ex = startLeft ? .65 : .2;
+    const sy = upward ? .287 : .207, ey = upward ? .207 : .287;
+    const a = beginLineGesture(lines,sx,sy,.02); moveLineGesture(a,ey,ex);
+    const b = beginLineGesture(lines,ex,ey,.02); moveLineGesture(b,sy,sx);
+    assert.deepEqual(lineSelectionRects(a,sx,ex),lineSelectionRects(b,ex,sx));
+    assert.equal(selectedLineText(a,sx,ex).text,selectedLineText(b,ex,sx).text);
+    assert.equal(lineSelectionRects(a,sx,ex).length,3);
+  });
+}
+
+test('horizontal motion can reach a different font fragment on the same baseline', () => {
+  const lines = [line(.1,.2,.2),line(.32,.2,.2),line(.1,.24,.5)];
+  const gesture = beginLineGesture(lines,.15,.207,.02);
+  moveLineGesture(gesture,.207,.48);
+  assert.equal(gesture.lines[gesture.current].x,.32);
+  const selected = lineSelectionRects(gesture,.15,.48);
+  assert.equal(selected.length,2);
+  assert.ok(selected.every(r=>r.height<=.015*1.09));
+});
+
 for (const columns of [1, 2, 3]) for (const reversedStream of [false, true]) for (const backwards of [false, true]) {
   test(`${columns} columns, reversed stream ${reversedStream}, backwards ${backwards}`, () => {
     const lines = Array.from({ length: columns }, (_, column) => Array.from({ length: 6 }, (_, row) =>
