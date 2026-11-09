@@ -10,25 +10,30 @@ export function highlightDisplayRects(rects: NormalizedRect[], isText = true): N
   const groups: NormalizedRect[][]=[];
   for(const rect of [...rects].sort((a,b)=>a.y+a.height/2-b.y-b.height/2)) {
     const group=groups.at(-1);
-    if(group && group.some(other=>Math.abs(other.y+other.height/2-rect.y-rect.height/2)<Math.min(other.height,rect.height)*.35)) group.push(rect);
+    const combinedHeight = group ? Math.max(rect.y + rect.height, ...group.map(r => r.y + r.height)) - Math.min(rect.y, ...group.map(r => r.y)) : 0;
+    if(group && combinedHeight <= Math.max(rect.height, ...group.map(r => r.height)) * 1.65
+      && group.some(other=>Math.abs(other.y+other.height/2-rect.y-rect.height/2)<Math.min(other.height,rect.height)*.35)) group.push(rect);
     else groups.push([rect]);
   }
-  const bounds=new Map<NormalizedRect,{y:number;height:number}>();
-  for(const group of groups) {
-    const y=Math.min(...group.map(r=>r.y)),bottom=Math.max(...group.map(r=>r.y+r.height));
-    for(const rect of group) bounds.set(rect,{y,height:bottom-y});
-  }
-  const rows=rects.map(({rise,...rect},i)=>({...rect,...bounds.get(rects[i])!}));
-  return rows.map(rect => {
-    let above = rect.height * 0.18, below = above;
+  const rows = groups.map(group => ({ group,
+    x: Math.min(...group.map(r => r.x)), right: Math.max(...group.map(r => r.x + r.width)),
+    y: Math.min(...group.map(r => r.y)), bottom: Math.max(...group.map(r => r.y + r.height)),
+  }));
+  const bounds = new Map<NormalizedRect, { y: number; height: number }>();
+  for (const row of rows) {
+    let above = (row.bottom - row.y) * 0.08, below = above;
     for (const other of rows) {
-      if (other === rect || Math.min(rect.x + rect.width, other.x + other.width) <= Math.max(rect.x, other.x)) continue;
-      if (other.y + other.height <= rect.y) above = Math.min(above, (rect.y - other.y - other.height) / 2.1);
-      if (other.y >= rect.y + rect.height) below = Math.min(below, (other.y - rect.y - rect.height) / 2.1);
+      if (other === row || Math.min(row.right, other.right) <= Math.max(row.x, other.x)) continue;
+      if (other.bottom <= row.y) above = Math.min(above, (row.y - other.bottom) / 2.1);
+      if (other.y >= row.bottom) below = Math.min(below, (other.y - row.bottom) / 2.1);
     }
-    const y = Math.max(0, rect.y - Math.max(0, above));
-    return { ...rect, y, height: Math.min(100, rect.y + rect.height + Math.max(0, below)) - y };
-  });
+    // Apply neighbouring-line clearance once to the entire row. Per-fragment
+    // clearance can give the left and right halves different upper/lower edges.
+    const y = Math.max(0, row.y - Math.max(0, above));
+    const height = Math.min(100, row.bottom + Math.max(0, below)) - y;
+    row.group.forEach(rect => bounds.set(rect, { y, height }));
+  }
+  return rects.map(({ rise, ...rect }, i) => ({ ...rect, ...bounds.get(rects[i])! }));
 }
 
 /** Same quadrilateral for preview, hit testing, saved highlight and export. */

@@ -1,4 +1,5 @@
 import { routeAnnotationWheel } from '../utils/annotationWheel';
+import { getAnnotationZoom, placeAnnotationToolbar } from '../utils/annotationUi';
 import React, { forwardRef, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -9,11 +10,13 @@ interface AnnotationToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
   preserveAnchorGap?: boolean;
   preferredAbove?: boolean;
   align?: 'left' | 'center';
+  scaleWithPage?: boolean;
+  uiScale?: number;
 }
 
 // Tool UI lives in screen coordinates; the annotation remains in page coordinates.
 export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarProps>(
-  ({ anchorId, anchorIds, scopeId, preserveAnchorGap = false, preferredAbove = true, align = 'center', children, className, style, ...props }, forwardedRef) => {
+  ({ anchorId, anchorIds, scopeId, preserveAnchorGap = false, preferredAbove = true, align = 'center', scaleWithPage = false, uiScale = 1, children, className, style, ...props }, forwardedRef) => {
     const toolbarRef = useRef<HTMLDivElement | null>(null);
     useLayoutEffect(() => {
       const toolbar = toolbarRef.current;
@@ -29,27 +32,23 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
         const topLimit = Math.max(8, viewport?.top || 0, document.getElementById('app-header')?.getBoundingClientRect().bottom || 0) + 8;
         const bottomLimit = Math.min(window.innerHeight - 8, viewport?.bottom || window.innerHeight, document.getElementById('bottom-toolbar-dock')?.getBoundingClientRect().top || window.innerHeight) - 8;
-        toolbar.style.maxWidth = `${Math.max(1, window.innerWidth - 16)}px`;
+        const scale = uiScale * (scaleWithPage ? getAnnotationZoom(anchor) : 1);
+        toolbar.style.transform = scale === 1 ? '' : `scale(${scale})`;
+        toolbar.dataset.annotationToolbarScale = String(scale);
+        toolbar.style.maxWidth = `${Math.max(1, window.innerWidth - 16) / scale}px`;
         toolbar.style.maxHeight = '';
         toolbar.style.overflowY = '';
-        let size = toolbar.getBoundingClientRect();
+        const size = toolbar.getBoundingClientRect();
         const leftLimit = align === 'left' ? Math.max(8, (viewport?.left || 0) + 8) : 8;
         const rightLimit = align === 'left' ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
-        const left = Math.max(leftLimit, Math.min(Math.max(leftLimit, rightLimit - size.width), align === 'left' ? bounds.left : (bounds.left + bounds.right - size.width) / 2));
-        let above = preferredAbove;
-        if (above && bounds.top - size.height - 10 < topLimit && bounds.bottom + size.height + 10 <= bottomLimit) above = false;
-        if (!above && bounds.bottom + size.height + 10 > bottomLimit && bounds.top - size.height - 10 >= topLimit) above = true;
-        if (preserveAnchorGap && bounds.top - size.height - 10 < topLimit && bounds.bottom + size.height + 10 > bottomLimit) {
-          above = bounds.top - topLimit >= bottomLimit - bounds.bottom;
-          const space = above ? bounds.top - topLimit - 10 : bottomLimit - bounds.bottom - 10;
-          toolbar.style.maxHeight = `${Math.max(32, space)}px`;
+        const placement = placeAnnotationToolbar(bounds, { width: size.width / scale, height: size.height / scale },
+          { left: leftLimit, right: rightLimit, top: topLimit, bottom: bottomLimit }, scale, preferredAbove, preserveAnchorGap, align);
+        if (placement.maxHeight !== undefined) {
+          toolbar.style.maxHeight = `${placement.maxHeight}px`;
           toolbar.style.overflowY = 'auto';
-          size = toolbar.getBoundingClientRect();
         }
-        const requestedTop = above ? bounds.top - size.height - 10 : bounds.bottom + 10;
-        const top = preserveAnchorGap ? requestedTop : Math.max(topLimit, Math.min(bottomLimit - size.height, requestedTop));
-        toolbar.style.left = `${left}px`;
-        toolbar.style.top = `${top}px`;
+        toolbar.style.left = `${placement.left}px`;
+        toolbar.style.top = `${placement.top}px`;
         toolbar.style.visibility = bounds.bottom <= topLimit || bounds.top >= bottomLimit || bounds.right <= Math.max(0, viewport?.left || 0) || bounds.left >= Math.min(window.innerWidth, viewport?.right || window.innerWidth) ? 'hidden' : 'visible';
       };
       const schedule = () => { if (!frame) frame = requestAnimationFrame(position); };
@@ -62,7 +61,9 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
       resize.observe(toolbar);
       const mutation = new MutationObserver(update);
       const wrapper = anchor.closest('[data-scale]');
-      if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale'] });
+      if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
+      const page = anchor.closest('[data-page-container="true"]');
+      if (page) mutation.observe(page, { attributes: true, attributeFilter: ['style'] });
       anchors.forEach(el => mutation.observe(el, { attributes: true, attributeFilter: ['style'] }));
       window.addEventListener('scroll', update, true);
       window.addEventListener('resize', update);
@@ -75,14 +76,14 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         window.removeEventListener('scroll', update, true);
         window.removeEventListener('resize', update);
       };
-    }, [anchorId, anchorIds?.join('|'), scopeId, preserveAnchorGap, preferredAbove, align]);
+    }, [anchorId, anchorIds?.join('|'), scopeId, preserveAnchorGap, preferredAbove, align, scaleWithPage, uiScale]);
 
     return createPortal(
       <div {...props} ref={node => {
         toolbarRef.current = node;
         if (typeof forwardedRef === 'function') forwardedRef(node);
         else if (forwardedRef) forwardedRef.current = node;
-      }} className={className} style={{ position: 'fixed', zIndex: 90000, left: 0, top: 0, visibility: 'hidden', width: style?.width || 'max-content', flexWrap: 'wrap' }}>
+      }} className={className} style={{ position: 'fixed', zIndex: 90000, left: 0, top: 0, visibility: 'hidden', width: style?.width || 'max-content', flexWrap: 'wrap', transformOrigin: '0 0' }}>
         {children}
       </div>, document.body
     );

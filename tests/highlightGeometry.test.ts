@@ -41,8 +41,30 @@ test('a chain of overlapping fragments gets one pair of straight row edges',()=>
   const rows=highlightDisplayRects(stored);
   assert.equal(new Set(rows.map(r=>r.y)).size,1);
   assert.equal(new Set(rows.map(r=>r.height)).size,1);
-  assert.ok(rows[0].y<=20-2*.18);
+  assert.ok(rows[0].y < 20);
+  assert.ok(rows[0].height < 3.2 * 1.2);
   assert.ok(rows.every(r=>!r.rise));
+});
+
+test('nearby lines on only one side cannot give fragments on the same row stepped edges', () => {
+  const rows = highlightDisplayRects([
+    { x: 10, y: 20, width: 20, height: 2 },
+    { x: 30, y: 20, width: 20, height: 2 },
+    { x: 10, y: 17.9, width: 20, height: 2 },
+    { x: 30, y: 22.15, width: 20, height: 2 },
+  ]);
+  assert.equal(rows[0].y, rows[1].y);
+  assert.equal(rows[0].height, rows[1].height);
+  assert.ok(rows[2].y + rows[2].height < rows[0].y);
+  assert.ok(rows[0].y + rows[0].height < rows[3].y);
+});
+
+test('a selected line has a modest symmetric margin rather than a tall band', () => {
+  const source = { x: 10, y: 20, width: 75, height: 2 };
+  const [display] = highlightDisplayRects([source]);
+  assert.ok(display.height > source.height * 1.1);
+  assert.ok(display.height < source.height * 1.2);
+  assert.ok(Math.abs((source.y - display.y) - (display.y + display.height - source.y - source.height)) < 1e-9);
 });
 
 test('padding does not bridge adjacent text lines or escape page boundaries', () => {

@@ -1,4 +1,5 @@
 import { highlightClip, highlightCorners, highlightDisplayRects } from '../utils/highlightGeometry';
+import { HIGHLIGHT_TOOLBAR_SIZE } from '../utils/annotationUi';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import { HighlightNoteOverlay } from './HighlightNoteOverlay';
 import React, { useState, useRef, useEffect } from 'react';
@@ -301,6 +302,8 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             preserveAnchorGap
             align="left"
             preferredAbove={false}
+            scaleWithPage
+            uiScale={HIGHLIGHT_TOOLBAR_SIZE}
             className="highlight-popup-toolbar bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 text-neutral-800 pointer-events-auto font-['Inter',sans-serif]"
             style={{ width: 288 }}
             onClick={(e) => e.stopPropagation()}

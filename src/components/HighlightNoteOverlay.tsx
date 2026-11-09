@@ -1,4 +1,5 @@
 import { routeAnnotationWheel } from '../utils/annotationWheel';
+import { getAnnotationZoom, HIGHLIGHT_NOTE_SIZE } from '../utils/annotationUi';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageSquare } from 'lucide-react';
@@ -20,7 +21,6 @@ interface Props {
 const ICON_SIZE = 18.5;
 const ICON_GLYPH_SIZE = 9.5;
 const POPUP_WIDTH = 224;
-const POPUP_SIZE = 0.94;
 const POPUP_GAP = 6;
 
 // Page-local overlays scroll natively; dimensions follow document zoom.
@@ -46,12 +46,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const position = () => {
       const r = anchor.getBoundingClientRect();
       const slot=portalTarget.getBoundingClientRect();
-      const wrapper = anchor.closest<HTMLElement>('[data-user-zoom]');
-      const page=anchor.closest<HTMLElement>('[data-page-container="true"]');
-      const layoutWidth=page ? parseFloat(page.style.width) : 0;
-      const liveRatio=page && layoutWidth ? page.getBoundingClientRect().width/layoutWidth : 1;
-      const userZoom = Number(wrapper?.dataset.userZoom || 1) * liveRatio;
-      const factor = Math.max(0.2,userZoom);
+      const factor = getAnnotationZoom(anchor);
       const iconSize = ICON_SIZE * factor;
       if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor);
       icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize}px`;
@@ -71,7 +66,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const iconRight = Math.min(screenRight, (viewport?.right || window.innerWidth) - 4);
       // Scale the entire card once. Its base width and maximum body height
       // are document-space values, not a viewport-dependent size negotiation.
-      const popupFactor=factor*POPUP_SIZE;
+      const popupFactor=factor*HIGHLIGHT_NOTE_SIZE;
       const cardWidth=POPUP_WIDTH*popupFactor;
       popup.style.width=`${cardWidth}px`;
       popup.style.maxHeight=`${420*popupFactor}px`;
