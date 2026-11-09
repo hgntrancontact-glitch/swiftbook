@@ -304,11 +304,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       pendingAnchorRef.current = null;
       pendingCommitRef.current = false;
       clearLiveZoom();
-      if (doc.viewMode === 'continuous') {
-        if (doc.scale <= 1) { clearPan(); if (containerRef.current) containerRef.current.scrollLeft = 0; }
-        if (anchor) restoreAnchor(anchor, doc.scale > 1);
-      } else if (doc.scale <= 1) { clearPan(); alignCurrentPage(); }
-      else if (anchor) restoreAnchor(anchor);
+      if (anchor) restoreAnchor(anchor);
       releaseGesture();
     }
     previousLayoutRef.current = { key: resetKey, baseScale, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs };
@@ -322,18 +318,19 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     let clientX = 0;
     let clientY = 0;
     let frame: number | null = null;
+    let gestureAnchor: Anchor | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const apply = () => {
       frame = null;
-      const anchor = captureAnchor(clientX, clientY);
+      // Reuse the page-local point while the pointer stays still. Hit testing
+      // and scanning page geometry on every pinch frame forces extra layouts.
+      if (!gestureAnchor || !gestureAnchor.element.isConnected || gestureAnchor.clientX !== clientX || gestureAnchor.clientY !== clientY) {
+        gestureAnchor = captureAnchor(clientX, clientY);
+      }
+      const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
-      if (targetScale <= 1) {
-        clearPan();
-        container.scrollLeft = 0;
-        if (doc.viewMode !== 'continuous') container.scrollTop = 0;
-        else if (anchor) restoreAnchor(anchor, false);
-      } else if (anchor) restoreAnchor(anchor);
-      visualAnchorRef.current = captureAnchor(clientX, clientY);
+      if (anchor) restoreAnchor(anchor);
+      visualAnchorRef.current = anchor;
     };
     const cancel = () => {
       const hadGesture = gestureActiveRef.current || timer !== null || frame !== null;
@@ -341,6 +338,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (frame !== null) cancelAnimationFrame(frame);
       timer = null;
       frame = null;
+      gestureAnchor = null;
       gestureActiveRef.current = false;
       // Layout reset and effect cleanup can both cancel the same gesture.
       // The second cancellation must not invalidate the reset's release frame.
@@ -350,7 +348,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       startScale = scale;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
       const anchor = visualAnchorRef.current;
-      if (anchor) restoreAnchor(anchor, targetScale > 1);
+      if (anchor) restoreAnchor(anchor);
     };
     gestureControllerRef.current = { cancel, rebase };
     const finish = () => {
@@ -358,14 +356,11 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (timer) clearTimeout(timer);
       timer = null;
       if (frame !== null) { cancelAnimationFrame(frame); apply(); }
-      pendingAnchorRef.current = captureAnchor(clientX, clientY);
+      pendingAnchorRef.current = gestureAnchor || captureAnchor(clientX, clientY);
       gestureActiveRef.current = false;
       if (Math.abs(targetScale - startScale) < 0.000001 && !pendingCommitRef.current) {
         clearLiveZoom();
-        if (doc.viewMode === 'continuous') {
-          if (targetScale <= 1) { clearPan(); container.scrollLeft = 0; }
-          if (pendingAnchorRef.current) restoreAnchor(pendingAnchorRef.current, targetScale > 1);
-        } else if (targetScale <= 1) { clearPan(); alignCurrentPage(); }
+        if (pendingAnchorRef.current) restoreAnchor(pendingAnchorRef.current);
         pendingAnchorRef.current = null;
         releaseGesture();
       } else {
@@ -397,6 +392,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         if (releaseFrameRef.current !== null) { cancelAnimationFrame(releaseFrameRef.current); releaseFrameRef.current = null; }
         gestureEpochRef.current++;
         startScale = committedScaleRef.current;
+        gestureAnchor = null;
         targetScale = scaleRef.current;
         gestureActiveRef.current = true;
         container.dataset.zoomGesture = 'true';

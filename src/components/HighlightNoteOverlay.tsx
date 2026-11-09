@@ -28,6 +28,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
   const rootRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const popupHeightRef = useRef<number | null>(null);
   const bridgeRef = useRef<HTMLDivElement>(null);
   const directionRef = useRef<'above' | 'below'>('above');
   const placementRef = useRef<{direction:'above'|'below';offsetX:number} | null>(null);
@@ -75,7 +76,10 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       popup.style.overflow='hidden';
       const card=popup.firstElementChild as HTMLElement | null;
       if(card) {card.style.zoom=String(popupFactor);card.style.width=`${POPUP_WIDTH}px`;}
-      const height=popup.getBoundingClientRect().height;
+      // Closed notes need only their icon; measuring every hidden card forces
+      // synchronous layout for each annotation during every pinch frame.
+      if (showPopup || popupHeightRef.current === null) popupHeightRef.current = popup.getBoundingClientRect().height / popupFactor;
+      const height=popupHeightRef.current * popupFactor;
       const gap=POPUP_GAP*factor;
       let direction=placementRef.current?.direction || directionRef.current;
       if(!placementRef.current) {
@@ -126,7 +130,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const body = popupRef.current.querySelector('[data-highlight-note-body]');
       if (body) resize.observe(body);
     }
-    const mutation = new MutationObserver(position);
+    const mutation = new MutationObserver(schedule);
     const wrapper = anchor.closest('[data-scale]');
     if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
     mutation.observe(anchor, { attributes: true, attributeFilter: ['style'] });

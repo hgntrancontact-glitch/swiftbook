@@ -52,7 +52,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         toolbar.style.visibility = bounds.bottom <= topLimit || bounds.top >= bottomLimit || bounds.right <= Math.max(0, viewport?.left || 0) || bounds.left >= Math.min(window.innerWidth, viewport?.right || window.innerWidth) ? 'hidden' : 'visible';
       };
       const schedule = () => { if (!frame) frame = requestAnimationFrame(position); };
-      const update = preserveAnchorGap ? position : schedule;
+      const update = schedule;
       const viewport = anchor.closest<HTMLElement>('.pdf-viewport-container');
       const wheel = (event: WheelEvent) => { if (viewport) routeAnnotationWheel(event, viewport, toolbar); };
       if (preserveAnchorGap) toolbar.addEventListener('wheel', wheel, { passive: false });
