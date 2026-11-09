@@ -17,6 +17,15 @@ export function rasterDensity(size: PageSize, scale: number) {
     8_000 / Math.max(size.width, size.height, 1));
 }
 
+// A first frame at screen resolution avoids waiting for a full retina raster.
+// The visible page is refined to rasterDensity immediately after it is shown.
+export function initialRasterDensity(size: PageSize, scale: number) {
+  const target = rasterDensity(size, scale);
+  if (size.width * size.height * target * target <= 1_500_000) return target;
+  return Math.min(target, scale, Math.sqrt(1_500_000 / Math.max(1, size.width * size.height)),
+    1_800 / Math.max(size.width, size.height, 1));
+}
+
 export function getPageRaster(key: string, pdfDoc: any) {
   const entry = rasters.get(key);
   if (!entry || entry.pdfDoc !== pdfDoc) return null;

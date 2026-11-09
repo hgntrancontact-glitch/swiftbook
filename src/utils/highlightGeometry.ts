@@ -1,5 +1,30 @@
 import type { NormalizedRect } from '../types';
 
+/** Display geometry is shared by selections, saved annotations and exports.
+ * Keep stored OCR coordinates intact; old sloping highlights also become level.
+ */
+export function highlightDisplayRects(rects: NormalizedRect[], isText = true): NormalizedRect[] {
+  if (!isText) return rects;
+  const rows = rects.map(rect => {
+    const sameRow = rects.filter(other =>
+      Math.abs(other.y + other.height / 2 - rect.y - rect.height / 2) < Math.min(other.height, rect.height) * 0.35);
+    const top = Math.min(...sameRow.map(other => other.y));
+    const bottom = Math.max(...sameRow.map(other => other.y + other.height));
+    const { rise, ...bounds } = rect;
+    return { ...bounds, y: top, height: bottom - top };
+  });
+  return rows.map(rect => {
+    let above = rect.height * 0.12, below = above;
+    for (const other of rows) {
+      if (other === rect || Math.min(rect.x + rect.width, other.x + other.width) <= Math.max(rect.x, other.x)) continue;
+      if (other.y + other.height <= rect.y) above = Math.min(above, (rect.y - other.y - other.height) / 2.1);
+      if (other.y >= rect.y + rect.height) below = Math.min(below, (other.y - rect.y - rect.height) / 2.1);
+    }
+    const y = Math.max(0, rect.y - Math.max(0, above));
+    return { ...rect, y, height: Math.min(100, rect.y + rect.height + Math.max(0, below)) - y };
+  });
+}
+
 /** Same quadrilateral for preview, hit testing, saved highlight and export. */
 export function highlightCorners(r: NormalizedRect): [number,number][] {
   const rise=Math.max(-r.height,Math.min(r.height,r.rise || 0));

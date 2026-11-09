@@ -6,6 +6,11 @@ export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 50;
 export type PageSize = { width: number; height: number };
 
+export function continuousRenderWindow(nearby: Iterable<number>, currentPage: number, totalPages: number, retained: Iterable<number> = []): Set<number> {
+  return new Set([...nearby, currentPage - 1, currentPage, currentPage + 1, ...retained]
+    .filter(page => page >= 1 && page <= totalPages));
+}
+
 // Client-space movement, including any translation left by cursor-anchored
 // zoom. Native scrollWidth cannot describe content translated past the left edge.
 export function horizontalPanShift(left: number, width: number, viewportLeft: number, viewportWidth: number, delta: number): number {

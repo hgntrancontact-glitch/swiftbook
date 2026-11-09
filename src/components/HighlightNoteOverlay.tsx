@@ -17,7 +17,8 @@ interface Props {
 }
 
 // Page-relative dimensions, calibrated at document zoom 100%.
-const ICON_SIZE = 20;
+const ICON_SIZE = 18.5;
+const ICON_GLYPH_SIZE = 9.5;
 const POPUP_WIDTH = 240;
 const POPUP_SIZE = 0.94;
 const POPUP_GAP = 6;
@@ -57,7 +58,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       icon.style.borderWidth = `${2*factor}px`;
       icon.style.boxShadow=`0 ${2*factor}px ${4*factor}px rgba(0,0,0,.16)`;
       const glyph = icon.querySelector('svg');
-      if (glyph) glyph.style.width = glyph.style.height = `${10*factor}px`;
+      if (glyph) glyph.style.width = glyph.style.height = `${ICON_GLYPH_SIZE*factor}px`;
       const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
       const popup = popupRef.current;
       if (!popup) return;
@@ -155,7 +156,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
         onClick={e => { e.stopPropagation(); onEdit(); }}
         onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}
         onContextMenu={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}>
-        <MessageSquare size={10} style={{ width: '10px', height: '10px', flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
+        <MessageSquare size={ICON_GLYPH_SIZE} style={{ width: ICON_GLYPH_SIZE, height: ICON_GLYPH_SIZE, flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
       </button>
       {<>
         <div ref={bridgeRef} className="absolute z-[90000]" style={{ visibility: 'hidden', pointerEvents: mode === 'auto' ? 'auto' : 'none' }} />

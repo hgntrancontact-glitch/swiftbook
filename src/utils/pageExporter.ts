@@ -1,4 +1,4 @@
-import { highlightCorners } from './highlightGeometry';
+import { highlightCorners, highlightDisplayRects } from './highlightGeometry';
 import { canvasViewportTransform } from './pageCoordinates';
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
@@ -1252,7 +1252,9 @@ export async function renderPageWithAnnotations(
   // Layer 1: Highlights (Highlighter Overlay)
   pageHighlights.forEach((hl) => {
     const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
-    const displayRects = hl.selectionKind === 'text' ? hl.rects : mergeContiguousRects(hl.rects);
+    const isText = hl.selectionKind === 'text' || !!hl.text || hl.rects.some(r => !!r.rise);
+    const levelRects = highlightDisplayRects(hl.rects, isText);
+    const displayRects = isText ? levelRects : mergeContiguousRects(levelRects);
 
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fitInkSlope, beginLineGesture, lineSelectionRects, rasterSelectionLines } from '../src/utils/selectionLines';
-import { highlightCorners,highlightClip } from '../src/utils/highlightGeometry';
+import { highlightCorners,highlightClip,highlightDisplayRects } from '../src/utils/highlightGeometry';
 
 for(const slope of [-.012,0,.009]) test(`scan ink baseline slope ${slope}`,()=> {
   const ink:{x:number;y:number}[]=[];
@@ -10,6 +10,46 @@ for(const slope of [-.012,0,.009]) test(`scan ink baseline slope ${slope}`,()=> 
     ink.push({x,y:Math.round(30+slope*x)-dy});
   const fitted=fitInkSlope(ink,900);
   assert.ok(Math.abs(fitted-slope)<.0015,`${fitted} != ${slope}`);
+});
+
+test('saved sloping highlights display as padded level rectangles without changing saved data', () => {
+  const stored = [{ x: 10, y: 20, width: 75, height: 2.5, rise: -0.6 }];
+  const snapshot = structuredClone(stored);
+  const [display] = highlightDisplayRects(stored);
+  const corners = highlightCorners(display);
+  assert.equal(corners[0][1], corners[1][1]);
+  assert.equal(corners[2][1], corners[3][1]);
+  assert.ok(display.y < stored[0].y);
+  assert.ok(display.y + display.height > stored[0].y + stored[0].height);
+  assert.equal(highlightClip(display), undefined);
+  assert.deepEqual(stored, snapshot);
+});
+
+test('mixed fragments on the same row have aligned upper and lower edges', () => {
+  const rows = highlightDisplayRects([
+    { x: 10, y: 20, width: 20, height: 2 },
+    { x: 30, y: 20.15, width: 40, height: 1.7 },
+    { x: 10, y: 23, width: 40, height: 2 },
+  ]);
+  assert.equal(rows[0].y, rows[1].y);
+  assert.equal(rows[0].height, rows[1].height);
+  assert.ok(rows[2].y > rows[0].y + rows[0].height);
+});
+
+test('padding does not bridge adjacent text lines or escape page boundaries', () => {
+  const rows = highlightDisplayRects([
+    { x: 10, y: 0, width: 60, height: 2 },
+    { x: 10, y: 2.1, width: 40, height: 2 },
+    { x: 10, y: 98, width: 40, height: 2 },
+  ]);
+  assert.equal(rows[0].y, 0);
+  assert.ok(rows[0].y + rows[0].height < rows[1].y);
+  assert.equal(rows[2].y + rows[2].height, 100);
+});
+
+test('manual area highlights retain their chosen bounds', () => {
+  const area = [{ x: 5, y: 10, width: 80, height: 35 }];
+  assert.deepEqual(highlightDisplayRects(area, false), area);
 });
 
 test('cropped sloping selection preserves its baseline and symmetric padding',()=> {

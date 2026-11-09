@@ -1,4 +1,4 @@
-import { highlightClip } from '../utils/highlightGeometry';
+import { highlightClip, highlightDisplayRects } from '../utils/highlightGeometry';
 import { loadOCRLines } from '../utils/selectionOCR';
 import React, { useRef, useState, useEffect } from 'react';
 import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, selectedLineText, selectionLineCovered, type LineGesture, type SelectionLine } from '../utils/selectionLines';
@@ -179,15 +179,11 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     if (!gesture || !containerRef.current) return [];
     return lineSelectionRects(gesture, p1.x, p2.x)
       .map(rect => {
-        // Keep scanned and native text highlights level, with a little breathing
-        // room around the ink so the color does not sit tight against glyphs.
-        const verticalPad = rect.height * 0.1;
-        const x = Math.max(0, rect.x), y = Math.max(0, rect.y - verticalPad);
-        const bottom = Math.min(1, rect.y + rect.height + verticalPad);
-        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: bottom - y };
+        const x = Math.max(0, rect.x), y = Math.max(0, rect.y);
+        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: Math.min(1, rect.y + rect.height) - y, ...(rect.rise ? { rise: rect.rise } : {}) };
       })
       .filter(rect => rect.height > 0 && rect.width * containerRef.current!.clientWidth > 2)
-      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100 }));
+      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100, ...(rect.rise ? { rise: rect.rise * 100 } : {}) }));
   };
 
   // Robust window mousemove and mouseup listeners during dragging
@@ -298,7 +294,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     >
       {/* Live dragging rectangle */}
       {isDragging && startPos && currentPos && containerRef.current && (
-        getSelectionRects(startPos, currentPos).map((r, i) => (
+        highlightDisplayRects(getSelectionRects(startPos, currentPos), gestureRef.current?.textSelection).map((r, i) => (
           <div 
             key={i}
             data-selection-preview="live"
@@ -330,7 +326,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
             commitHighlight();
           }}
         >
-          {pendingSelection.rects.map((r, i) => (
+          {highlightDisplayRects(pendingSelection.rects, pendingSelection.selectionKind === 'text').map((r, i) => (
             <div
               key={i}
               data-selection-preview="pending"

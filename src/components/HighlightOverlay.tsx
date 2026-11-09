@@ -1,4 +1,4 @@
-import { highlightClip, highlightCorners } from '../utils/highlightGeometry';
+import { highlightClip, highlightCorners, highlightDisplayRects } from '../utils/highlightGeometry';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import { HighlightNoteOverlay } from './HighlightNoteOverlay';
 import React, { useState, useRef, useEffect } from 'react';
@@ -70,7 +70,10 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
   onSelect,
   elevatedContainerId,
 }) => {
-  const pageHighlights = highlights.filter((h) => h.pageNumber === pageNumber);
+  const pageHighlights = React.useMemo(() => highlights.filter((h) => h.pageNumber === pageNumber).map(hl => {
+    const isText = hl.selectionKind === 'text' || !!hl.text || hl.rects.some(r => !!r.rise);
+    return { ...hl, selectionKind: isText ? 'text' as const : hl.selectionKind, rects: highlightDisplayRects(hl.rects, isText) };
+  }), [highlights, pageNumber]);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [hoveredNoteHlId, setHoveredNoteHlId] = useState<string | null>(null);
   const [editingNote, setEditingNote] = useState<{ id: string; text: string } | null>(null);
@@ -424,7 +427,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
         >
           {pageHighlights.map((hl) => {
             const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
-            const displayRects = hl.selectionKind === 'text' ? hl.rects : mergeContiguousRects(hl.rects);
+            const displayRects = hl.selectionKind === 'text' || !!hl.text ? hl.rects : mergeContiguousRects(hl.rects);
 
             return (
               <g key={`hl-svg-${hl.id}`} opacity={0.42}>

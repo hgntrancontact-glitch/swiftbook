@@ -11,7 +11,7 @@ import {
   HighlightColor,
 } from '../types';
 import { PDFPageView, pageDimensionCache } from './PDFPageView';
-import { CONTINUOUS_GAP } from '../utils/pdfViewport';
+import { CONTINUOUS_GAP, continuousRenderWindow } from '../utils/pdfViewport';
 
 interface ContinuousViewProps {
   fileId: string;
@@ -157,9 +157,12 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
     const mountNearbyPages = () => {
       if (scrollParent?.dataset.zoomGesture === 'true') return;
       setRenderedPages((previous) => {
-        const next = new Set(previous);
-        nearbyPageNumbers.forEach((page) => next.add(page));
-        return next.size === previous.size ? previous : next;
+        // Keep editing/pinned notes alive, but release far-away canvases. Their
+        // dimensions and bounded raster cache preserve layout and return visits.
+        const retained = [...previous].filter(page => pageElementsRef.current.get(page)?.querySelector(
+          '[data-highlight-note-open="true"], .sticky-note-expanded, textarea:focus, [contenteditable="true"]:focus, .cursor-grabbing'));
+        const next = continuousRenderWindow(nearbyPageNumbers, currentPageRef.current || 1, totalPages, retained);
+        return next.size === previous.size && [...next].every(page => previous.has(page)) ? previous : next;
       });
     };
     scrollParent?.addEventListener('pdf-zoom-end', mountNearbyPages);

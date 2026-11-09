@@ -19,7 +19,7 @@ import { FreeTextLayer } from './FreeTextLayer';
 import { DrawingCanvas } from './DrawingCanvas';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
-import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
+import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, initialRasterDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
 
 interface PDFPageViewProps {
   fileId: string;
@@ -125,6 +125,7 @@ export function getPdfRenderDiagnostics(reset = false) {
 }
 const MAX_CONCURRENT_PDF_RENDERS = 2;
 let activePdfRenderSlots = 0;
+let activeBackgroundRenders = 0;
 type PdfRenderWaiter = {
   priority: number;
   cancelled: boolean;
@@ -142,12 +143,17 @@ function schedulePdfRenderQueue() {
 function pumpPdfRenderQueue() {
   pendingPdfRenders.sort((a, b) => a.priority - b.priority);
   while (activePdfRenderSlots < MAX_CONCURRENT_PDF_RENDERS && pendingPdfRenders.length > 0) {
-    const waiter = pendingPdfRenders.shift()!;
+    // Reserve capacity for visible pages while a neighbour is prefetched.
+    const index = pendingPdfRenders.findIndex(waiter => waiter.cancelled || waiter.priority < 10 || activeBackgroundRenders === 0);
+    if (index < 0) break;
+    const [waiter] = pendingPdfRenders.splice(index, 1);
     if (waiter.cancelled) {
       waiter.resolve(null);
       continue;
     }
     waiter.granted = true;
+    const background = waiter.priority >= 10;
+    if (background) activeBackgroundRenders++;
     activePdfRenderSlots++;
     peakPdfRenderSlots = Math.max(peakPdfRenderSlots, activePdfRenderSlots);
     let released = false;
@@ -155,6 +161,7 @@ function pumpPdfRenderQueue() {
       if (released) return;
       released = true;
       activePdfRenderSlots = Math.max(0, activePdfRenderSlots - 1);
+      if (background) activeBackgroundRenders--;
       pumpPdfRenderQueue();
     });
   }
@@ -391,7 +398,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         const wasVisible = renderPriorityRef.current <= 1;
         renderPriorityRef.current = priority;
         renderSlotHandleRef.current?.setPriority(priority);
-        if (notify && isVisible && !wasVisible && hasRenderedOnceRef.current && !activeRenderRef.current) {
+        if (notify && isVisible && !wasVisible && !activeRenderRef.current) {
           setRenderCount((count) => count + 1);
         }
     };
@@ -494,7 +501,8 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         setBaseDimension(size);
         pageDimensionCache.set(`${docId}_${pageNumber}`, size);
         if (!pageDimensionCache.has(`${docId}_default`)) pageDimensionCache.set(`${docId}_default`, size);
-        const density = rasterDensity(size, rasterScale);
+        const targetDensity = rasterDensity(size, rasterScale);
+        const density = hasRenderedOnceRef.current ? targetDensity : initialRasterDensity(size, rasterScale);
         const viewport = page.getViewport({ scale: density });
         const backIndex = frontCanvasIndexRef.current === 0 ? 1 : 0;
         const back = canvasRefs.current[backIndex];
@@ -521,6 +529,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         setFrontCanvasIndex(backIndex);
         setIsLoading(false);
         setHasError(false);
+        if (density < targetDensity - 0.0001) setRenderCount(count => count + 1);
       } catch (error: any) {
         if (!obsolete() && error?.name !== 'RenderingCancelledException') {
           console.error(`Error rendering page ${pageNumber}:`, error);
@@ -921,7 +930,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       {/* Simulated Selection Layer */}
       <SimulatedSelectionLayer
         pdfDoc={pdfDoc}
-        isNearViewport={isNearViewport && !isLoading}
+        isNearViewport={isNearViewport && !isLoading && frontDensityRef.current >= rasterDensity(activeBaseDim, scale) - 0.0001}
         pageNumber={pageNumber}
         scale={scale}
         isActive={activeTool === 'select'}
