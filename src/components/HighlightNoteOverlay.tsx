@@ -19,6 +19,7 @@ interface Props {
 // Page-relative dimensions, calibrated at document zoom 100%.
 const ICON_SIZE = 20;
 const POPUP_WIDTH = 240;
+const POPUP_SIZE = 0.94;
 const POPUP_GAP = 6;
 
 // Page-local overlays scroll natively; dimensions follow document zoom.
@@ -69,14 +70,15 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const iconRight = Math.min(screenRight, (viewport?.right || window.innerWidth) - 4);
       // Scale the entire card once. Its base width and maximum body height
       // are document-space values, not a viewport-dependent size negotiation.
-      const cardWidth=POPUP_WIDTH*factor;
+      const popupFactor=factor*POPUP_SIZE;
+      const cardWidth=POPUP_WIDTH*popupFactor;
       popup.style.width=`${cardWidth}px`;
-      popup.style.maxHeight=`${420*factor}px`;
+      popup.style.maxHeight=`${420*popupFactor}px`;
       popup.style.setProperty('--highlight-popup-height','420px');
-      popup.style.borderRadius=`${12*factor}px`;
+      popup.style.borderRadius=`${12*popupFactor}px`;
       popup.style.overflow='hidden';
       const card=popup.firstElementChild as HTMLElement | null;
-      if(card) {card.style.zoom=String(factor);card.style.width=`${POPUP_WIDTH}px`;}
+      if(card) {card.style.zoom=String(popupFactor);card.style.width=`${POPUP_WIDTH}px`;}
       const height=popup.getBoundingClientRect().height;
       const gap=POPUP_GAP*factor;
       let direction=placementRef.current?.direction || directionRef.current;

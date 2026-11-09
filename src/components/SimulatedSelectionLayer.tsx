@@ -179,11 +179,15 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     if (!gesture || !containerRef.current) return [];
     return lineSelectionRects(gesture, p1.x, p2.x)
       .map(rect => {
-        const x = Math.max(0, rect.x), y = Math.max(0, rect.y);
-        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: Math.min(1, rect.y + rect.height) - y, ...(rect.rise ? {rise:rect.rise}: {}) };
+        // Keep scanned and native text highlights level, with a little breathing
+        // room around the ink so the color does not sit tight against glyphs.
+        const verticalPad = rect.height * 0.1;
+        const x = Math.max(0, rect.x), y = Math.max(0, rect.y - verticalPad);
+        const bottom = Math.min(1, rect.y + rect.height + verticalPad);
+        return { x, y, width: Math.min(1, rect.x + rect.width) - x, height: bottom - y };
       })
       .filter(rect => rect.height > 0 && rect.width * containerRef.current!.clientWidth > 2)
-      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100, ...(rect.rise ? {rise:rect.rise*100}: {}) }));
+      .map(rect => ({ x: rect.x * 100, y: rect.y * 100, width: rect.width * 100, height: rect.height * 100 }));
   };
 
   // Robust window mousemove and mouseup listeners during dragging

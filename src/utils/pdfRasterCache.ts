@@ -13,8 +13,8 @@ export function getRasterCacheUsage() {
 
 export function rasterDensity(size: PageSize, scale: number) {
   return Math.min(scale * Math.min(2.5, window.devicePixelRatio || 1),
-    Math.sqrt(16_000_000 / Math.max(1, size.width * size.height)),
-    12_000 / Math.max(size.width, size.height, 1));
+    Math.sqrt(10_000_000 / Math.max(1, size.width * size.height)),
+    8_000 / Math.max(size.width, size.height, 1));
 }
 
 export function getPageRaster(key: string, pdfDoc: any) {
