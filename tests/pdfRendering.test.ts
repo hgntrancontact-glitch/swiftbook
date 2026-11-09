@@ -1,20 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialRasterDensity, rasterDensity } from '../src/utils/pdfRasterCache';
+import { rasterDensity } from '../src/utils/pdfRasterCache';
 import { continuousRenderWindow } from '../src/utils/pdfViewport';
 
-test('a large retina page gets a cheaper first frame and keeps its final quality target', () => {
+test('retina pages retain the final quality target within the canvas memory bound', () => {
   const previous = globalThis.window;
   globalThis.window = { devicePixelRatio: 2 } as Window & typeof globalThis;
   try {
     const size = { width: 1200, height: 1700 };
-    const final = rasterDensity(size, 1);
-    const first = initialRasterDensity(size, 1);
-    assert.ok(first < final);
-    assert.ok(size.width * size.height * first * first <= 1_500_001);
     assert.equal(rasterDensity(size, 1), 2);
-    const ordinary = { width: 595, height: 842 };
-    assert.equal(initialRasterDensity(ordinary, 0.5), rasterDensity(ordinary, 0.5));
+    assert.ok(size.width * size.height * rasterDensity(size, 5) ** 2 <= 10_000_001);
   } finally { globalThis.window = previous; }
 });
 

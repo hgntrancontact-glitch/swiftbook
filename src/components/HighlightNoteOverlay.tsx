@@ -19,7 +19,7 @@ interface Props {
 // Page-relative dimensions, calibrated at document zoom 100%.
 const ICON_SIZE = 18.5;
 const ICON_GLYPH_SIZE = 9.5;
-const POPUP_WIDTH = 240;
+const POPUP_WIDTH = 224;
 const POPUP_SIZE = 0.94;
 const POPUP_GAP = 6;
 

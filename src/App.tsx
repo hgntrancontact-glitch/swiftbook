@@ -19,7 +19,7 @@ import {
   WorkspaceDoc,
   HistorySnapshot,
 } from "./types";
-import { pdfjsLib } from "./utils/pdfWorker";
+import { pdfjsLib, pdfSupportData } from "./utils/pdfWorker";
 import {
   saveDocumentState,
   loadDocumentState,
@@ -445,11 +445,9 @@ export function App() {
         const copyForPdfJs = data.slice(0);
         const loadingTask = (pdfjsLib as any).getDocument({
           data: copyForPdfJs,
-          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/`,
-          cMapPacked: true,
+          ...pdfSupportData,
           stopAtErrors: false,
           ignoreErrors: true,
-          standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/`,
           enableXfa: true,
           useSystemFonts: true,
         });
@@ -835,11 +833,9 @@ export function App() {
       const copyForPdfJs = updatedBytes.slice(0);
       const loadingTask = (pdfjsLib as any).getDocument({
         data: copyForPdfJs,
-        cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/`,
-        cMapPacked: true,
+        ...pdfSupportData,
         stopAtErrors: false,
         ignoreErrors: true,
-        standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/`,
         enableXfa: true,
         useSystemFonts: true,
       });

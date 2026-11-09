@@ -53,7 +53,7 @@ import {
   saveDocumentState,
 } from '../utils/storage';
 import { convertAnyFileToPdfBytes, sortFilesByUserSelectionIntent } from '../utils/fileConverter';
-import { pdfjsLib } from '../utils/pdfWorker';
+import { pdfjsLib, pdfSupportData } from '../utils/pdfWorker';
 import { ImageOrderModal } from './ImageOrderModal';
 
 interface LibraryModalProps {
@@ -442,8 +442,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       try {
         const loadingTask = (pdfjsLib as any).getDocument({
           data: uint8Data,
-          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/`,
-          cMapPacked: true,
+          ...pdfSupportData,
           stopAtErrors: false,
           ignoreErrors: true,
         });

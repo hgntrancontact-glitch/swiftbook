@@ -36,6 +36,15 @@ test('mixed fragments on the same row have aligned upper and lower edges', () =>
   assert.ok(rows[2].y > rows[0].y + rows[0].height);
 });
 
+test('a chain of overlapping fragments gets one pair of straight row edges',()=> {
+  const stored=[{x:10,y:20,width:20,height:2},{x:30,y:20.6,width:20,height:2},{x:50,y:21.2,width:20,height:2}];
+  const rows=highlightDisplayRects(stored);
+  assert.equal(new Set(rows.map(r=>r.y)).size,1);
+  assert.equal(new Set(rows.map(r=>r.height)).size,1);
+  assert.ok(rows[0].y<=20-2*.18);
+  assert.ok(rows.every(r=>!r.rise));
+});
+
 test('padding does not bridge adjacent text lines or escape page boundaries', () => {
   const rows = highlightDisplayRects([
     { x: 10, y: 0, width: 60, height: 2 },

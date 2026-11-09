@@ -5,16 +5,22 @@ import type { NormalizedRect } from '../types';
  */
 export function highlightDisplayRects(rects: NormalizedRect[], isText = true): NormalizedRect[] {
   if (!isText) return rects;
-  const rows = rects.map(rect => {
-    const sameRow = rects.filter(other =>
-      Math.abs(other.y + other.height / 2 - rect.y - rect.height / 2) < Math.min(other.height, rect.height) * 0.35);
-    const top = Math.min(...sameRow.map(other => other.y));
-    const bottom = Math.max(...sameRow.map(other => other.y + other.height));
-    const { rise, ...bounds } = rect;
-    return { ...bounds, y: top, height: bottom - top };
-  });
+  // Form each row once. Independent pairwise comparisons gave three fragments
+  // three different bounds when A matched B, B matched C, but A missed C.
+  const groups: NormalizedRect[][]=[];
+  for(const rect of [...rects].sort((a,b)=>a.y+a.height/2-b.y-b.height/2)) {
+    const group=groups.at(-1);
+    if(group && group.some(other=>Math.abs(other.y+other.height/2-rect.y-rect.height/2)<Math.min(other.height,rect.height)*.35)) group.push(rect);
+    else groups.push([rect]);
+  }
+  const bounds=new Map<NormalizedRect,{y:number;height:number}>();
+  for(const group of groups) {
+    const y=Math.min(...group.map(r=>r.y)),bottom=Math.max(...group.map(r=>r.y+r.height));
+    for(const rect of group) bounds.set(rect,{y,height:bottom-y});
+  }
+  const rows=rects.map(({rise,...rect},i)=>({...rect,...bounds.get(rects[i])!}));
   return rows.map(rect => {
-    let above = rect.height * 0.12, below = above;
+    let above = rect.height * 0.18, below = above;
     for (const other of rows) {
       if (other === rect || Math.min(rect.x + rect.width, other.x + other.width) <= Math.max(rect.x, other.x)) continue;
       if (other.y + other.height <= rect.y) above = Math.min(above, (rect.y - other.y - other.height) / 2.1);

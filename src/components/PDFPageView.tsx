@@ -19,7 +19,7 @@ import { FreeTextLayer } from './FreeTextLayer';
 import { DrawingCanvas } from './DrawingCanvas';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
-import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, initialRasterDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
+import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
 
 interface PDFPageViewProps {
   fileId: string;
@@ -137,14 +137,18 @@ let pumpScheduled = false;
 function schedulePdfRenderQueue() {
   if (pumpScheduled) return;
   pumpScheduled = true;
-  queueMicrotask(() => { pumpScheduled = false; pumpPdfRenderQueue(); });
+  // Collect page requests after layout/scroll positioning, not between the
+  // microtasks of sibling effects (which let the preceding offscreen page
+  // occupy a slot before the actual visible page had even queued).
+  requestAnimationFrame(() => { pumpScheduled = false; pumpPdfRenderQueue(); });
 }
 
 function pumpPdfRenderQueue() {
   pendingPdfRenders.sort((a, b) => a.priority - b.priority);
   while (activePdfRenderSlots < MAX_CONCURRENT_PDF_RENDERS && pendingPdfRenders.length > 0) {
     // Reserve capacity for visible pages while a neighbour is prefetched.
-    const index = pendingPdfRenders.findIndex(waiter => waiter.cancelled || waiter.priority < 10 || activeBackgroundRenders === 0);
+    const index = pendingPdfRenders.findIndex(waiter => waiter.cancelled || waiter.priority < 10 ||
+      (activeBackgroundRenders === 0 && activePdfRenderSlots === 0));
     if (index < 0) break;
     const [waiter] = pendingPdfRenders.splice(index, 1);
     if (waiter.cancelled) {
@@ -481,7 +485,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     const work = async () => {
       await previousWork;
       updatePriorityRef.current();
-      if (obsolete() || (hasRenderedOnceRef.current && renderPriorityRef.current >= 10)) { finishRequest(); return; }
+      if (obsolete()) { finishRequest(); return; }
       activeRenderRef.current = true;
       try {
         if (!hasRenderedOnceRef.current) setIsLoading(true);
@@ -502,7 +506,10 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         pageDimensionCache.set(`${docId}_${pageNumber}`, size);
         if (!pageDimensionCache.has(`${docId}_default`)) pageDimensionCache.set(`${docId}_default`, size);
         const targetDensity = rasterDensity(size, rasterScale);
-        const density = hasRenderedOnceRef.current ? targetDensity : initialRasterDensity(size, rasterScale);
+        // Nearby pages must already be sharp when they enter the viewport.
+        // A mandatory low-resolution first pass duplicated the expensive PDF
+        // decode and deferred the sharp pass until the user scrolled here.
+        const density = targetDensity;
         const viewport = page.getViewport({ scale: density });
         const backIndex = frontCanvasIndexRef.current === 0 ? 1 : 0;
         const back = canvasRefs.current[backIndex];
