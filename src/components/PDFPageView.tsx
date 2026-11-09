@@ -1,3 +1,5 @@
+import { PdfRenderQueue } from '../utils/pdfRenderQueue';
+import { pdfDetailTile, type DetailTile } from '../utils/pdfDetailTile';
 import { canvasViewportTransform } from '../utils/pageCoordinates';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import {
@@ -116,93 +118,81 @@ export function clearDocCanvasCache(docId: string) {
 
 type RenderSample = { page: number; doc: string; scale: number; queueMs: number; renderMs: number; outcome: string; active: number };
 const renderSamples: RenderSample[] = [];
-let peakPdfRenderSlots = 0;
+const renderQueue = new PdfRenderQueue(callback => requestAnimationFrame(callback), 2);
 let rasterCacheHits = 0;
 export function getPdfRenderDiagnostics(reset = false) {
-  const result = { active: activePdfRenderSlots, queued: pendingPdfRenders.length, peak: peakPdfRenderSlots, cacheHits: rasterCacheHits, rasterCache: getRasterCacheUsage(), samples: [...renderSamples] };
-  if (reset) { renderSamples.length = 0; peakPdfRenderSlots = activePdfRenderSlots; rasterCacheHits = 0; }
+  const result = { active: renderQueue.active, queued: renderQueue.queued, peak: renderQueue.peak, cacheHits: rasterCacheHits, rasterCache: getRasterCacheUsage(), samples: [...renderSamples] };
+  if (reset) { renderSamples.length = 0; renderQueue.peak = renderQueue.active; rasterCacheHits = 0; }
   return result;
 }
-const MAX_CONCURRENT_PDF_RENDERS = 2;
-let activePdfRenderSlots = 0;
-let activeBackgroundRenders = 0;
-type PdfRenderWaiter = {
-  priority: number;
-  cancelled: boolean;
-  granted: boolean;
-  resolve: (release: (() => void) | null) => void;
-};
-const pendingPdfRenders: PdfRenderWaiter[] = [];
-let pumpScheduled = false;
-function schedulePdfRenderQueue() {
-  if (pumpScheduled) return;
-  pumpScheduled = true;
-  // Collect page requests after layout/scroll positioning, not between the
-  // microtasks of sibling effects (which let the preceding offscreen page
-  // occupy a slot before the actual visible page had even queued).
-  requestAnimationFrame(() => { pumpScheduled = false; pumpPdfRenderQueue(); });
+function requestPdfRenderSlot(priority:number, preempt?:()=>void) {
+  return renderQueue.request(priority,preempt);
 }
 
-function pumpPdfRenderQueue() {
-  pendingPdfRenders.sort((a, b) => a.priority - b.priority);
-  while (activePdfRenderSlots < MAX_CONCURRENT_PDF_RENDERS && pendingPdfRenders.length > 0) {
-    // Reserve capacity for visible pages while a neighbour is prefetched.
-    const index = pendingPdfRenders.findIndex(waiter => waiter.cancelled || waiter.priority < 10 ||
-      (activeBackgroundRenders === 0 && activePdfRenderSlots === 0));
-    if (index < 0) break;
-    const [waiter] = pendingPdfRenders.splice(index, 1);
-    if (waiter.cancelled) {
-      waiter.resolve(null);
-      continue;
-    }
-    waiter.granted = true;
-    const background = waiter.priority >= 10;
-    if (background) activeBackgroundRenders++;
-    activePdfRenderSlots++;
-    peakPdfRenderSlots = Math.max(peakPdfRenderSlots, activePdfRenderSlots);
-    let released = false;
-    waiter.resolve(() => {
-      if (released) return;
-      released = true;
-      activePdfRenderSlots = Math.max(0, activePdfRenderSlots - 1);
-      if (background) activeBackgroundRenders--;
-      pumpPdfRenderQueue();
-    });
-  }
-}
-
-function requestPdfRenderSlot(priority: number) {
-  let resolveWaiter!: (release: (() => void) | null) => void;
-  const waiter: PdfRenderWaiter = {
-    priority,
-    cancelled: false,
-    granted: false,
-    resolve: (release) => resolveWaiter(release),
-  };
-  const promise = new Promise<(() => void) | null>((resolve) => {
-    resolveWaiter = resolve;
-  });
-  pendingPdfRenders.push(waiter);
-  // Collect this React commit's requests before granting slots. Otherwise the
-  // first offscreen page in DOM order can start ahead of the visible page.
-  schedulePdfRenderQueue();
-
-  return {
-    promise,
-    cancel: () => {
-      if (waiter.granted || waiter.cancelled) return;
-      waiter.cancelled = true;
-      const queuedIndex = pendingPdfRenders.indexOf(waiter);
-      if (queuedIndex >= 0) pendingPdfRenders.splice(queuedIndex, 1);
-      waiter.resolve(null);
-      schedulePdfRenderQueue();
-    },
-    setPriority: (nextPriority: number) => {
-      if (waiter.granted || waiter.cancelled) return;
-      waiter.priority = nextPriority;
-      schedulePdfRenderQueue();
-    },
-  };
+// The base bitmap remains visible while a bounded high-resolution crop renders.
+function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pageNumber:number;scale:number;size:{width:number;height:number};near:boolean}) {
+  const canvasRef=useRef<HTMLCanvasElement>(null);
+  const [ready,setReady]=useState<{canvas:HTMLCanvasElement;tile:DetailTile;scale:number}|null>(null);
+  const copiedRef=useRef<typeof ready>(null);
+  useLayoutEffect(()=> {
+    if(!canvasRef.current) return;
+    if(!ready) {canvasRef.current.width=canvasRef.current.height=1;copiedRef.current=null;return;}
+    if(copiedRef.current===ready) return;
+    const canvas=canvasRef.current;
+    canvas.width=ready.canvas.width;canvas.height=ready.canvas.height;
+    canvas.getContext('2d',{alpha:false})!.drawImage(ready.canvas,0,0);
+    copiedRef.current=ready;ready.canvas.width=ready.canvas.height=1;
+  },[ready]);
+  useEffect(()=> {
+    const page=canvasRef.current?.closest<HTMLElement>('[data-page-container="true"]');
+    const view=page?.closest<HTMLElement>('.pdf-viewport-container');
+    if(!page || !view || !near) return;
+    let revision=0,frame=0,key='',cancelCurrent=()=>{};
+    const measure=()=> {
+      frame=0;
+      if(view.dataset.zoomGesture==='true') return;
+      const r=page.getBoundingClientRect(),v=view.getBoundingClientRect();
+      const tile=pdfDetailTile(size,{left:Math.max(0,v.left-r.left),top:Math.max(0,v.top-r.top),
+        right:Math.min(r.width,v.right-r.left),bottom:Math.min(r.height,v.bottom-r.top)},scale,window.devicePixelRatio||1);
+      if(!tile || tile.density<=rasterDensity(size,scale)+.001) {cancelCurrent();key='';setReady(null);return;}
+      const nextKey=[tile.x,tile.y,tile.width,tile.height,tile.density].map(n=>Math.round(n*100)/100).join(':');
+      if(nextKey===key) return;
+      key=nextKey; cancelCurrent(); const own=++revision;
+      let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null;
+      cancelCurrent=()=>{cancelled=true;handle?.cancel();task?.cancel();};
+      void (async()=> {
+        let release:(()=>void)|null=null;
+        const stale=()=>cancelled || own!==revision || !page.isConnected || view.dataset.zoomGesture==='true';
+        try {
+          const proxy=await pdfDoc.getPage(pageNumber);
+          if(stale()) return;
+          handle=requestPdfRenderSlot(page.closest('[data-workspace-doc]')?.getAttribute('data-active')==='true'?-1:0);release=await handle.promise;
+          if(!release || stale()) return;
+          const canvas=document.createElement('canvas');
+          canvas.width=tile.pixelsWide;canvas.height=tile.pixelsHigh;
+          const viewport=proxy.getViewport({scale:tile.density});
+          task=proxy.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,background:'#fff',
+            transform:[1,0,0,1,-tile.x/scale*tile.density,-tile.y/scale*tile.density]});
+          await task.promise;
+          if(!stale()) setReady({canvas,tile,scale});
+        } catch(error:any) {
+          if(!stale() && error?.name!=='RenderingCancelledException') {key='';console.warn('Detail tile failed',error);}
+        } finally {release?.();}
+      })();
+    };
+    const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
+    const start=()=>{revision++;key='';cancelCurrent();};
+    view.addEventListener('scroll',schedule,{passive:true});
+    view.addEventListener('pdf-zoom-start',start);view.addEventListener('pdf-zoom-end',schedule);
+    const resize=new ResizeObserver(schedule);resize.observe(view);resize.observe(page);
+    schedule();
+    return()=>{revision++;cancelCurrent();cancelAnimationFrame(frame);resize.disconnect();
+      view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-zoom-start',start);view.removeEventListener('pdf-zoom-end',schedule);};
+  },[pdfDoc,pageNumber,scale,size.width,size.height,near]);
+  const ratio=ready ? scale/ready.scale : 1;
+  return <canvas ref={canvasRef} aria-hidden="true" data-pdf-detail-tile="true" className="absolute pointer-events-none"
+    style={{display:ready?'block':'none',left:(ready?.tile.x||0)*ratio,top:(ready?.tile.y||0)*ratio,
+      width:(ready?.tile.width||0)*ratio,height:(ready?.tile.height||0)*ratio}} />;
 }
 
 const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
@@ -511,10 +501,9 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         const page = await pdfDoc.getPage(pageNumber);
         if (obsolete()) return;
         queuedAt = performance.now();
-        handle = requestPdfRenderSlot(renderPriorityRef.current);
+        handle = requestPdfRenderSlot(renderPriorityRef.current, request.cancel);
         renderSlotHandleRef.current = handle;
         release = await handle.promise;
-        if (renderSlotHandleRef.current === handle) renderSlotHandleRef.current = null;
         if (!release || obsolete()) return;
         renderSlotReleaseRef.current = release;
         startedAt = performance.now();
@@ -555,7 +544,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (queuedAt) {
           renderSamples.push({ page: pageNumber, doc: docId, scale: rasterScale,
             queueMs: (startedAt || performance.now()) - queuedAt,
-            renderMs: startedAt ? performance.now() - startedAt : 0, outcome, active: activePdfRenderSlots });
+            renderMs: startedAt ? performance.now() - startedAt : 0, outcome, active: renderQueue.active });
           if (renderSamples.length > 200) renderSamples.shift();
         }
         if (rasterRequestRef.current === request) activeRenderRef.current = false;
@@ -563,7 +552,10 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (renderSlotHandleRef.current === handle) renderSlotHandleRef.current = null;
         if (renderSlotReleaseRef.current === release) renderSlotReleaseRef.current = null;
         release?.();
+        const retry = rasterRequestRef.current === request && cancelled && mountedRef.current && !pinchActiveRef.current
+          && documentVisibleRef.current && renderPriorityRef.current < 10 && Math.abs(desiredScaleRef.current-rasterScale)<.001;
         finishRequest();
+        if (retry) setRenderCount(count => count+1);
       }
     };
     renderCompletionRef.current = work();
@@ -930,6 +922,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         />
       ))}
 
+      <PDFDetailTile pdfDoc={pdfDoc} pageNumber={pageNumber} scale={scale} size={activeBaseDim} near={isNearViewport && !isLoading} />
       {/* Interactive Text Layer for Highlighting & Selection */}
       <div
         ref={textLayerRef}

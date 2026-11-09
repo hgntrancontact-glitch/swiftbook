@@ -1,5 +1,6 @@
+import { loadVisualSelectionLines } from './selectionRaster';
 import { canvasViewportTransform } from './pageCoordinates';
-import { rasterSelectionLines, refineRasterLine, type SelectionLine } from './selectionLines';
+import type { SelectionLine } from './selectionLines';
 import type { Worker } from 'tesseract.js';
 
 // One lazy local worker. No document/image bytes leave the browser. The queue
@@ -58,10 +59,8 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
     const height=heights[Math.floor(heights.length/2)] || 0.015;
     // Ink geometry decides the line bounds, recognition supplies its text.
     // OCR line boxes can contain a detached margin speck or several cards.
-    const visual: SelectionLine[]=[];
-    for(const x of [0.25,0.5,0.75]) for(const band of rasterSelectionLines(image,x,0.5,height,true)) {
-      if(!visual.some(v=>Math.abs(v.x-band.x)<0.002 && Math.abs(v.y-band.y)<0.002 && Math.abs(v.width-band.width)<0.002)) visual.push(band);
-    }
+    const visual = await loadVisualSelectionLines(doc, page, image, height);
+    if (!isRelevant()) { cache!.delete(page); return []; }
     const refined: SelectionLine[]=[];
     for(const line of lines) {
       const bands=visual.filter(v=> {
@@ -84,7 +83,7 @@ export function loadOCRLines(doc: object, page: number, source: HTMLCanvasElemen
       for(const band of groups) {
         const glyphs=line.glyphs?.filter(g=>(g.x+g.right)/2>=band.x-0.001 && (g.x+g.right)/2<=band.x+band.width+0.001);
         if(!glyphs?.some(g=>/[\p{L}\p{N}]/u.test(g.text))) continue;
-        const fitted=refineRasterLine(image,{...band,rise:undefined});
+        const fitted=band;
         refined.push({...line,...fitted,source:'ocr',glyphs});
       }
     }

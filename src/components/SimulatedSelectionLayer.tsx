@@ -1,4 +1,5 @@
 import { highlightClip } from '../utils/highlightGeometry';
+import { loadVisualSelectionLines } from '../utils/selectionRaster';
 import { loadOCRLines } from '../utils/selectionOCR';
 import React, { useRef, useState, useEffect } from 'react';
 import { beginLineGesture, loadSelectionLines, rasterSelectionLines, moveLineGesture, lineSelectionRects, selectedLineText, selectionLineCovered, type LineGesture, type SelectionLine } from '../utils/selectionLines';
@@ -65,7 +66,12 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       const height = heights[Math.floor(heights.length/2)] || 0.015;
       const missing: SelectionLine[] = [];
       let uncoveredRows=0;
-      if(canvas) for(const x of [0.25,0.5,0.75]) for(const visual of rasterSelectionLines(canvas,x,0.5,height,true)) {
+      // Native selection becomes available before background coverage analysis.
+      // Mixed pages still get missing scan regions without blocking the UI.
+      if (nativeLines.length) { linesRef.current=nativeLines; loadedPageRef.current={doc:pdfDoc,page:pageNumber}; }
+      const visualRows = canvas ? await loadVisualSelectionLines(pdfDoc, pageNumber, canvas, height) : [];
+      if (!relevant()) return;
+      for(const visual of visualRows) {
         const covered = [...nativeLines,...missing].filter(line => {
           const oy=Math.min(line.y+line.height,visual.y+visual.height)-Math.max(line.y,visual.y);
           return oy>=Math.min(line.height,visual.height)*0.5;
@@ -124,8 +130,8 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
   useEffect(() => {
     const handleGlobalMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return; // Only for left click
-      // If clicking outside the active double-click action, dismiss immediately
-      setPendingSelection(null);
+      const target = e.target instanceof Element ? e.target : null;
+      if (!target?.closest('.pending-simulated-selection')) setPendingSelection(null);
     };
 
     window.addEventListener('mousedown', handleGlobalMouseDown, { capture: true });
@@ -159,8 +165,8 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     // Native text geometry remains authoritative. A scan's visual row bands
     // fill OCR omissions, including rows whose confidence is too low to read.
     const native = matchingLines.filter(line => line.source === 'pdf');
-    const sparse = native.length < 3 || native.reduce((n,l) => n + (l.glyphs?.length || 0),0) < 80;
-    const visual = sparse ? rasterSelectionLines(canvas,x,y,fallbackHeight) : [];
+    const hitNative = native.some(l => x >= l.x && x <= l.x+l.width && y >= l.y && y <= l.y+l.height);
+    const visual = !hitNative && typeof OffscreenCanvas === 'undefined' ? rasterSelectionLines(canvas,x,y,fallbackHeight) : [];
     const lines = [...matchingLines, ...visual.filter(v => !matchingLines.some(l => {
       const ox = Math.min(l.x+l.width,v.x+v.width)-Math.max(l.x,v.x);
       const oy = Math.min(l.y+l.height,v.y+v.height)-Math.max(l.y,v.y);

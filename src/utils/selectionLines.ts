@@ -66,7 +66,12 @@ export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<Sel
       const items = content.items.filter((item: any) => typeof item.str === 'string');
       const runs: { box: SelectionLine; baseline: number; fontHeight: number }[] = [];
       const measure = document.createElement('canvas').getContext('2d')!;
+      let sliceStart = performance.now();
       for (let i = 0; i < items.length; i++) {
+        if (performance.now()-sliceStart > 8) {
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          sliceStart = performance.now();
+        }
         const item = items[i], div = divs[i];
         if (!item.str?.trim() || !div?.isConnected || !item.width) continue;
         const a = viewport.transform, b = item.transform;
@@ -80,10 +85,20 @@ export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<Sel
         const corners = [[r.left - origin.left, r.top - origin.top], [r.right - origin.left, r.top - origin.top],
           [r.left - origin.left, r.bottom - origin.top], [r.right - origin.left, r.bottom - origin.top]]
           .map(([cx, cy]) => viewport.convertToViewportPoint(...measureViewport.convertToPdfPoint(cx, cy)));
-        const top = Math.min(...corners.map(point => point[1]));
-        const bottom = Math.max(...corners.map(point => point[1]));
+        let top = Math.min(...corners.map(point => point[1]));
+        let bottom = Math.max(...corners.map(point => point[1]));
         // Keep PDF.js vertical line boxes; measure individual character edges below.
-        measure.font = `${h}px ${content.styles[item.fontName]?.fontFamily || 'sans-serif'}`;
+        measure.font = `${h}px ${getComputedStyle(div).fontFamily || content.styles[item.fontName]?.fontFamily || 'sans-serif'}`;
+        const ownInk = measure.measureText(item.str);
+        const referenceInk = measure.measureText('HgjÁệ');
+        const ink = { actualBoundingBoxAscent: Math.max(ownInk.actualBoundingBoxAscent,referenceInk.actualBoundingBoxAscent),
+          actualBoundingBoxDescent: Math.max(ownInk.actualBoundingBoxDescent,referenceInk.actualBoundingBoxDescent) };
+        // PDF.js text-layer rectangles are em boxes, not visible glyph bounds.
+        // Use the loaded font's ink extents at the PDF baseline for vertical fit.
+        if (ink.actualBoundingBoxAscent + ink.actualBoundingBoxDescent > h*.25 && ink.actualBoundingBoxAscent + ink.actualBoundingBoxDescent < h*1.6) {
+          top = baseline-ink.actualBoundingBoxAscent;
+          bottom = baseline+ink.actualBoundingBoxDescent;
+        }
         const chars = Array.from(item.str as string);
         const advances = chars.map((_, j) => measure.measureText(chars.slice(0, j + 1).join('')).width);
         const total = advances.at(-1) || 1;
@@ -163,7 +178,8 @@ export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<Sel
 
 // Visual geometry fills missing OCR rows. It does not invent recognized text.
 // Sample the full page so dragging beyond the initial rows cannot skip content.
-const rasterCache = new WeakMap<HTMLCanvasElement, { key: string; width: number; height: number; pixels: Uint8ClampedArray; fits: Map<string,SelectionLine>; slopes:Map<string,number> }>();
+export interface RasterSelectionImage { key: string; width: number; height: number; pixels: Uint8ClampedArray; fits: Map<string,SelectionLine>; slopes: Map<string,number>; bands?: Map<string,SelectionLine[]> }
+const rasterCache = new WeakMap<HTMLCanvasElement, RasterSelectionImage>();
 
 // Fit one straight baseline to ink, rather than treating the union of all
 // characters/dotted leaders as a horizontal box. Projection sharpness avoids
@@ -189,6 +205,9 @@ export function fitInkSlope(points: {x:number;y:number}[], width: number): numbe
 export function refineRasterLine(canvas: HTMLCanvasElement, line: SelectionLine): SelectionLine {
   const image=rasterCache.get(canvas);
   if(!image) return line;
+  return refineRasterImage(image, line);
+}
+function refineRasterImage(image: RasterSelectionImage, line: SelectionLine): SelectionLine {
   const key=[line.x,line.y,line.width,line.height].join(':');
   const fitted=image.fits.get(key);if(fitted) return {...line,...fitted};
   const {width,height,pixels}=image;
@@ -228,7 +247,7 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
     const left = 0, right = 1;
     const top = 0, bottom = 1;
     const sample = document.createElement('canvas');
-    sample.width = Math.min(1600, Math.ceil((right - left) * canvas.width));
+    sample.width = Math.max(1, Math.floor(canvas.width*Math.min(1,1600/canvas.width,2400/canvas.height)));
     sample.height = Math.max(1, Math.ceil(sample.width * (bottom - top) * canvas.height / ((right - left) * canvas.width)));
     const ctx = sample.getContext('2d', { willReadFrequently: true });
     if (!ctx) return [];
@@ -239,6 +258,14 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
     cached = {key:cacheKey,width:sample.width,height:sample.height,pixels:ctx.getImageData(0,0,sample.width,sample.height).data,fits:new Map(),slopes:new Map()};
     rasterCache.set(canvas,cached);
     }
+    return rasterImageSelectionLines(cached, x, y, fallbackHeight, fullPage);
+  } catch { return []; }
+}
+
+export function rasterImageSelectionLines(cached: RasterSelectionImage, x: number, y: number, fallbackHeight: number, fullPage = false): SelectionLine[] {
+  try {
+    const sample = {width: cached.width, height: cached.height};
+    const canvas = sample;
     const pixels = cached.pixels;
     const originalDarkAt = (row: number, col: number) => {
       if(row<0 || row>=sample.height) return false;
@@ -268,6 +295,9 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
         gapStart = -1;
       }
     }
+    const bandKey = `${from}:${to}:${fallbackHeight}`;
+    const known = cached.bands?.get(bandKey);
+    if (known) return known;
     let ink: boolean[] = [];
     const project=()=> {
     const ink:boolean[]=[];
@@ -303,7 +333,7 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
     for (let i = 0; i <= ink.length; i++) {
       if (ink[i] && start < 0) start = i;
       if (!ink[i] && start >= 0) {
-        const height = (i - start) / sample.height * (bottom - top);
+        const height = (i - start) / sample.height;
         if (i-start>=2 && height<fallbackHeight*2.5) {
           let components: {left:number;right:number;count:number}[]=[];
           for(let col=from;col<to;col++) {
@@ -349,11 +379,13 @@ export function rasterSelectionLines(canvas: HTMLCanvasElement | undefined, x: n
         previous.height = line.y + line.height - previous.y;
       } else merged.push({ ...line });
     }
-    return merged.filter(line=>line.height>=fallbackHeight*0.4 && line.width>=line.height/(line.aspect || 0.75)*0.4).map(line=> {
+    const result = merged.filter(line=>line.height>=fallbackHeight*0.4 && line.width>=line.height/(line.aspect || 0.75)*0.4).map(line=> {
       const rise=pageSlope*line.width*sample.width/sample.height;
       const shift=pageSlope*(line.x*sample.width-mid)/sample.height;
-      return refineRasterLine(canvas,{...line,y:line.y+shift+Math.min(0,rise),height:line.height+Math.abs(rise),...(rise?{rise}:{})});
+      return refineRasterImage(cached,{...line,y:line.y+shift+Math.min(0,rise),height:line.height+Math.abs(rise),...(rise?{rise}:{})});
     });
+    (cached.bands ||= new Map()).set(bandKey, result);
+    return result;
   } catch { return []; }
 }
 
@@ -544,7 +576,7 @@ export function lineSelectionRects(gesture: LineGesture, startX: number, endX: n
     const before=lines.slice(0,first+i).at(-1),after=lines[first+i+1];
     const gapBefore=before ? Math.max(0,line.y-before.y-before.height) : line.height;
     const gapAfter=after ? Math.max(0,after.y-line.y-line.height) : line.height;
-    const pad=Math.min(line.height*0.04,gapBefore/3,gapAfter/3);
+    const pad=Math.min(line.height*0.025,gapBefore/3,gapAfter/3);
     const rise=(line.rise || 0)*(right-x)/line.width;
     const topAtStart=line.y+Math.max(0,-(line.rise || 0))+(line.rise || 0)*(x-line.x)/line.width;
     const y=Math.max(0,topAtStart+Math.min(0,rise)-pad);

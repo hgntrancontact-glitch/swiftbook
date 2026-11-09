@@ -87,7 +87,13 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       if(card) {card.style.zoom=String(popupFactor/live);card.style.width=`${POPUP_WIDTH}px`;}
       // Closed notes need only their icon; measuring every hidden card forces
       // synchronous layout for each annotation during every pinch frame.
-      if (showPopup || popupHeightRef.current === null) popupHeightRef.current = popup.getBoundingClientRect().height / popupFactor;
+      const inGesture = anchor.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomGesture === 'true';
+      // Read intrinsic layout height, not the transformed/rounded screen box.
+      // Re-measuring that box on every pinch tick moved the header by fractions
+      // of a pixel in alternating directions.
+      if (popupHeightRef.current === null || (showPopup && !inGesture)) {
+        popupHeightRef.current = card?.offsetHeight || popup.getBoundingClientRect().height / popupFactor;
+      }
       const height=popupHeightRef.current * popupFactor;
       const gap=POPUP_GAP*factor;
       let direction=placementRef.current?.direction || directionRef.current;
@@ -129,6 +135,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const wheel = (event: WheelEvent) => {
       if (viewport) routeAnnotationWheel(event, viewport, popupRef.current);
     };
+    viewport?.addEventListener('pdf-zoom-end', position);
     const root = rootRef.current;
     root?.addEventListener('wheel', wheel, { passive: false });
     let frame=0;
@@ -140,7 +147,10 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const body = popupRef.current.querySelector('[data-highlight-note-body]');
       if (body) resize.observe(body);
     }
-    const mutation = new MutationObserver(schedule);
+    const mutation = new MutationObserver(records => {
+      if (records.some(record => record.type === 'childList' || record.type === 'characterData')) popupHeightRef.current = null;
+      schedule();
+    });
     const wrapper = anchor.closest('[data-scale]');
     if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
     mutation.observe(portalTarget, { attributes: true, attributeFilter: ['style'] });
@@ -150,6 +160,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     position();
     return () => {
       positionRef.current = null;
+      viewport?.removeEventListener('pdf-zoom-end', position);
       root?.removeEventListener('wheel', wheel);
       cancelAnimationFrame(frame);
       resize.disconnect();

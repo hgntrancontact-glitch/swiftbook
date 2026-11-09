@@ -90,7 +90,7 @@ test('cropped sloping selection preserves its baseline and symmetric padding',()
   assert.ok(Math.abs(r.rise! - -.003)<1e-9);
   const corners=highlightCorners(r);
   assert.ok(Math.abs(corners[1][1]-corners[0][1]-r.rise!)<1e-9);
-  assert.ok(Math.abs((corners[3][1]-corners[0][1])-(line.height-Math.abs(line.rise)+line.height*.08))<1e-9);
+  assert.ok(Math.abs((corners[3][1]-corners[0][1])-(line.height-Math.abs(line.rise)+line.height*.05))<1e-9);
   assert.match(highlightClip(r)!,/^polygon\(/);
   // Percentage conversion used for persistence/export preserves all corners.
   const saved={x:r.x*100,y:r.y*100,width:r.width*100,height:r.height*100,rise:r.rise!*100};
