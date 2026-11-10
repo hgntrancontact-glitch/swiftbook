@@ -331,7 +331,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                     title={`Đổi sang màu ${HIGHLIGHT_COLORS[c].name}`}
                   />
                 ))}
-                <span className="text-[11px] text-neutral-600 font-semibold ml-1">
+                <span className="text-[11.5px] text-neutral-600 font-semibold ml-1">
                   {colorConfig.name}
                 </span>
               </div>
@@ -389,7 +389,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
               <div>
                 {hl.note ? (
                   <div className="group relative bg-amber-50/70 p-2 rounded-lg border border-amber-200/50 mb-2">
-                    <p className="text-neutral-800 text-[11px] leading-relaxed break-words">{hl.note}</p>
+                    <p className="text-neutral-800 text-[11.5px] leading-relaxed break-words">{hl.note}</p>
                     <button
                       onClick={() => setEditingNote({ id: hl.id, text: hl.note || '' })}
                       className="mt-1.5 text-[10px] text-amber-700 hover:text-amber-900 font-medium flex items-center gap-1 cursor-pointer"

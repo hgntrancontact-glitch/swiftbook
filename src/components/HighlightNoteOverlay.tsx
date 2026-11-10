@@ -46,22 +46,22 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     if (!anchor || !icon || !portalTarget) return;
     if (!showPopup) placementRef.current=null;
     const position = () => {
+      const root = rootRef.current;
+      // During pinch the page compositor already moves/scales the whole note.
+      // Rewriting CSS zoom in every intermediate frame re-rasterized its text
+      // and introduced rounding drift. Rebase once onto the final page layout.
+      if (root?.dataset.positioned && anchor.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomGesture === 'true') return;
       const r = anchor.getBoundingClientRect();
       const slot=portalTarget.getBoundingClientRect();
       const layoutWidth = parseFloat(portalTarget.style.width) || slot.width;
       const live = slot.width / Math.max(1, layoutWidth);
-      const root = rootRef.current;
-      if (root) {
-        root.style.width = portalTarget.style.width; root.style.height = portalTarget.style.height;
-        root.style.zoom = String(live); root.style.transformOrigin = '0 0';
-        root.style.transform = live === 1 ? '' : `scale(${1/live})`;
-      }
+      if (root) root.dataset.positioned = 'true';
       const factor = getAnnotationZoom(anchor);
       const iconSize = ICON_SIZE * factor;
       if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor);
       icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = icon.style.maxWidth = icon.style.maxHeight = `${iconSize/live}px`;
       icon.style.borderWidth = `${2*factor/live}px`;
-      icon.style.boxShadow=`0 ${2*factor}px ${4*factor}px rgba(0,0,0,.16)`;
+      icon.style.boxShadow=`0 ${2*factor/live}px ${4*factor/live}px rgba(0,0,0,.16)`;
       const glyph = icon.querySelector('svg');
       if (glyph) glyph.style.width = glyph.style.height = `${ICON_GLYPH_SIZE*factor/live}px`;
       const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();

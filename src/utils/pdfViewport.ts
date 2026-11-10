@@ -1,7 +1,7 @@
 import type { ViewMode } from '../types';
 
-export const SPREAD_GAP = 8;
-export const CONTINUOUS_GAP = 12;
+export const SPREAD_GAP = 6;
+export const CONTINUOUS_GAP = 8;
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 50;
 export type PageSize = { width: number; height: number };
@@ -40,12 +40,17 @@ export function fitPageScale(mode: ViewMode, pages: PageSize[], width: number, h
   return Math.max(0.0001, Math.min(Math.max(1, width - gap) / pageWidth, Math.max(1, usableHeight) / pageHeight));
 }
 
-// Native scroll bounds do not include cursor-zoom translation. Permit a small
-// useful gutter around fitting content and prevent accumulating empty space.
+// A small fixed screen-space gutter is enough for adjustment. Never extend
+// bounds to include an old cursor-zoom offset: that preserved huge blank areas.
 export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number): number {
-  const gutter = Math.min(120, viewSize * 0.2);
-  const center = viewStart + (viewSize-size)/2;
-  const low = size <= viewSize ? center-gutter : viewStart+viewSize-size-gutter;
-  const high = size <= viewSize ? center+gutter : viewStart+gutter;
-  return Math.max(Math.min(start,low), Math.min(Math.max(start,high), start-delta))-start;
+  if (size < viewSize - 1) return 0;
+  const gutter = Math.min(24, viewSize * 0.04);
+  const low = viewStart + viewSize - size - gutter;
+  const high = viewStart + gutter;
+  return Math.max(low, Math.min(high, start-delta))-start;
+}
+
+export function settledPanShift(start:number,size:number,viewStart:number,viewSize:number,centerFitting:boolean):number {
+  if (size < viewSize-1) return centerFitting ? viewStart+(viewSize-size)/2-start : 0;
+  return boundedPanShift(start,size,viewStart,viewSize,0);
 }

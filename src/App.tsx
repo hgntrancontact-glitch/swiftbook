@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { openingPage, reopenDocument } from './utils/documentOpening';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import {
   ActiveTool,
   HighlightColor,
@@ -81,6 +82,8 @@ const areSnapshotsEqual = (a: HistorySnapshot, b: HistorySnapshot): boolean => {
 export function App() {
   // Multi-PDF Workspace State
   const [openDocs, setOpenDocs] = useState<WorkspaceDoc[]>([]);
+  const openDocsRef = useRef(openDocs);
+  openDocsRef.current = openDocs;
   const [activeDocId, setActiveDocId] = useState<string>("");
   const [isLoadingDoc, setIsLoadingDoc] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -415,24 +418,21 @@ export function App() {
       data: Uint8Array,
       name: string,
       id: string,
-      size: number
+      size: number,
+      freshUpload = false
     ): Promise<void> => {
       // 1. Check if document is already open in workspace (De-duplication)
-      let matchedDoc: WorkspaceDoc | undefined;
-      setOpenDocs((currentDocs) => {
-        matchedDoc = currentDocs.find(
-          (d) => d.fileId === id || (d.fileSize === size && d.fileName === name)
-        );
-        return currentDocs;
-      });
+      const matchedDoc = openDocsRef.current.find(
+        d => d.fileId === id || (d.fileSize === size && d.fileName === name)
+      );
 
       if (matchedDoc) {
         // Bring existing document to focus and unhide if hidden
         setActiveDocId(matchedDoc.id);
         scrollWorkspaceToDoc(matchedDoc.id);
-        if (matchedDoc.isHidden) {
+        if (matchedDoc.isHidden || freshUpload) {
           setOpenDocs((prev) =>
-            prev.map((d) => (d.id === matchedDoc!.id ? { ...d, isHidden: false } : d))
+            prev.map((d) => (d.id === matchedDoc!.id ? reopenDocument(d, freshUpload) : d))
           );
         }
         return;
@@ -481,9 +481,7 @@ export function App() {
           },
           bookConfig: savedState?.bookConfig || null,
           totalPages: doc.numPages,
-          currentPage: savedState?.currentPage
-            ? Math.max(1, Math.min(doc.numPages, savedState.currentPage))
-            : 1,
+          currentPage: openingPage(savedState?.currentPage, doc.numPages, freshUpload),
           viewMode: savedState?.viewMode || (doc.numPages === 1 ? "single" : "double"),
           scale: 1.0,
           fitMode: true,
@@ -506,7 +504,7 @@ export function App() {
           // Double check de-duplication inside setter
           const exists = prev.some((d) => d.id === newDoc.id);
           if (exists) {
-            return prev.map((d) => (d.id === newDoc.id ? { ...d, isHidden: false } : d));
+            return prev.map((d) => (d.id === newDoc.id ? reopenDocument(d, freshUpload) : d));
           }
           return [...prev, newDoc];
         });
@@ -745,7 +743,7 @@ export function App() {
         safeId = `doc_${targetInput.name.replace(/[^a-zA-Z0-9]/g, "_")}_${targetInput.size}`;
       }
 
-      await loadPdfFromData(bytes, processedName, safeId, bytes.byteLength);
+      await loadPdfFromData(bytes, processedName, safeId, bytes.byteLength, true);
     } catch (err: any) {
       console.error("File upload/conversion error:", err);
       setLoadError(
@@ -1053,6 +1051,12 @@ export function App() {
       viewportRevision: resetFitMode ? (d.viewportRevision || 0) + 1 : d.viewportRevision,
     }));
   }, [updateDoc]);
+
+  useLayoutEffect(() => {
+    if (activeTool === 'highlighter' || activeTool === 'smart_highlighter') {
+      setOpenDocs(docs => docs.map(d => d.selectedIds.length ? { ...d, selectedIds: [] } : d));
+    }
+  }, [activeTool]);
 
   const handleViewModeChange = useCallback((docId: string, mode: ViewMode) => {
     updateDoc(docId, (d) => ({ ...d, viewMode: mode, scale: 1.0, fitMode: true, viewportRevision: (d.viewportRevision || 0) + 1 }));

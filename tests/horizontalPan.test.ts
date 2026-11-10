@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { horizontalPanShift, boundedPanShift } from '../src/utils/pdfViewport';
+import { horizontalPanShift, boundedPanShift, settledPanShift, SPREAD_GAP, CONTINUOUS_GAP } from '../src/utils/pdfViewport';
 
 test('a fitting page moves gradually toward centre only on a wheel', () => {
   assert.equal(horizontalPanShift(100,600,24,1392,0),0);
@@ -9,20 +9,31 @@ test('a fitting page moves gradually toward centre only on a wheel', () => {
   assert.equal(horizontalPanShift(100,600,24,1392,-5000),320);
 });
 
-test('both pan axes allow a fitting document to be repositioned within a finite gutter', () => {
-  for (const [start,size,view,extent] of [[300,600,0,1200],[150,300,0,600]]) {
-    const forward=boundedPanShift(start,size,view,extent,10000);
-    const back=boundedPanShift(start+forward,size,view,extent,-10000);
-    assert.ok(forward<0 && back>0);
-    assert.ok(back<=240);
-    assert.equal(boundedPanShift(start+forward,size,view,extent,10000),0);
-    assert.equal(boundedPanShift(start+forward+back,size,view,extent,-10000),0);
+test('fitting pages lock pan and zoom-out settlement restores their centre on either axis', () => {
+  for (const [start,size,view,extent] of [[-900,600,0,1200],[150,300,24,600]]) {
+    assert.equal(boundedPanShift(start,size,view,extent,10000),0);
+    assert.equal(boundedPanShift(start,size,view,extent,-10000),0);
+    const shift=settledPanShift(start,size,view,extent,true);
+    assert.equal(start+shift,view+(extent-size)/2);
+    assert.equal(settledPanShift(start,size,view,extent,false),0);
   }
 });
 
-test('an offscreen zoom anchor can return into the pan range without being pushed farther away', () => {
-  assert.equal(boundedPanShift(-900,600,0,1200,100),0);
-  assert.equal(boundedPanShift(-900,600,0,1200,-100),100);
+test('oversized pages reach both edges with only a small fixed gutter, including old excessive offsets', () => {
+  for (const [size,extent] of [[1800,1200],[900,600]]) {
+    const start=-900;
+    const left=start+boundedPanShift(start,size,24,extent,10000);
+    const right=left+boundedPanShift(left,size,24,extent,-10000);
+    assert.equal(left,24+extent-size-24);
+    assert.equal(right,48);
+    assert.equal(boundedPanShift(right,size,24,extent,-1),0);
+    assert.equal(boundedPanShift(left,size,24,extent,1),0);
+  }
+});
+
+test('page gaps remain small screen dimensions independently of committed zoom', () => {
+  assert.equal(SPREAD_GAP,6);
+  assert.equal(CONTINUOUS_GAP,8);
 });
 
 test('a page translated outside native scroll bounds can reach both edges', () => {

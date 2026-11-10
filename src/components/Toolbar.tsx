@@ -276,23 +276,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   
   const triggerUpload = (acceptType: string, multiple = false) => {
     setIsUploadMenuOpen(false);
-    const input = document.createElement('input');
-    input.type = 'file';
+    // Keep the chooser target mounted while the native dialog is open. A
+    // detached temporary input could disappear before a file was returned.
+    const input = fileInputRef.current;
+    if (!input) return;
     input.accept = acceptType;
     input.multiple = multiple;
-    input.onchange = (e) => {
-      const rawFiles = (e.target as HTMLInputElement).files;
-      if (!rawFiles || rawFiles.length === 0) return;
-      // Preserve exact native index order: files[0] = Page 1, files[1] = Page 2...
-      const files = Array.from(rawFiles);
-      if (files.length > 0) {
-        if (multiple && files.length > 1) {
-          onFileUpload(files);
-        } else {
-          onFileUpload(files[0]);
-        }
-      }
-    };
+    input.value = ''; // Selecting the same PDF again must still fire change.
     input.click();
   };
 

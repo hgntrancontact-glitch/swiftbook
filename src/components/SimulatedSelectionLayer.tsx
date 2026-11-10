@@ -130,8 +130,8 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
   useEffect(() => {
     const handleGlobalMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return; // Only for left click
-      const target = e.target instanceof Element ? e.target : null;
-      if (!target?.closest('.pending-simulated-selection')) setPendingSelection(null);
+      setPendingSelection(null);
+      lastRightClickTimeRef.current = 0;
     };
 
     window.addEventListener('mousedown', handleGlobalMouseDown, { capture: true });
@@ -146,6 +146,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
     prepareLines();
     // Immediately dismiss any existing pending selection on new click
     setPendingSelection(null);
+    lastRightClickTimeRef.current = 0;
 
     // Ignore clicks on existing annotations or interactive elements
     const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
@@ -298,6 +299,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       }}
       onMouseEnter={prepareLines}
       onMouseDown={handleMouseDown}
+      onContextMenu={handleContextMenu}
     >
       {/* Live dragging rectangle */}
       {isDragging && startPos && currentPos && containerRef.current && (
@@ -323,16 +325,7 @@ export const SimulatedSelectionLayer: React.FC<SimulatedSelectionLayerProps> = (
       {/* Pending simulated selection overlay */}
       {pendingSelection && !isDragging && (
         <div
-          className="pending-simulated-selection absolute inset-0 cursor-pointer select-none"
-          onMouseDown={e => e.stopPropagation()}
-          onContextMenu={handleContextMenu}
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            commitHighlight();
-          }}
+          className="pending-simulated-selection absolute inset-0 pointer-events-none select-none"
         >
           {pendingSelection.rects.map((r, i) => (
             <div
