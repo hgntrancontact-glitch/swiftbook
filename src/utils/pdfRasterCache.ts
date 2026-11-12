@@ -17,6 +17,12 @@ export function rasterDensity(size: PageSize, scale: number) {
     8_000 / Math.max(size.width, size.height, 1));
 }
 
+// A larger bitmap is useful during a gesture, but downsampling it forever
+// leaves small text at a different pixel phase. Settle visible pages at target.
+export function rasterMatches(density:number,target:number):boolean {
+  return density>0 && Math.abs(density-target)<=Math.max(.0001,target*.015);
+}
+
 export function getPageRaster(key: string, pdfDoc: any) {
   const entry = rasters.get(key);
   if (!entry || entry.pdfDoc !== pdfDoc) return null;

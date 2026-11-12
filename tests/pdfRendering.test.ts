@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { rasterDensity } from '../src/utils/pdfRasterCache';
+import { rasterDensity, rasterMatches } from '../src/utils/pdfRasterCache';
 import { continuousRenderWindow } from '../src/utils/pdfViewport';
 
 test('retina pages retain the final quality target within the canvas memory bound', () => {
@@ -24,4 +24,11 @@ test('reading through 416 pages does not retain every visited canvas', () => {
   const pinned = continuousRenderWindow([53, 54, 55], 54, 416, [1]);
   assert.ok(pinned.has(1));
   assert.ok(pinned.has(54));
+});
+
+test('zoom-out settles at the final density instead of permanently downsampling the old canvas',()=>{
+  assert.equal(rasterMatches(4.52,1.5),false);
+  assert.equal(rasterMatches(1,2),false);
+  assert.equal(rasterMatches(1.5,1.5),true);
+  assert.equal(rasterMatches(1.5001,1.5),true);
 });

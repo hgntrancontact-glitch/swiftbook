@@ -1,3 +1,4 @@
+import { WheelGesture } from './utils/wheelGesture';
 import { openingPage, reopenDocument } from './utils/documentOpening';
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import {
@@ -198,9 +199,8 @@ export function App() {
       const nextIndex = clampPairIndex(Math.round(container.scrollLeft / step));
       workspacePairIndexRef.current = nextIndex;
       const alignedLeft = nextIndex * step;
-      if (Math.abs(container.scrollLeft - alignedLeft) > 1) {
-        container.scrollLeft = alignedLeft;
-      }
+      if (Math.abs(container.scrollLeft - alignedLeft) > 1) container.scrollLeft = alignedLeft;
+      container.style.scrollSnapType = visibleDocs.length>1?'x mandatory':'none';
     };
 
     const flushScroll = () => {
@@ -211,28 +211,26 @@ export function App() {
       }
     };
 
+    const workspaceGesture=new WheelGesture();
+    const swipe = (delta:number) => {
+      if(maxPairIndex===0 || !delta) return;
+      // Let the explicit gesture finish before snapping to a document pair;
+      // native snap on every wheel tick fought the PDF's own pan/zoom.
+      container.style.scrollSnapType='none';
+      accumulatedDelta+=delta;
+      if(rafId===null) rafId=requestAnimationFrame(flushScroll);
+      if(settleTimer) clearTimeout(settleTimer);
+      settleTimer=setTimeout(settleToNearestPair,140);
+    };
+    const fromPdf = (event:Event) => swipe((event as CustomEvent<{delta:number}>).detail.delta);
     const handleWorkspaceWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) return; // Zoom is handled per PDF column
-
-      const target = e.target instanceof Element ? e.target : null;
-      const pdfViewport = target?.closest<HTMLElement>(".pdf-viewport-container");
-      const horizontalDelta = e.deltaX || (e.shiftKey ? e.deltaY : 0);
-      const pdfHasHorizontalOverflow = Boolean(
-        pdfViewport && pdfViewport.scrollWidth > pdfViewport.clientWidth + 1
-      );
-
-      // A horizontally overflowing PDF owns the gesture. Its own wheel handler
-      // keeps it from chaining into the workspace.
-      if (pdfHasHorizontalOverflow && horizontalDelta !== 0) return;
-
-      // Only convert Shift + vertical wheel on mouse into horizontal workspace scroll
-      if (e.shiftKey && Math.abs(e.deltaY) > 0) {
-        accumulatedDelta += e.deltaY;
-        e.preventDefault();
-        if (rafId === null) {
-          rafId = requestAnimationFrame(flushScroll);
-        }
-      }
+      if(e.ctrlKey || e.metaKey) return;
+      const target=e.target instanceof Element?e.target:null;
+      if(target?.closest('.pdf-viewport-container')) return; // the PDF owns routing
+      const unit=e.deltaMode===1?16:e.deltaMode===2?container.clientWidth:1;
+      const intent=workspaceGesture.read((e.deltaX || (e.shiftKey?e.deltaY:0))*unit,e.shiftKey?0:e.deltaY*unit,performance.now());
+      e.preventDefault(); // never let a small native deltaX bypass intent locking
+      if(intent.axis==='x') swipe(intent.delta);
     };
 
     const handleWorkspaceScroll = () => {
@@ -251,10 +249,12 @@ export function App() {
     });
 
     container.addEventListener("wheel", handleWorkspaceWheel, { passive: false });
+    container.addEventListener("pdf-workspace-swipe",fromPdf);
     container.addEventListener("scroll", handleWorkspaceScroll, { passive: true });
     resizeObserver.observe(container);
     return () => {
       container.removeEventListener("wheel", handleWorkspaceWheel);
+      container.removeEventListener("pdf-workspace-swipe",fromPdf);
       container.removeEventListener("scroll", handleWorkspaceScroll);
       resizeObserver.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);

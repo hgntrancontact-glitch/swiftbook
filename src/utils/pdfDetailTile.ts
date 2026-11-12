@@ -15,3 +15,10 @@ export function pdfDetailTile(page: {width:number;height:number}, visible: {left
 export function detailCovers(tile:DetailTile,visible:{left:number;top:number;right:number;bottom:number}):boolean {
   return tile.x<=visible.left && tile.y<=visible.top && tile.x+tile.width>=visible.right && tile.y+tile.height>=visible.bottom;
 }
+
+// The integer backing buffer and fractional CSS crop must describe the same
+// extent; otherwise swapping a detail tile nudges text by a fraction of a pixel.
+export function detailViewportTransform(tile:DetailTile):[number,number,number,number,number,number] {
+  const x=tile.pixelsWide/tile.width,y=tile.pixelsHigh/tile.height;
+  return [x,0,0,y,-tile.x*x,-tile.y*y];
+}

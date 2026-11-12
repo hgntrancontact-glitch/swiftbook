@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { pdfDetailTile, detailCovers } from '../src/utils/pdfDetailTile';
+import { pdfDetailTile, detailCovers, detailViewportTransform } from '../src/utils/pdfDetailTile';
 import { rasterDensity } from '../src/utils/pdfRasterCache';
 
 test('226% detail rendering meets retina resolution where the full-page bitmap is capped', () => {
@@ -33,4 +33,13 @@ test('overscan reuses a sharp tile across small pans and rebuilds only beyond it
   assert.ok(detailCovers(tile,visible));
   assert.ok(detailCovers(tile,{left:460,top:160,right:1740,bottom:806}));
   assert.ok(!detailCovers(tile,{left:650,top:350,right:1930,bottom:996}));
+});
+
+test('fractional CSS crops map exactly to integer backing pixels without a text-position shift',()=>{
+  const tile=pdfDetailTile({width:1320,height:750},{left:450.13,top:150.71,right:1730.22,bottom:796.33},2.263,1.75)!;
+  const [sx,,,sy,dx,dy]=detailViewportTransform(tile);
+  const screenX=(source:number)=>(source*sx+dx)/tile.pixelsWide*tile.width+tile.x;
+  const screenY=(source:number)=>(source*sy+dy)/tile.pixelsHigh*tile.height+tile.y;
+  for(const x of [tile.x,tile.x+tile.width,1000.123]) assert.ok(Math.abs(screenX(x)-x)<1e-9);
+  for(const y of [tile.y,tile.y+tile.height,300.123]) assert.ok(Math.abs(screenY(y)-y)<1e-9);
 });

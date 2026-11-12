@@ -1,3 +1,4 @@
+import { WheelGesture, wheelOwner } from '../utils/wheelGesture';
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import {
   WorkspaceDoc,
@@ -122,7 +123,8 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   const pendingAnchorRef = useRef<Anchor | null>(null);
   const visualAnchorRef = useRef<Anchor | null>(null);
   const gestureControllerRef = useRef<{ cancel: () => void; rebase: (scale: number) => void } | null>(null);
-  const releaseFrameRef = useRef<number | null>(null);
+  const docCountRef = useRef(totalVisibleDocs);
+  docCountRef.current = totalVisibleDocs;
 
   useLayoutEffect(() => {
     const element = containerRef.current;
@@ -167,7 +169,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     }).catch((error) => console.warn('Could not measure current PDF pages', error));
     return () => { cancelled = true; };
   }, [doc.pdfDoc, doc.fileId, layoutKey]);
-  const baseScale = fitPageScale(doc.viewMode, pages, containerSize?.width || 600, containerSize?.height || 600);
+  const baseScale = fitPageScale(doc.viewMode, doc.viewMode === 'continuous' ? [doc.basePageDimensions || pages[0]] : pages, containerSize?.width || 600, containerSize?.height || 600);
   const actualScale = baseScale * doc.scale;
 
   useLayoutEffect(() => {
@@ -262,28 +264,20 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       container.scrollTop = 0;
     }
   };
-  const centerAfterZoomRef = useRef(false);
   const releaseGesture = () => {
-    const epoch = gestureEpochRef.current;
-    if (releaseFrameRef.current !== null) cancelAnimationFrame(releaseFrameRef.current);
-    releaseFrameRef.current = requestAnimationFrame(() => {
-      releaseFrameRef.current = requestAnimationFrame(() => {
-        releaseFrameRef.current = null;
-        const container = containerRef.current;
-        if (!container || gestureActiveRef.current || epoch !== gestureEpochRef.current) return;
-        panViewport(0, 0, true, centerAfterZoomRef.current);
-        centerAfterZoomRef.current = false;
-        delete container.dataset.zoomGesture;
-        container.dispatchEvent(new CustomEvent('pdf-zoom-end', { detail: { epoch } }));
-      });
-    });
+    const container = containerRef.current;
+    if (!container || gestureActiveRef.current) return;
+    // Layout, cursor anchor, fitting-axis centre and render epoch are committed
+    // before the same paint. A delayed two-frame clamp visibly jumped at release.
+    panViewport(0, 0, true, true);
+    delete container.dataset.zoomGesture;
+    container.dispatchEvent(new CustomEvent('pdf-zoom-end', {detail:{epoch:gestureEpochRef.current}}));
   };
 
   const resetKey = `${doc.id}:${doc.viewMode}:${doc.viewportRevision || 0}`;
   const previousLayoutRef = useRef({ key: '', baseScale: 0, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs, scale: doc.scale });
   useLayoutEffect(() => {
     const previous = previousLayoutRef.current;
-    if (doc.scale < previous.scale) centerAfterZoomRef.current = true;
     const explicitReset = previous.key !== resetKey;
     const fitResize = !gestureActiveRef.current && !pendingCommitRef.current && doc.scale <= 1 && Math.abs(previous.baseScale - baseScale) > 0.0001;
     const pageNavigation = previous.currentPage !== doc.currentPage && doc.viewMode !== 'continuous';
@@ -364,7 +358,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (timer) clearTimeout(timer);
       timer = null;
       if (frame !== null) { cancelAnimationFrame(frame); apply(); }
-      centerAfterZoomRef.current = targetScale < startScale;
       pendingAnchorRef.current = gestureAnchor || captureAnchor(clientX, clientY);
       gestureActiveRef.current = false;
       if (Math.abs(targetScale - startScale) < 0.000001 && !pendingCommitRef.current) {
@@ -378,6 +371,18 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         actionsRef.current.onZoomChange(doc.id, targetScale, false);
       }
     };
+    const wheelGesture = new WheelGesture();
+    let wheelOwnerRef:'pdf'|'workspace'|null=null,lastWheelAt=-Infinity;
+    let panFrame:number|null=null,panX=0,panY=0;
+    const flushPan=()=> {
+      panFrame=null;
+      const x=panX,y=panY;panX=panY=0;
+      if(x || y) panViewport(x,y);
+    };
+    const queuePan=(x:number,y:number)=> {
+      panX+=x;panY+=y;
+      if(panFrame===null) panFrame=requestAnimationFrame(flushPan);
+    };
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey) {
         if (event.metaKey) return;
@@ -387,14 +392,28 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         if (!dx && !dy) return;
         event.preventDefault();
         event.stopPropagation();
-        panViewport(dx, dy);
+        const now=performance.now();
+        if(now-lastWheelAt>180) wheelOwnerRef=null;
+        lastWheelAt=now;
+        const intent=wheelGesture.read(dx,dy,now);
+        if(!intent.axis) return;
+        if(wheelOwnerRef===null) {
+          const viewStyle=getComputedStyle(container);
+          const width=container.clientWidth-parseFloat(viewStyle.paddingLeft)-parseFloat(viewStyle.paddingRight);
+          wheelOwnerRef=wheelOwner(intent.axis,scaleRef.current,wrapperRef.current?.getBoundingClientRect().width || 0,width,docCountRef.current);
+        }
+        if(wheelOwnerRef==='workspace') {
+          container.dispatchEvent(new CustomEvent('pdf-workspace-swipe',{bubbles:true,detail:{delta:intent.delta}}));
+        } else queuePan(intent.axis==='x'?intent.delta:0,intent.axis==='y'?intent.delta:0);
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       if (!gestureActiveRef.current) {
-        if (releaseFrameRef.current !== null) { cancelAnimationFrame(releaseFrameRef.current); releaseFrameRef.current = null; }
+        if(panFrame!==null) {cancelAnimationFrame(panFrame);flushPan();}
+        wheelGesture.reset();wheelOwnerRef=null;lastWheelAt=-Infinity;
         gestureEpochRef.current++;
+        container.dataset.zoomEpoch=String(gestureEpochRef.current);
         startScale = committedScaleRef.current;
         gestureAnchor = null;
         targetScale = scaleRef.current;
@@ -415,14 +434,11 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     container.addEventListener('gestureend', finish);
     return () => {
       cancel();
+      if(panFrame!==null) cancelAnimationFrame(panFrame);
       container.removeEventListener('wheel', wheel);
       container.removeEventListener('gestureend', finish);
     };
   }, [doc.id, doc.viewMode, doc.viewportRevision]);
-
-  useEffect(() => () => {
-    if (releaseFrameRef.current !== null) cancelAnimationFrame(releaseFrameRef.current);
-  }, []);
 
   const columnRootRef = useRef<HTMLDivElement>(null);
   const [isInViewport, setIsInViewport] = useState<boolean>(true);

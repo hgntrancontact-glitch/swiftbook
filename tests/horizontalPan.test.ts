@@ -11,11 +11,11 @@ test('a fitting page moves gradually toward centre only on a wheel', () => {
 
 test('fitting pages lock pan and zoom-out settlement restores their centre on either axis', () => {
   for (const [start,size,view,extent] of [[-900,600,0,1200],[150,300,24,600]]) {
-    assert.equal(boundedPanShift(start,size,view,extent,10000),0);
-    assert.equal(boundedPanShift(start,size,view,extent,-10000),0);
+    assert.equal(start+boundedPanShift(start,size,view,extent,10000),view+(extent-size)/2);
+    assert.equal(start+boundedPanShift(start,size,view,extent,-10000),view+(extent-size)/2);
     const shift=settledPanShift(start,size,view,extent,true);
     assert.equal(start+shift,view+(extent-size)/2);
-    assert.equal(settledPanShift(start,size,view,extent,false),0);
+    assert.equal(start+settledPanShift(start,size,view,extent,false),view+(extent-size)/2);
   }
 });
 

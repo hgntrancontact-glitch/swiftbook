@@ -43,14 +43,14 @@ export function fitPageScale(mode: ViewMode, pages: PageSize[], width: number, h
 // A small fixed screen-space gutter is enough for adjustment. Never extend
 // bounds to include an old cursor-zoom offset: that preserved huge blank areas.
 export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number): number {
-  if (size < viewSize - 1) return 0;
+  if (size < viewSize - 1) return viewStart+(viewSize-size)/2-start;
   const gutter = Math.min(24, viewSize * 0.04);
   const low = viewStart + viewSize - size - gutter;
   const high = viewStart + gutter;
   return Math.max(low, Math.min(high, start-delta))-start;
 }
 
-export function settledPanShift(start:number,size:number,viewStart:number,viewSize:number,centerFitting:boolean):number {
-  if (size < viewSize-1) return centerFitting ? viewStart+(viewSize-size)/2-start : 0;
+export function settledPanShift(start:number,size:number,viewStart:number,viewSize:number,_centerFitting:boolean):number {
+  if (size < viewSize-1) return viewStart+(viewSize-size)/2-start;
   return boundedPanShift(start,size,viewStart,viewSize,0);
 }
