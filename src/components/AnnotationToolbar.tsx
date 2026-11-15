@@ -42,17 +42,11 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         const dpr=window.devicePixelRatio || 1;
         toolbar.dataset.annotationToolbarScale = String(scale);
         toolbar.style.maxWidth = `${Math.max(1, window.innerWidth - 16) / scale}px`;
-        toolbar.style.maxHeight = '';
-        toolbar.style.overflowY = '';
         const size = toolbar.getBoundingClientRect();
         const leftLimit = align === 'left' ? Math.max(8, (viewport?.left || 0) + 8) : 8;
         const rightLimit = align === 'left' ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
         const placement = placeAnnotationToolbar(bounds, { width: size.width / scale, height: size.height / scale },
           { left: leftLimit, right: rightLimit, top: topLimit, bottom: bottomLimit }, scale, preferredAbove, preserveAnchorGap, align);
-        if (placement.maxHeight !== undefined) {
-          toolbar.style.maxHeight = `${placement.maxHeight}px`;
-          toolbar.style.overflowY = 'auto';
-        }
         toolbar.style.left = `${snapUiPixel(placement.left,dpr)/scale}px`;
         toolbar.style.top = `${snapUiPixel(placement.top,dpr)/scale}px`;
         toolbar.style.visibility = bounds.bottom <= topLimit || bounds.top >= bottomLimit || bounds.right <= Math.max(0, viewport?.left || 0) || bounds.left >= Math.min(window.innerWidth, viewport?.right || window.innerWidth) ? 'hidden' : 'visible';

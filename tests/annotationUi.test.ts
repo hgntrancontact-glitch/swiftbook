@@ -29,13 +29,23 @@ test('fit-to-page layout and committing a live pinch do not change the UI zoom r
   assert.equal(annotationZoom(Number.NaN, 0, 0), 1);
 });
 
-test('a scaled toolbar stays within the right edge and scrolls long editing content above its anchor', () => {
+test('highlight toolbar follows its anchor without flipping or shrinking during scroll at any zoom', () => {
+  for (const scale of [0.5, 1, 2.53, 4]) {
+    for (const top of [110, 300, 600, 900, 600, 300, 110]) {
+      const moving = {...anchor, top, bottom: top + 20};
+      const placed = placeAnnotationToolbar(moving, {width:288,height:360}, limits, scale, false, true, 'left');
+      assert.equal(placed.above, false);
+      assert.equal(placed.top, moving.bottom + 10 * scale);
+      assert.equal(placed.height, 360 * scale);
+    }
+  }
   const atRight = placeAnnotationToolbar({ ...anchor, left: 1100, right: 1180 }, natural, limits, 1.7, false, true, 'left');
   assert.ok(atRight.left + atRight.width <= limits.right);
-  const tall = placeAnnotationToolbar({ ...anchor, top: 400, bottom: 420 }, { width: 288, height: 360 },
-    { ...limits, bottom: 700 }, 2, false, true, 'left');
-  assert.equal(tall.above, true);
-  assert.equal(tall.top, limits.top);
-  assert.equal(tall.top + tall.height + tall.gap, 400);
-  assert.equal(tall.maxHeight! * 2, tall.height);
+});
+
+test('other annotation controls retain viewport fitting', () => {
+  const placed = placeAnnotationToolbar({...anchor,top:900,bottom:920}, natural, limits, 1, false, false, 'center');
+  assert.equal(placed.above,true);
+  assert.ok(placed.top >= limits.top);
+  assert.ok(placed.top + placed.height <= limits.bottom);
 });
