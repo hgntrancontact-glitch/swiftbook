@@ -1,3 +1,5 @@
+import {isQuickShapeTool} from '../utils/quickShapes';
+import {QuickShapesPanel,QuickShapesToggle} from './QuickShapesToolbar';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ActiveTool } from '../types';
@@ -165,8 +167,9 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
 
   return (
     <aside aria-label="Thanh công cụ Lark" className="relative z-40 select-none pointer-events-auto font-['Inter',sans-serif] flex flex-col items-center gap-3 max-w-[98vw]">
+      <QuickShapesPanel activeTool={activeTool} onActiveToolChange={onActiveToolChange}/>
       {/* Sub-toolbar for Drawing */}
-      {showDrawToolbar && (
+      {showDrawToolbar && !isQuickShapeTool(activeTool) && (
         <div className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md rounded-full shadow-2xl border border-neutral-200/90 px-3 py-1.5 flex items-center gap-1.5 transition-all animate-in fade-in slide-in-from-bottom-2 z-50 whitespace-nowrap max-w-[95vw] overflow-x-auto no-scrollbar">
           
           {/* 1. Bút vẽ tự do (Pencil) - Nút nhanh P */}
@@ -439,6 +442,7 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
               <MousePointer size={15} />
             </button>
 
+            <QuickShapesToggle activeTool={activeTool} onActiveToolChange={onActiveToolChange}/>
             {/* 2. Drawing Group Icon */}
             <div className="flex items-center">
               <button

@@ -1,3 +1,4 @@
+import {QuickShapesLayer} from './QuickShapesLayer';
 import { presentDetailSample } from '../utils/pdfDetailSurface';
 import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
@@ -1039,6 +1040,9 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         elevatedContainerId={fileId ? `elevated-annotation-container-${fileId}-${pageNumber}` : `elevated-annotation-container-${pageNumber}`}
       />
 
+      <QuickShapesLayer fileId={fileId} pageNumber={pageNumber} width={effectiveWidth} height={effectiveHeight}
+        scale={scale} activeTool={activeTool} drawings={drawings} onAddStroke={onAddStroke}
+        onUpdateStroke={onUpdateStroke} onDeleteStroke={onDeleteStroke} onClearSelection={()=>onSelect?.('',false)}/>
       {/* Freehand & Smart Drawing Overlay */}
       <DrawingCanvas
         scale={scale}

@@ -103,7 +103,12 @@ export interface DrawingPoint {
   y: number; // normalized (0-100)
 }
 
+export type QuickShapeKind = 'arrow' | 'line' | 'rectangle';
+export type QuickShapeTool = 'quick_arrow' | 'quick_line' | 'quick_rectangle' | 'quick_arrow_temporary' | 'quick_line_temporary' | 'quick_rectangle_temporary' | 'quick_eraser';
+
 export interface DrawingStroke {
+  quickShape?: QuickShapeKind;
+  dashStyle?: 'solid' | 'dashed';
   /** Page scale when pixel-sized properties were created; absent legacy values use page units. */
   referenceScale?: number;
   id: string;
@@ -138,6 +143,7 @@ export interface AutoTOCItem {
 export type ViewMode = 'single' | 'double' | 'continuous';
 
 export type ActiveTool =
+  | QuickShapeTool
   | 'select'
   | 'highlighter'
   | 'pen'

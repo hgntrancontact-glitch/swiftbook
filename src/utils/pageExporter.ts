@@ -1,3 +1,4 @@
+import {drawQuickShape} from './quickShapes';
 import { highlightCorners, highlightDisplayRects } from './highlightGeometry';
 import { canvasViewportTransform } from './pageCoordinates';
 import { jsPDF } from 'jspdf';
@@ -1294,6 +1295,9 @@ export async function renderPageWithAnnotations(
       ctx.globalAlpha = stroke.opacity ?? 1;
     }
 
+    if(stroke.quickShape) {
+      drawQuickShape(ctx,stroke,width,height,scale);ctx.restore();return;
+    }
     const isPolygon = stroke.isSmartShape || (stroke.points && stroke.points.length <= 6);
     drawSmoothStroke(ctx, stroke.points, width, height, isPolygon);
 

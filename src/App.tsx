@@ -1,3 +1,5 @@
+import {QuickShapesProvider,useQuickShapesReset} from './contexts/QuickShapesContext';
+import {isQuickShapeTool} from './utils/quickShapes';
 import { WheelGesture } from './utils/wheelGesture';
 import { openingPage, reopenDocument } from './utils/documentOpening';
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
@@ -80,7 +82,10 @@ const areSnapshotsEqual = (a: HistorySnapshot, b: HistorySnapshot): boolean => {
   return JSON.stringify(a) === JSON.stringify(b);
 };
 
-export function App() {
+export function App() {return <QuickShapesProvider><SwiftbookApp/></QuickShapesProvider>;}
+
+function SwiftbookApp() {
+  const resetQuickShapes=useQuickShapesReset();
   // Multi-PDF Workspace State
   const [openDocs, setOpenDocs] = useState<WorkspaceDoc[]>([]);
   const openDocsRef = useRef(openDocs);
@@ -702,11 +707,16 @@ export function App() {
     setActiveDocId(sourceId);
   }, []);
 
+  const resetQuickTools=()=>{
+    resetQuickShapes();setActiveTool(tool=>isQuickShapeTool(tool)?'select':tool);
+  };
+
   // Handle User File Upload
   const handleFileUpload = async (
     fileInput: File | File[],
     skipSort: boolean = false
   ) => {
+    resetQuickTools();
     try {
       const rawList = Array.isArray(fileInput) ? fileInput : [fileInput];
       const isImage = (f: File) =>
@@ -859,6 +869,7 @@ export function App() {
 
   // Reset all tabs to upload screen
   const handleResetToUpload = () => {
+    resetQuickTools();
     try {
       localStorage.removeItem("pdf_reader_last_opened_id");
       setOpenDocs([]);
@@ -872,6 +883,7 @@ export function App() {
 
   // Open book from Library
   const handleSelectBook = async (book: SavedBook) => {
+    resetQuickTools();
     try {
       setIsLibraryModalOpen(false);
       // If already open, focus it

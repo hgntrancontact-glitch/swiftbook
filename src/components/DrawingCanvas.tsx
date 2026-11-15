@@ -322,7 +322,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const targetPageNum = Number(pageNumber);
   const pageStrokes = [
-    ...strokes.filter((s) => Number(s.pageNumber) === targetPageNum),
+    ...strokes.filter((s) => !s.quickShape && Number(s.pageNumber) === targetPageNum),
     ...(altGhost && Number(altGhost.pageNumber) === targetPageNum ? [altGhost] : []),
   ];
 
