@@ -1,3 +1,4 @@
+import { HighlightNoteText } from './HighlightNoteText';
 import { highlightClip, highlightCorners, highlightDisplayRects } from '../utils/highlightGeometry';
 import { HIGHLIGHT_TOOLBAR_SIZE } from '../utils/annotationUi';
 import { AnnotationToolbar } from './AnnotationToolbar';
@@ -269,9 +270,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                         onClick={e => { e.stopPropagation(); closeNotePreview(); }}><X size={12} /></button>
                     </div>
                     <div data-highlight-note-body className="overflow-y-auto min-h-0">
-                    <p className={`${previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} text-[12px] leading-relaxed whitespace-pre-wrap break-words`}>
-                      {hl.note}
-                    </p>
+                    <HighlightNoteText text={hl.note} className={previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} />
                     <div className="text-[10.5px] text-neutral-400 mt-1.5 text-right italic">
                       Nhấp đúp chuột vào highlight để sửa
                     </div>
@@ -380,7 +379,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
               <div>
                 {hl.note ? (
                   <div className="group relative bg-amber-50/70 p-2.5 rounded-lg border border-amber-200/50 mb-2">
-                    <p className="text-neutral-800 text-[12px] leading-relaxed whitespace-pre-wrap break-words max-h-80 overflow-y-auto">{hl.note}</p>
+                    <HighlightNoteText text={hl.note} className="text-neutral-800 max-h-80 overflow-y-auto" />
                     <button
                       onClick={() => setEditingNote({ id: hl.id, text: hl.note || '' })}
                       className="mt-1.5 text-[10.5px] text-amber-700 hover:text-amber-900 font-medium flex items-center gap-1 cursor-pointer"

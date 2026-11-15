@@ -1,7 +1,7 @@
 import { snapUiPixel } from '../utils/annotationSharpness';
 import { pageNoteGeometry, type PagePoint } from '../utils/pageNoteGeometry';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
-import { HIGHLIGHT_NOTE_SIZE } from '../utils/annotationUi';
+import { HIGHLIGHT_NOTE_SIZE, HIGHLIGHT_NOTE_ICON_SIZE, HIGHLIGHT_NOTE_GLYPH_SIZE } from '../utils/annotationUi';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageSquare } from 'lucide-react';
@@ -20,8 +20,8 @@ interface Props {
 }
 
 // Page-relative dimensions, calibrated at document zoom 100%.
-const ICON_SIZE = 21;
-const ICON_GLYPH_SIZE = 11;
+const ICON_SIZE = HIGHLIGHT_NOTE_ICON_SIZE;
+const ICON_GLYPH_SIZE = HIGHLIGHT_NOTE_GLYPH_SIZE;
 const POPUP_WIDTH = 236;
 const POPUP_GAP = 6;
 
@@ -117,7 +117,8 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const bridge=bridgeRef.current;
       if(bridge) {
         Object.assign(bridge.style,aligned(geometry.bridge));
-        bridge.style.width=sized(cardWidth);bridge.style.height=sized(gap);
+        bridge.style.width=sized(geometry.bridge.width);bridge.style.height=sized(geometry.bridge.height);
+        bridge.style.clipPath=geometry.bridge.clipPath;
         bridge.style.visibility=showPopup?'visible':'hidden';
       }
     };
@@ -169,12 +170,14 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
   useLayoutEffect(() => { positionRef.current?.(); });
 
   return portalTarget ? createPortal(
-    <div ref={rootRef} data-highlight-note-overlay={highlightId} data-highlight-note-owner={owner} data-highlight-note-open={showPopup} className="absolute inset-0 pointer-events-none z-[90000]" onMouseLeave={onLeave}>
+    <div ref={rootRef} data-highlight-note-overlay={highlightId} data-highlight-note-owner={owner} data-highlight-note-open={showPopup} className="absolute inset-0 pointer-events-none z-[90000]" onMouseLeave={event => {
+      if (event.relatedTarget instanceof Node && rootRef.current?.contains(event.relatedTarget)) return;
+      onLeave();
+    }}>
       <button ref={iconRef} type="button" data-highlight-note-icon={highlightId}
         className="absolute bg-[#f5c41a] hover:bg-[#e5a84c] text-neutral-950 rounded-full shadow-md flex items-center justify-center border-2 border-white cursor-pointer pointer-events-auto z-[90000]"
         style={{ left: 0, top: 0, visibility: 'hidden', width: ICON_SIZE, height: ICON_SIZE, minWidth: ICON_SIZE, minHeight: ICON_SIZE, maxWidth: ICON_SIZE, maxHeight: ICON_SIZE, boxSizing: 'border-box', flexShrink: 0, transform: 'none', zoom: 1 }} title="Xem/Sửa ghi chú"
         onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
         onMouseDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); onEdit(); }}
         onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}
@@ -182,7 +185,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
         <MessageSquare size={ICON_GLYPH_SIZE} style={{ width: ICON_GLYPH_SIZE, height: ICON_GLYPH_SIZE, flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
       </button>
       {<>
-        <div ref={bridgeRef} className="absolute z-[90000]" style={{ visibility: 'hidden', pointerEvents: mode === 'auto' ? 'auto' : 'none' }} />
+        <div ref={bridgeRef} className="absolute z-[89999]" style={{ visibility: 'hidden', pointerEvents: mode === 'auto' ? 'auto' : 'none' }} />
         <div ref={popupRef} data-highlight-note-popup-frame={highlightId} className="absolute rounded-xl z-[90001]" style={{ left: 0, top: 0, visibility: 'hidden', pointerEvents: mode === 'transparent' ? 'none' : 'auto' }}>
           {children}
         </div>

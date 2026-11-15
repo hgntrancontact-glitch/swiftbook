@@ -445,15 +445,15 @@ export const LarkFloatingToolbar: React.FC<LarkFloatingToolbarProps> = ({
                 onClick={toggleDrawToolbar}
                 className={`p-2 rounded-full transition-all flex items-center gap-1.5 text-xs font-semibold ${
                   ['pen', 'highlighter', 'smart_pen', 'smart_highlighter', 'eraser'].includes(activeTool) || showDrawToolbar
-                    ? 'bg-[#f5c41a] text-neutral-950 ring-1 ring-[#f5c41a] font-bold'
+                    ? 'bg-neutral-900 text-white shadow-xs'
                     : 'text-neutral-700 hover:bg-neutral-100'
                 }`}
                 title="Bộ công cụ vẽ & đánh dấu (Vẽ tự do, Highlight, Vẽ thông minh, Highlight thẳng, Cục tẩy)"
               >
                 {activeTool === 'smart_pen' ? (
-                  <PencilRuler size={15} className="text-indigo-600" />
+                  <PencilRuler size={15} />
                 ) : activeTool === 'smart_highlighter' || activeTool === 'highlighter' ? (
-                  <Highlighter size={15} className="text-black" />
+                  <Highlighter size={15} />
                 ) : (
                   <Pencil size={15} />
                 )}
