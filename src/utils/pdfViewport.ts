@@ -40,17 +40,20 @@ export function fitPageScale(mode: ViewMode, pages: PageSize[], width: number, h
   return Math.max(0.0001, Math.min(Math.max(1, width - gap) / pageWidth, Math.max(1, usableHeight) / pageHeight));
 }
 
-// A small fixed screen-space gutter is enough for adjustment. Never extend
-// bounds to include an old cursor-zoom offset: that preserved huge blank areas.
-export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number): number {
+// Manual pan has a small gutter. The current cursor-zoom origin may extend
+// that range, but wheel movement cannot push beyond that finite origin.
+export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number, zoomOrigin?:number): number {
   if (size < viewSize - 1) return viewStart+(viewSize-size)/2-start;
   const gutter = Math.min(24, viewSize * 0.04);
-  const low = viewStart + viewSize - size - gutter;
-  const high = viewStart + gutter;
-  return Math.max(low, Math.min(high, start-delta))-start;
+  // Cursor zoom may legitimately finish outside the manual pan gutter. Keep
+  // that position reachable, without allowing a wheel to extend it farther.
+  const low = Math.min(viewStart+viewSize-size-gutter,zoomOrigin ?? Infinity);
+  const high = Math.max(viewStart+gutter,zoomOrigin ?? -Infinity);
+  const shift=Math.max(low,Math.min(high,start-delta))-start;
+  return Math.abs(shift)<1e-7?0:shift;
 }
 
-export function settledPanShift(start:number,size:number,viewStart:number,viewSize:number,_centerFitting:boolean):number {
+export function settledPanShift(start:number,size:number,viewStart:number,viewSize:number,_centerFitting:boolean,zoomOrigin?:number):number {
   if (size < viewSize-1) return viewStart+(viewSize-size)/2-start;
-  return boundedPanShift(start,size,viewStart,viewSize,0);
+  return boundedPanShift(start,size,viewStart,viewSize,0,zoomOrigin);
 }

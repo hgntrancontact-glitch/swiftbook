@@ -56,3 +56,21 @@ test('a cursor-anchored offset is not snapped when a gesture ends', () => {
   assert.equal(horizontalPanShift(-900,1800,24,1392,0),0);
   assert.equal(horizontalPanShift(-900,1800,24,1392,-30),30);
 });
+
+test('left/right cursor zoom keeps its anchor even outside the manual gutter, without allowing pan farther out',()=>{
+  const originalLeft=263,originalWidth=1394,ratio=1.55/1.01,viewLeft=24,viewWidth=1872;
+  for(const cursor of [290,1620]) {
+    const local=(cursor-originalLeft)/originalWidth;
+    const width=originalWidth*ratio,left=cursor-local*width;
+    assert.ok(Math.abs(left+local*width-cursor)<1e-9);
+    assert.equal(boundedPanShift(left,width,viewLeft,viewWidth,0,left),0);
+    const centre=viewLeft+(viewWidth-width)/2;
+    const shift=boundedPanShift(left,width,viewLeft,viewWidth,left-centre,left);
+    assert.ok(Math.abs(left+shift-centre)<1e-9);
+    const atLeft=left+boundedPanShift(left,width,viewLeft,viewWidth,100000,left);
+    const atRight=left+boundedPanShift(left,width,viewLeft,viewWidth,-100000,left);
+    assert.equal(boundedPanShift(atLeft,width,viewLeft,viewWidth,1,left),0);
+    assert.equal(boundedPanShift(atRight,width,viewLeft,viewWidth,-1,left),0);
+  }
+  assert.equal(settledPanShift(-400,600,24,1200,true,-400),724);
+});

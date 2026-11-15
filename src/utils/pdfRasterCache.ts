@@ -17,6 +17,10 @@ export function rasterDensity(size: PageSize, scale: number) {
     8_000 / Math.max(size.width, size.height, 1));
 }
 
+// Prepare bounded resolution headroom before the user starts a pinch. The
+// display crop can then be resampled immediately without replaying PDF operators.
+export function rasterSourceDensity(size:PageSize,scale:number) {return rasterDensity(size,scale*2);}
+
 // A larger bitmap is useful during a gesture, but downsampling it forever
 // leaves small text at a different pixel phase. Settle visible pages at target.
 export function rasterMatches(density:number,target:number):boolean {

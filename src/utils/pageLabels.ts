@@ -1,6 +1,7 @@
+import { annotationZoom } from './annotationUi';
 type Rect = {left:number;top:number;bottom:number;width:number};
-export function pageLabelPosition(page:Rect,viewport:Rect,scroll:{left:number;top:number}) {
-  return {left:page.left-viewport.left+scroll.left+page.width/2,top:page.bottom-viewport.top+scroll.top-22};
+export function pageLabelPosition(page:Rect,viewport:Rect,scroll:{left:number;top:number},zoom=1) {
+  return {left:page.left-viewport.left+scroll.left+page.width/2,top:page.bottom-viewport.top+scroll.top-22*zoom};
 }
 
 // One read/write batch for all mounted labels in a viewport. Labels belong to
@@ -14,8 +15,17 @@ export function registerPageLabel(viewport:HTMLElement,slot:HTMLElement,label:HT
     const update=()=> {
       const bounds=viewport.getBoundingClientRect();
       const scroll={left:viewport.scrollLeft,top:viewport.scrollTop};
-      const positions=[...entries].map(([element,tag])=>({tag,...pageLabelPosition(element.getBoundingClientRect(),bounds,scroll)}));
-      for(const {tag,left,top} of positions) {tag.style.left=`${left}px`;tag.style.top=`${top}px`;}
+      const positions=[...entries].map(([element,tag])=> {
+        const page=element.getBoundingClientRect();
+        const userZoom=Number(element.closest<HTMLElement>('[data-user-zoom]')?.dataset.userZoom || 1);
+        const zoom=annotationZoom(userZoom,page.width,parseFloat(element.style.getPropertyValue('--pdf-page-width')) || page.width);
+        return {tag,zoom,...pageLabelPosition(page,bounds,scroll,zoom)};
+      });
+      for(const {tag,left,top,zoom} of positions) {
+        tag.style.left=`${left}px`;tag.style.top=`${top}px`;
+        const body=tag.firstElementChild as HTMLElement|null;
+        if(body) body.style.zoom=String(zoom);
+      }
     };
     const schedule=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;update();});};
     const resize=new ResizeObserver(schedule);

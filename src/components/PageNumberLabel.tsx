@@ -10,8 +10,10 @@ export function PageNumberLabel({pageNumber,slotRef}:{pageNumber:number;slotRef:
     if(viewport && slotRef.current && labelRef.current) return registerPageLabel(viewport,slotRef.current,labelRef.current);
   },[viewport,slotRef,pageNumber]);
   const label=<div ref={labelRef} data-page-label={pageNumber} aria-hidden="true"
-    className="absolute z-[50000] bottom-1 left-1/2 -translate-x-1/2 h-[18px] leading-[18px] min-w-6 text-center text-[10px] text-neutral-400 font-mono tabular-nums select-none pointer-events-none bg-white/80 px-1 rounded shadow-2xs"
-    style={viewport?{bottom:'auto',height:18,lineHeight:'18px',fontSize:10,minWidth:24,width:'max-content',zoom:1}:undefined}>{pageNumber}</div>;
+    className="absolute z-[50000] bottom-1 left-1/2 -translate-x-1/2 select-none pointer-events-none"
+    style={viewport?{bottom:'auto',width:'max-content'}:undefined}>
+      <div data-page-label-body className="h-[18px] leading-[18px] min-w-6 text-center text-[10px] text-neutral-400 font-mono tabular-nums bg-white/80 px-1 rounded shadow-2xs">{pageNumber}</div>
+    </div>;
   // The inline first mount is replaced in a layout effect, before first paint.
   return viewport?createPortal(label,viewport):label;
 }

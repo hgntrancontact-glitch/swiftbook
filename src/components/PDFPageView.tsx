@@ -1,7 +1,9 @@
+import { flushSync } from 'react-dom';
+import { rasterSampleRect, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale, type RasterTarget } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
-import { pdfDetailTile, detailCovers, detailViewportTransform, type DetailTile } from '../utils/pdfDetailTile';
+import { pdfDetailTile, detailViewportTransform, type DetailTile } from '../utils/pdfDetailTile';
 import { canvasViewportTransform } from '../utils/pageCoordinates';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import {
@@ -23,7 +25,7 @@ import { FreeTextLayer } from './FreeTextLayer';
 import { DrawingCanvas } from './DrawingCanvas';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
-import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, rasterMatches, getRasterCacheUsage } from '../utils/pdfRasterCache';
+import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, rasterSourceDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
 
 interface PDFPageViewProps {
   fileId: string;
@@ -132,9 +134,10 @@ function requestPdfRenderSlot(priority:number, preempt?:()=>void) {
 }
 
 // The base bitmap remains visible while a bounded high-resolution crop renders.
-function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pageNumber:number;scale:number;size:{width:number;height:number};near:boolean}) {
+function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near, cacheKey }: {pdfDoc:any;pageNumber:number;scale:number;size:{width:number;height:number};near:boolean;cacheKey:string}) {
   const canvasRefs=useRef<[HTMLCanvasElement|null,HTMLCanvasElement|null]>([null,null]);
-  type DetailRaster=RasterTarget & {canvas:HTMLCanvasElement;tile:DetailTile};
+  type DetailRaster=RasterTarget & {canvas:HTMLCanvasElement;tile:DetailTile;revision:number};
+  const presentationRef=useRef(0);
   const [completed,setCompleted]=useState<DetailRaster|null>(null);
   const [front,setFront]=useState<{index:0|1;tile:DetailTile;scale:number}|null>(null);
   const frontIndexRef=useRef<0|1>(0);
@@ -143,78 +146,122 @@ function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pa
   useLayoutEffect(()=> {
     if(!completed) return;
     const view=canvasRefs.current[0]?.closest<HTMLElement>('.pdf-viewport-container');
-    if(!near || view?.dataset.renderVisible==='false' || !canPresentRaster(completed,{doc:pdfDoc,page:pageNumber,scale,epoch:view?.dataset.zoomEpoch},view?.dataset.zoomGesture==='true')) {
-      completed.canvas.width=completed.canvas.height=1;setCompleted(null);return;
+    if(completed.revision!==presentationRef.current || !near || view?.dataset.renderVisible==='false' || !canPresentRaster(completed,{doc:pdfDoc,page:pageNumber,scale:completed.scale,epoch:view?.dataset.zoomEpoch},false)) {
+      if(!canvasRefs.current.includes(completed.canvas)) completed.canvas.width=completed.canvas.height=1;
+      setCompleted(null);return;
     }
     const index=frontIndexRef.current===0?1:0;
     const canvas=canvasRefs.current[index];
     if(!canvas) return;
     // Fill the hidden texture first. Resizing the visible detail canvas cleared
     // its GPU texture while the compositor could still be sampling that frame.
-    canvas.width=completed.canvas.width;canvas.height=completed.canvas.height;
-    canvas.getContext('2d',{alpha:false})!.drawImage(completed.canvas,0,0);
-    completed.canvas.width=completed.canvas.height=1;
+    if(canvas!==completed.canvas) {
+      if(canvas.width!==completed.canvas.width) canvas.width=completed.canvas.width;
+      if(canvas.height!==completed.canvas.height) canvas.height=completed.canvas.height;
+      canvas.getContext('2d',{alpha:false})!.drawImage(completed.canvas,0,0);
+      completed.canvas.width=completed.canvas.height=1;
+    }
     frontIndexRef.current=index;
     setFront({index,tile:completed.tile,scale:completed.scale});setCompleted(null);
   },[completed,pdfDoc,pageNumber,scale,near]);
   useLayoutEffect(()=> {
-    for(const [index,canvas] of canvasRefs.current.entries()) if(canvas && (!front || index!==front.index)) canvas.width=canvas.height=1;
+    if(!front) for(const canvas of canvasRefs.current) if(canvas) canvas.width=canvas.height=1;
   },[front]);
   useEffect(()=> {
     const page=canvasRefs.current[0]?.closest<HTMLElement>('[data-page-container="true"]');
     const view=page?.closest<HTMLElement>('.pdf-viewport-container');
     if(!page || !view) return;
-    if(!near) {setFront(null);return;}
-    let revision=0,frame=0,key='',currentTile:DetailTile|null=null,cancelCurrent=()=>{};
-    const measure=()=> {
-      frame=0;
-      if(view.dataset.zoomGesture==='true') return;
+    if(!near) {presentationRef.current++;setFront(null);return;}
+    let frame=0,key='',disposed=false,rendering=false,refreshAfterRender=false;
+    let prepared:{tile:DetailTile;scale:number}|null=null,cancelCurrent=()=>{};
+    const input=()=> {
       const r=page.getBoundingClientRect(),v=view.getBoundingClientRect();
+      const liveScale=r.width/size.width;
       const visible={left:Math.max(0,v.left-r.left,-r.left),top:Math.max(0,v.top-r.top,-r.top),
         right:Math.min(r.width,v.right-r.left,window.innerWidth-r.left),bottom:Math.min(r.height,v.bottom-r.top,window.innerHeight-r.top)};
-      if(view.dataset.renderVisible==='false' || visible.right<=visible.left || visible.bottom<=visible.top) {
-        cancelCurrent();key='';currentTile=null;setFront(null);return;
+      const tile=pdfDetailTile(size,visible,liveScale,window.devicePixelRatio||1);
+      return {liveScale,visible,tile};
+    };
+    const publish=(canvas:HTMLCanvasElement,tile:DetailTile,atScale:number,epoch:string|undefined,revision:number,immediate:boolean)=> {
+      const raster={canvas,tile,scale:atScale,doc:pdfDoc,page:pageNumber,epoch,revision};
+      if(immediate) flushSync(()=>setCompleted(raster));else setCompleted(raster);
+    };
+    const measure=(immediate=false)=> {
+      if(frame) cancelAnimationFrame(frame);
+      frame=0;
+      if(disposed) return;
+      const {liveScale,visible,tile}=input();
+      if(view.dataset.renderVisible==='false' || !tile) {
+        cancelCurrent();presentationRef.current++;key='';prepared=null;setFront(null);return;
       }
-      if (currentTile && detailCovers(currentTile,visible)) return;
-      const tile=pdfDetailTile(size,visible,scale,window.devicePixelRatio||1);
-      if(!tile || tile.density<=rasterDensity(size,scale)+.001) {cancelCurrent();key='';currentTile=null;setFront(null);return;}
-      const nextKey=[tile.x,tile.y,tile.width,tile.height,tile.density].map(n=>Math.round(n*100)/100).join(':');
-      if(nextKey===key) return;
-      key=nextKey; currentTile=tile; cancelCurrent(); const own=++revision;
-      const epoch=view.dataset.zoomEpoch;
+      const signature=[tile.x,tile.y,tile.width,tile.height,tile.density].map(n=>Math.round(n*1000)/1000).join(':');
+      const cached=getPageRaster(cacheKey,pdfDoc);
+      const fallback=[...page.querySelectorAll<HTMLCanvasElement>('canvas[data-raster-density]')].find(canvas=>getComputedStyle(canvas).visibility!=='hidden' && canvas.width>1);
+      const source=cached && sourceCoversDensity(cached.bitmap,size,tile.density)?cached.bitmap:
+        fallback && sourceCoversDensity(fallback,size,tile.density)?fallback:null;
+      if(source) {
+        if(key==='sample:'+signature) return;
+        // This path runs inside the pinch frame, not after its idle timeout.
+        // High-quality sampling also avoids the GPU's coarse minification when
+        // a large page is zoomed far out.
+        const canvas=canvasRefs.current[frontIndexRef.current===0?1:0];
+        if(!canvas) return;
+        if(canvas.width!==tile.pixelsWide) canvas.width=tile.pixelsWide;
+        if(canvas.height!==tile.pixelsHigh) canvas.height=tile.pixelsHigh;
+        const context=canvas.getContext('2d',{alpha:false});
+        if(!context) return;
+        const crop=rasterSampleRect(source,size,tile,liveScale);
+        context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+        context.drawImage(source,crop.x,crop.y,crop.width,crop.height,0,0,canvas.width,canvas.height);
+        key='sample:'+signature;const revision=++presentationRef.current;prepared={tile,scale:liveScale};
+        publish(canvas,tile,liveScale,view.dataset.zoomEpoch,revision,immediate);
+        return;
+      }
+      if(prepared && scaledDetailCovers(prepared.tile,prepared.scale,liveScale,visible,tile.density)) return;
+      if(rendering) {refreshAfterRender=true;return;}
+      const target=oversampleDetail(tile),epoch=view.dataset.zoomEpoch,own=++presentationRef.current;
+      rendering=true;refreshAfterRender=false;key='native:'+signature;
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null;
       cancelCurrent=()=>{cancelled=true;handle?.cancel();task?.cancel();};
       void (async()=> {
-        let release:(()=>void)|null=null;
-        const stale=()=>cancelled || own!==revision || currentRef.current.pdfDoc!==pdfDoc || currentRef.current.pageNumber!==pageNumber || currentRef.current.scale!==scale || !page.isConnected || view.dataset.zoomGesture==='true' || view.dataset.zoomEpoch!==epoch || view.dataset.renderVisible==='false';
+        let release:(()=>void)|null=null,canvas:HTMLCanvasElement|null=null,published=false;
+        const stale=()=>disposed || cancelled || currentRef.current.pdfDoc!==pdfDoc || currentRef.current.pageNumber!==pageNumber ||
+          !page.isConnected || view.dataset.zoomEpoch!==epoch || view.dataset.renderVisible==='false';
         try {
           const proxy=await pdfDoc.getPage(pageNumber);
           if(stale()) return;
-          handle=requestPdfRenderSlot(page.closest('[data-workspace-doc]')?.getAttribute('data-active')==='true'?-1:0);release=await handle.promise;
-          if(!release || stale()) return;
-          const canvas=document.createElement('canvas');
-          canvas.width=tile.pixelsWide;canvas.height=tile.pixelsHigh;
-          const viewport=proxy.getViewport({scale});
-          task=proxy.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,background:'#fff',
-            transform:detailViewportTransform(tile)});
+          handle=requestPdfRenderSlot(page.closest('[data-workspace-doc]')?.getAttribute('data-active')==='true'?-1:0);
+          release=await handle.promise;if(!release || stale()) return;
+          canvas=document.createElement('canvas');canvas.width=target.pixelsWide;canvas.height=target.pixelsHigh;
+          task=proxy.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport:proxy.getViewport({scale:liveScale}),background:'#fff',transform:detailViewportTransform(target)});
           await task.promise;
-          if(!stale()) setCompleted({canvas,tile,scale,doc:pdfDoc,page:pageNumber,epoch});
+          if(stale() || own!==presentationRef.current) return;
+          const latest=input();
+          if(latest.tile && target.density<latest.tile.density-.002) {refreshAfterRender=true;return;}
+          prepared={tile:target,scale:liveScale};published=true;
+          publish(canvas,target,liveScale,epoch,own,false);
         } catch(error:any) {
-          if(!stale() && error?.name!=='RenderingCancelledException') {key='';currentTile=null;console.warn('Detail tile failed',error);}
-        } finally {release?.();}
+          if(!stale() && error?.name!=='RenderingCancelledException') {key='';console.warn('Detail tile failed',error);}
+        } finally {
+          if(canvas && !published) canvas.width=canvas.height=1;
+          release?.();rendering=false;
+          if(!disposed && refreshAfterRender && page.isConnected) schedule();
+        }
       })();
     };
-    const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
-    const start=()=>{revision++;key='';currentTile=null;cancelCurrent();};
-    view.addEventListener('scroll',schedule,{passive:true});
-    view.addEventListener('pdf-viewport-pan',schedule);
-    view.addEventListener('pdf-viewport-visibility',schedule);
-    view.addEventListener('pdf-zoom-start',start);view.addEventListener('pdf-zoom-end',schedule);
-    const resize=new ResizeObserver(schedule);resize.observe(view);resize.observe(page);
-    schedule();
-    return()=>{revision++;cancelCurrent();cancelAnimationFrame(frame);resize.disconnect();
-      view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-viewport-pan',schedule);view.removeEventListener('pdf-viewport-visibility',schedule);view.removeEventListener('pdf-zoom-start',start);view.removeEventListener('pdf-zoom-end',schedule);};
-  },[pdfDoc,pageNumber,scale,size.width,size.height,near]);
+    const schedule=()=>{if(!disposed && !frame)frame=requestAnimationFrame(()=>measure());};
+    const liveFrame=()=>measure(true);
+    const end=()=>measure();
+    const start=()=>{presentationRef.current++;key='';prepared=null;cancelCurrent();};
+    view.addEventListener('scroll',schedule,{passive:true});view.addEventListener('pdf-viewport-pan',schedule);
+    view.addEventListener('pdf-viewport-visibility',schedule);view.addEventListener('pdf-zoom-frame',liveFrame);
+    view.addEventListener('pdf-zoom-start',start);view.addEventListener('pdf-zoom-end',end);
+    const resize=new ResizeObserver(schedule);resize.observe(view);resize.observe(page);schedule();
+    return()=>{disposed=true;presentationRef.current++;cancelCurrent();cancelAnimationFrame(frame);resize.disconnect();
+      view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-viewport-pan',schedule);
+      view.removeEventListener('pdf-viewport-visibility',schedule);view.removeEventListener('pdf-zoom-frame',liveFrame);
+      view.removeEventListener('pdf-zoom-start',start);view.removeEventListener('pdf-zoom-end',end);};
+  },[pdfDoc,pageNumber,size.width,size.height,near,cacheKey]);
   const ratio=front?scale/front.scale:1;
   return <>{([0,1] as const).map(index=><canvas key={index} ref={node=>{canvasRefs.current[index]=node;}}
     aria-hidden="true" data-pdf-detail-tile="true" className="absolute pointer-events-none"
@@ -361,7 +408,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     front.getContext('2d', { alpha: false })?.drawImage(bitmap, 0, 0);
     frontDensityRef.current = full?.density || 0;
     front.dataset.rasterDensity = String(frontDensityRef.current);
-    const sharpEnough = full && rasterMatches(full.density,rasterDensity(full.size,scale));
+    const sharpEnough = full && full.density>=rasterDensity(full.size,scale)-.0001;
     hasRenderedOnceRef.current = true;
     lastRenderedScaleRef.current = sharpEnough ? scale : 0;
     if (sharpEnough) { front.dataset.renderedScale = String(scale); rasterCacheHits++; }
@@ -496,8 +543,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       rasterRequestRef.current?.cancel();
       return;
     }
-    if (hasRenderedOnceRef.current && (rasterMatches(frontDensityRef.current,rasterDensity(activeBaseDim,rasterScale)) ||
-      (renderPriorityRef.current>=10 && frontDensityRef.current>=rasterDensity(activeBaseDim,rasterScale)))) {
+    if (hasRenderedOnceRef.current && (frontDensityRef.current>=rasterDensity(activeBaseDim,rasterScale)-.0001)) {
       rasterRequestRef.current?.cancel();
       lastRenderedScaleRef.current = rasterScale;
       const front = canvasRefs.current[frontCanvasIndexRef.current];
@@ -556,10 +602,10 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         pageDimensionCache.set(`${docId}_${pageNumber}`, size);
         if (!pageDimensionCache.has(`${docId}_default`)) pageDimensionCache.set(`${docId}_default`, size);
         const targetDensity = rasterDensity(size, rasterScale);
-        // Only offscreen prefetch uses a bounded preview. Visible pages go
-        // straight to their final quality; if a background render becomes
-        // visible midway, its commit schedules the final-density request.
-        const density = renderPriorityRef.current >= 10 ? Math.min(targetDensity, 1200 / Math.max(size.width,size.height)) : targetDensity;
+        // Visible pages prepare bounded source headroom once. Live crops can
+        // sample it at the current device resolution during a pinch, instead
+        // of replaying this PDF render only after the gesture has stopped.
+        const density = renderPriorityRef.current >= 10 ? Math.min(targetDensity,1200/Math.max(size.width,size.height)) : rasterSourceDensity(size,rasterScale);
         const viewport = page.getViewport({ scale: density });
         back = document.createElement('canvas');
         back.width = Math.max(1, Math.round(viewport.width));
@@ -573,9 +619,9 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         await task.promise;
         if (obsolete()) return;
         rememberPagePreview(`${docId}_${pageNumber}`, pdfDoc, back);
-        rememberPageRaster(`${docId}_${pageNumber}`,pdfDoc,back,density,size,rasterMatches(density,targetDensity));
+        rememberPageRaster(`${docId}_${pageNumber}`,pdfDoc,back,density,size,false);
         outcome = 'committed';
-        setCompletedRaster({ canvas: back, density, scale: rasterScale, doc: pdfDoc, page: pageNumber, epoch, final:rasterMatches(density,targetDensity) });
+        setCompletedRaster({ canvas: back, density, scale: rasterScale, doc: pdfDoc, page: pageNumber, epoch, final:density>=targetDensity-.0001 });
       } catch (error: any) {
         if (!obsolete() && error?.name !== 'RenderingCancelledException') {
           console.error(`Error rendering page ${pageNumber}:`, error);
@@ -967,7 +1013,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         />
       ))}
 
-      <PDFDetailTile pdfDoc={pdfDoc} pageNumber={pageNumber} scale={scale} size={activeBaseDim} near={isNearViewport && !isLoading} />
+      <PDFDetailTile pdfDoc={pdfDoc} pageNumber={pageNumber} scale={scale} size={activeBaseDim} near={isNearViewport && !isLoading} cacheKey={`${docId}_${pageNumber}`} />
       {/* Interactive Text Layer for Highlighting & Selection */}
       <div
         ref={textLayerRef}
