@@ -1,3 +1,4 @@
+import {sameRasterScale} from './rasterPresentation';
 import type {DetailTile} from './pdfDetailTile';
 
 /** Sample PDF coordinates from a retained full-page image. Integer source
@@ -15,8 +16,8 @@ export function oversampleDetail(tile:DetailTile):DetailTile {
 }
 export function scaledDetailCovers(tile:DetailTile,preparedScale:number,scale:number,visible:{left:number;top:number;right:number;bottom:number},density:number):boolean {
   const ratio=scale/preparedScale;
-  return tile.density>=density-.002 && tile.x*ratio<=visible.left && tile.y*ratio<=visible.top &&
-    (tile.x+tile.width)*ratio>=visible.right && (tile.y+tile.height)*ratio>=visible.bottom;
+  return tile.density>=density-.002 && tile.x*ratio<=visible.left+1e-6 && tile.y*ratio<=visible.top+1e-6 &&
+    (tile.x+tile.width)*ratio>=visible.right-1e-6 && (tile.y+tile.height)*ratio>=visible.bottom-1e-6;
 }
 
 /** A retained detail crop uses its PDF-space origin, not the current CSS origin. */
@@ -40,7 +41,7 @@ export type PreparedDetail={tile:DetailTile;scale:number;final:boolean};
 /** A high-density preview is not a final raster: text has already been sampled
  * at another scale. At rest require PDF operators rendered at the final scale. */
 export function needsFinalDetailRender(prepared:PreparedDetail|null,scale:number,visible:{left:number;top:number;right:number;bottom:number},density:number,zooming:boolean):boolean {
-  return !zooming && !(prepared?.final && Math.abs(prepared.scale-scale)<1e-6 &&
+  return !zooming && !(prepared?.final && sameRasterScale(prepared.scale,scale) &&
     scaledDetailCovers(prepared.tile,prepared.scale,scale,visible,density));
 }
 
@@ -53,4 +54,14 @@ export function alignDetailTile(tile:DetailTile,pageLeft:number,pageTop:number,s
   const right=Math.ceil((pageLeft+tile.x+tile.width)*pixelsPerCss),bottom=Math.ceil((pageTop+tile.y+tile.height)*pixelsPerCss);
   return {...tile,x:left/pixelsPerCss-pageLeft,y:top/pixelsPerCss-pageTop,
     width:(right-left)/pixelsPerCss,height:(bottom-top)/pixelsPerCss,pixelsWide:right-left,pixelsHigh:bottom-top};
+}
+
+/** A native final tile must be copied 1:1. Re-clipping a pixel-aligned raster
+ * onto the current overscan grid resamples the text a second time. */
+export function preparedDetailSample(source:{width:number;height:number},prepared:PreparedDetail,tile:DetailTile,scale:number) {
+  if(prepared.final && sameRasterScale(prepared.scale,scale)) {
+    return {tile:prepared.tile,crop:{x:0,y:0,width:source.width,height:source.height}};
+  }
+  const clipped=clipDetailTile(tile,prepared.tile,prepared.scale,scale);
+  return {tile:clipped,crop:detailSampleRect(source,prepared.tile,prepared.scale,clipped,scale)};
 }

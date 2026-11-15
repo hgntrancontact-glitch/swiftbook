@@ -121,8 +121,8 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
     const y = Math.max(2, Math.min(85, ((e.clientY - rect.top) / rect.height) * 100));
 
     const page=containerRef.current.closest<HTMLElement>('[data-page-container="true"]');
-    const live=page ? page.getBoundingClientRect().width/(parseFloat(page.style.width)||page.getBoundingClientRect().width) : 1;
-    onAddNote(createStickyNote(pageNumber,x,y,scale*live));
+    const userZoom=Number(page?.closest<HTMLElement>('[data-user-zoom]')?.dataset.userZoom || 1);
+    onAddNote(createStickyNote(pageNumber,x,y,scale,userZoom));
 
     // Auto switch tool back to Select mode after 1 placement
     onDeactivateStickyTool?.();

@@ -1,3 +1,4 @@
+import { annotationCreationScale } from '../utils/annotationCreation';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { DrawingStroke, DrawingPoint } from '../types';
@@ -201,6 +202,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const [currentStroke, setCurrentStroke] = useState<DrawingPoint[]>([]);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const activePenSizeRef = useRef<number>(penSize);
+  const activeReferenceScaleRef = useRef(1);
   const [cssScaleFactor, setCssScaleFactor] = useState<number>(1);
 
   // Helper to reliably locate target page container within the current document/column
@@ -808,6 +810,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     updateScaleFactor();
     activePenSizeRef.current = penSize;
+    const userZoom=Number(canvasRef.current?.closest<HTMLElement>('[data-user-zoom]')?.dataset.userZoom || 1);
+    activeReferenceScaleRef.current=annotationCreationScale(scale,userZoom);
     setIsPainting(true);
     setCurrentStroke([pt]);
   };
@@ -940,7 +944,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         points: strokePointsToSave,
         color: penColor,
         size: activePenSizeRef.current || penSize,
-        referenceScale: 1,
+        referenceScale: activeReferenceScaleRef.current,
         opacity: isHighlighter ? 0.45 : (penOpacity ?? 1),
         isHighlighter: isHighlighter,
         isSmartShape: isSmartShape,
@@ -1270,7 +1274,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             fill="none"
             stroke={penColor}
             vectorEffect="non-scaling-stroke"
-            strokeWidth={(activePenSizeRef.current || penSize) * scale * cssScaleFactor}
+            strokeWidth={(activePenSizeRef.current || penSize) * scale / activeReferenceScaleRef.current * cssScaleFactor}
             strokeOpacity={isHighlighter ? 0.45 : (penOpacity ?? 1)}
             strokeLinecap="round"
             strokeLinejoin="round"

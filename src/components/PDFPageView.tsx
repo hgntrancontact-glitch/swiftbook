@@ -1,5 +1,5 @@
 import { presentDetailSample } from '../utils/pdfDetailSurface';
-import { rasterSampleRect, detailSampleRect, clipDetailTile, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
+import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
@@ -145,17 +145,20 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
     const surfaces=[canvases[0],canvases[1]];
     let front=-1,frame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
     let lastSource:CanvasImageSource|null=null;
+    let runningTarget:{scale:number;final:boolean}|null=null;
     let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean}|null=null;
     let cancelCurrent=()=>{};
     const hide=()=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';};
     if(!near) {hide();return;}
     const input=()=> {
       const r=page.getBoundingClientRect(),v=view.getBoundingClientRect();
-      const liveScale=r.width/size.width;
-      const visible={left:Math.max(0,v.left-r.left,-r.left),top:Math.max(0,v.top-r.top,-r.top),
-        right:Math.min(r.width,v.right-r.left,window.innerWidth-r.left),bottom:Math.min(r.height,v.bottom-r.top,window.innerHeight-r.top)};
-      const crop=pdfDetailTile(size,visible,liveScale,window.devicePixelRatio||1);
       const zooming=view.dataset.zoomGesture==='true';
+      // DOM rects are rounded to layout subpixels. Use the committed PDF scale
+      // at rest so the final bitmap is not fractionally resized by CSS again.
+      const liveScale=zooming?r.width/size.width:(parseFloat(page.style.getPropertyValue('--pdf-layout-scale')) || r.width/size.width);
+      const visible={left:Math.max(0,v.left-r.left,-r.left),top:Math.max(0,v.top-r.top,-r.top),
+        right:Math.min(size.width*liveScale,v.right-r.left,window.innerWidth-r.left),bottom:Math.min(size.height*liveScale,v.bottom-r.top,window.innerHeight-r.top)};
+      const crop=pdfDetailTile(size,visible,liveScale,window.devicePixelRatio||1);
       const tile=crop && !zooming ? alignDetailTile(crop,r.left,r.top,liveScale) : crop;
       return {liveScale,visible,tile,zooming};
     };
@@ -170,8 +173,8 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
       let source:CanvasImageSource|null=null,crop:{x:number;y:number;width:number;height:number}|null=null;
       if(detailSource && scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,tile.density)) {
         source=detailSource.canvas;
-        sampleTile=clipDetailTile(tile,detailSource.tile,detailSource.scale,liveScale);
-        crop=detailSampleRect(detailSource.canvas,detailSource.tile,detailSource.scale,sampleTile,liveScale);
+        const sample=preparedDetailSample(detailSource.canvas,detailSource,tile,liveScale);
+        sampleTile=sample.tile;crop=sample.crop;
       } else {
         const full=cached && sourceCoversDensity(cached.bitmap,size,tile.density)?cached.bitmap:
           fallback && sourceCoversDensity(fallback,size,tile.density)?fallback:null;
@@ -188,10 +191,15 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
         }
         if(!needsFinal) return;
       }
-      if(rendering) {refreshAfterRender=true;return;}
+      if(rendering) {
+        refreshAfterRender=true;
+        // An in-flight gesture preview cannot delay the final sharp result.
+        if(!zooming && runningTarget && (!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale))) cancelCurrent();
+        return;
+      }
       const final=!zooming;
       const target=final?tile:oversampleDetail(tile),epoch=view.dataset.zoomEpoch,own=++generation;
-      rendering=true;refreshAfterRender=false;
+      rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final};
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null;
       cancelCurrent=()=>{cancelled=true;handle?.cancel();task?.cancel();};
       void (async()=> {
@@ -207,7 +215,7 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
           await task.promise;
           if(stale()) return;
           const latest=input();
-          if(final && (latest.zooming || Math.abs(liveScale - latest.liveScale) > 0.005)) {refreshAfterRender=true;return;}
+          if(final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale))) {refreshAfterRender=true;return;}
           // Keep previews and final native crops separate so a sampled preview
           // cannot satisfy the final-resolution requirement after release.
           if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
@@ -219,7 +227,7 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
           if(!stale() && error?.name!=='RenderingCancelledException') console.warn('Detail tile failed',error);
         } finally {
           if(canvas && !retained) canvas.width=canvas.height=1;
-          release?.();rendering=false;
+          release?.();rendering=false;runningTarget=null;
           if(!disposed && refreshAfterRender && page.isConnected) schedule();
         }
       })();

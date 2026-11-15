@@ -126,9 +126,6 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
       const overlay = [...document.querySelectorAll<HTMLElement>('[data-highlight-note-overlay]')]
         .find(el => el.dataset.highlightNoteOverlay === hoveredNoteHlId && el.dataset.highlightNoteOwner === previewOwner);
       if (overlay?.contains(target)) return;
-      const highlight = highlights.find(hl => hl.id === hoveredNoteHlId);
-      const scope = document.getElementById(elevatedContainerId || `elevated-annotation-container-${pageNumber}`)?.closest('[data-page-container="true"]') || document;
-      if (highlight?.rects.some((_, i) => scope.querySelector(`#${CSS.escape(`hl-${hoveredNoteHlId}-rect-${i}`)}`)?.contains(target) || scope.querySelector(`#${CSS.escape(`elevated-hl-${hoveredNoteHlId}-rect-${i}`)}`)?.contains(target))) return;
       setHoveredNoteHlId(null);
     };
     window.addEventListener('mousemove', onMove, { passive: true });
@@ -222,7 +219,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             }}
             title={
               hl.note
-                ? `Ghi chú: ${hl.note} (Nhấp đúp hoặc chuột phải để sửa/đổi màu)`
+                ? `Nhấp đúp hoặc chuột phải để sửa ghi chú/đổi màu`
                 : `Highlight (${colorConfig.name}) - Nhấp đúp hoặc chuột phải để thêm ghi chú/đổi màu`
             }
           >
@@ -299,7 +296,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             scaleWithPage
             uiScale={HIGHLIGHT_TOOLBAR_SIZE}
             className="highlight-popup-toolbar bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 text-neutral-800 pointer-events-auto font-['Inter',sans-serif]"
-            style={{ width: 310 }}
+            style={{ width: 300 }}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => {
