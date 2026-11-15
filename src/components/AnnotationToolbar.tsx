@@ -1,4 +1,4 @@
-import { sharpenAnnotation, snapUiPixel } from '../utils/annotationSharpness';
+import { snapUiPixel } from '../utils/annotationSharpness';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { getAnnotationZoom, placeAnnotationToolbar } from '../utils/annotationUi';
 import React, { forwardRef, useLayoutEffect, useRef } from 'react';
@@ -40,7 +40,6 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         toolbar.style.transform = '';
         toolbar.style.zoom = String(scale);
         const dpr=window.devicePixelRatio || 1;
-        if(scaleWithPage) sharpenAnnotation(toolbar,scale,dpr);
         toolbar.dataset.annotationToolbarScale = String(scale);
         toolbar.style.maxWidth = `${Math.max(1, window.innerWidth - 16) / scale}px`;
         toolbar.style.maxHeight = '';

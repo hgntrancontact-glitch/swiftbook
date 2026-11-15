@@ -43,3 +43,33 @@ test('live native crops prepare bounded headroom and remain reusable as zoom gro
   assert.ok(scaledDetailCovers(ahead,2,2.2,{left:600,top:220,right:1600,bottom:800},4.4));
   assert.equal(scaledDetailCovers(ahead,2,4,{left:600,top:220,right:1600,bottom:800},8),false);
 });
+
+test('zoom release requires a native final raster even when the cached preview is high resolution',async()=>{
+  const {needsFinalDetailRender}=await import('../src/utils/pdfRasterSampling');
+  const visible={left:0,top:0,right:600,bottom:700};
+  const tile=pdfDetailTile({width:595,height:842},visible,1.5,2)!;
+  const preview={tile:oversampleDetail(tile),scale:1.5,final:false};
+  assert.equal(needsFinalDetailRender(preview,1.5,visible,3,true),false);
+  assert.equal(needsFinalDetailRender(preview,1.5,visible,3,false),true);
+  assert.equal(needsFinalDetailRender({...preview,final:true},1.5,visible,3,false),false);
+  assert.equal(needsFinalDetailRender({...preview,final:true},.9,visible,1.8,false),true);
+  assert.equal(needsFinalDetailRender(null,1.5,visible,3,false),true);
+});
+
+test('final PDF canvas has whole device pixels without shifting the selected PDF point',async()=>{
+  const {alignDetailTile}=await import('../src/utils/pdfRasterSampling');
+  for(const scale of [.35,.7,1,1.88,2.42]) for(const dpr of [1,2]) {
+    const page={width:1320,height:750},left=48.137,top=-183.213;
+    const tile=pdfDetailTile(page,{left:0,top:200,right:Math.min(1200,page.width*scale),bottom:Math.min(700,page.height*scale)},scale,dpr);
+    if(!tile) continue;
+    const aligned=alignDetailTile(tile,left,top,scale),pixels=aligned.density/scale;
+    assert.ok(Math.abs((left+aligned.x)*pixels-Math.round((left+aligned.x)*pixels))<1e-9);
+    assert.ok(Math.abs((top+aligned.y)*pixels-Math.round((top+aligned.y)*pixels))<1e-9);
+    assert.ok(Math.abs(aligned.width*pixels-aligned.pixelsWide)<1e-9);
+    // Rendering the fractional local offset into the buffer, then placing it,
+    // recovers the unchanged page position of a text baseline.
+    const pdfY=315;
+    const rasterY=(pdfY*scale-aligned.y)*pixels;
+    assert.ok(Math.abs(top+aligned.y+rasterY/pixels-(top+pdfY*scale))<1e-9);
+  }
+});

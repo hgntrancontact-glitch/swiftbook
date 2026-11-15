@@ -1,3 +1,4 @@
+import { createStickyNote } from '../utils/stickyNoteCreation';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { TextNoteAnnotation, NOTE_PAPER_COLORS, NoteColorTheme } from '../types';
 import { MessageSquare, Trash2, Move, Minimize2, StickyNote } from 'lucide-react';
@@ -119,17 +120,9 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
     const x = Math.max(2, Math.min(85, ((e.clientX - rect.left) / rect.width) * 100));
     const y = Math.max(2, Math.min(85, ((e.clientY - rect.top) / rect.height) * 100));
 
-    onAddNote({
-      pageNumber,
-      x,
-      y,
-      text: '',
-      // New notes use canonical page units, independent of creation zoom.
-      // Existing notes keep their saved referenceScale and dimensions.
-      referenceScale: 1,
-      color: NOTE_PAPER_COLORS[0].contentBg,
-      isMinimized: false,
-    });
+    const page=containerRef.current.closest<HTMLElement>('[data-page-container="true"]');
+    const live=page ? page.getBoundingClientRect().width/(parseFloat(page.style.width)||page.getBoundingClientRect().width) : 1;
+    onAddNote(createStickyNote(pageNumber,x,y,scale*live));
 
     // Auto switch tool back to Select mode after 1 placement
     onDeactivateStickyTool?.();

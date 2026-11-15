@@ -35,3 +35,22 @@ export function clipDetailTile(tile:DetailTile,prepared:DetailTile,preparedScale
   const height=Math.min(tile.y+tile.height,(prepared.y+prepared.height)*ratio)-y;
   return {...tile,x,y,width,height,pixelsWide:Math.max(1,Math.round(width*tile.density/scale)),pixelsHigh:Math.max(1,Math.round(height*tile.density/scale))};
 }
+
+export type PreparedDetail={tile:DetailTile;scale:number;final:boolean};
+/** A high-density preview is not a final raster: text has already been sampled
+ * at another scale. At rest require PDF operators rendered at the final scale. */
+export function needsFinalDetailRender(prepared:PreparedDetail|null,scale:number,visible:{left:number;top:number;right:number;bottom:number},density:number,zooming:boolean):boolean {
+  return !zooming && !(prepared?.final && Math.abs(prepared.scale-scale)<1e-6 &&
+    scaledDetailCovers(prepared.tile,prepared.scale,scale,visible,density));
+}
+
+/** Align the canvas to the screen pixel grid while keeping PDF ink in exactly
+ * the same page coordinates. The fractional offset is rendered into pixels,
+ * rather than applied later by the compositor to the whole text bitmap. */
+export function alignDetailTile(tile:DetailTile,pageLeft:number,pageTop:number,scale:number):DetailTile {
+  const pixelsPerCss=tile.density/scale;
+  const left=Math.floor((pageLeft+tile.x)*pixelsPerCss),top=Math.floor((pageTop+tile.y)*pixelsPerCss);
+  const right=Math.ceil((pageLeft+tile.x+tile.width)*pixelsPerCss),bottom=Math.ceil((pageTop+tile.y+tile.height)*pixelsPerCss);
+  return {...tile,x:left/pixelsPerCss-pageLeft,y:top/pixelsPerCss-pageTop,
+    width:(right-left)/pixelsPerCss,height:(bottom-top)/pixelsPerCss,pixelsWide:right-left,pixelsHigh:bottom-top};
+}

@@ -1,4 +1,4 @@
-import { sharpenAnnotation, snapUiPixel, centeredGlyphSize } from '../utils/annotationSharpness';
+import { snapUiPixel } from '../utils/annotationSharpness';
 import { pageNoteGeometry, type PagePoint } from '../utils/pageNoteGeometry';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { HIGHLIGHT_NOTE_SIZE } from '../utils/annotationUi';
@@ -57,7 +57,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const layoutWidth=parseFloat(portalTarget.style.getPropertyValue('--pdf-page-width')) || slot.width;
       const live=slot.width/Math.max(1,layoutWidth);
       const dpr=window.devicePixelRatio || 1;
-      const sized=(pixels:number)=>`${snapUiPixel(pixels*live,dpr)}px`;
+      const sized=(pixels:number)=>`${pixels*live}px`;
       const aligned=(point:PagePoint)=>({
         left:`${snapUiPixel(slot.left+slot.width*point.x/100+point.dx*live,dpr)-slot.left}px`,
         top:`${snapUiPixel(slot.top+slot.height*point.y/100+point.dy*live,dpr)-slot.top}px`,
@@ -68,7 +68,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       icon.style.borderWidth=sized(2*factor);
       icon.style.boxShadow=`0 ${sized(2*factor)} ${sized(4*factor)} rgba(0,0,0,.16)`;
       const glyph=icon.querySelector('svg');
-      if(glyph) glyph.style.width=glyph.style.height=`${centeredGlyphSize(parseFloat(icon.style.width),parseFloat(icon.style.borderWidth),ICON_GLYPH_SIZE*factor*live,dpr)}px`;
+      if(glyph) glyph.style.width=glyph.style.height=sized(ICON_GLYPH_SIZE*factor);
       const viewport=anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
       const popup = popupRef.current;
       if (!popup) return;
@@ -91,7 +91,6 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const card=popup.firstElementChild as HTMLElement|null;
       if(card) {
         card.style.zoom=String(popupFactor*live);card.style.width=`${POPUP_WIDTH}px`;
-        if(showPopup || popupHeightRef.current===null) sharpenAnnotation(card,popupFactor*live,dpr);
       }
       if(showPopup || popupHeightRef.current===null) popupHeightRef.current=card?.offsetHeight || popup.getBoundingClientRect().height/(popupFactor*live);
       const height=popupHeightRef.current*popupFactor;

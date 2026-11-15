@@ -12,6 +12,9 @@ export function presentDetailSample(canvases:readonly HTMLCanvasElement[],front:
   const context=canvas.getContext('2d',{alpha:false});
   if(!context) return front;
   context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+  // Pixel-grid alignment may extend the crop less than one pixel beyond the
+  // page. Keep that uncovered sliver white rather than an opaque black buffer.
+  context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
   context.drawImage(source,crop.x,crop.y,crop.width,crop.height,0,0,canvas.width,canvas.height);
   for(const [key,value] of Object.entries({left:tile.x,top:tile.y,width:tile.width,height:tile.height})) {
     canvas.style.setProperty(key,`calc(${value/scale}px * var(--pdf-layout-scale))`);

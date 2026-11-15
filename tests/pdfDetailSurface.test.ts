@@ -6,7 +6,7 @@ import {detailSampleRect,oversampleDetail,clipDetailTile,scaledDetailCovers} fro
 
 function surface(id:number,events:string[]) {
   const style:Record<string,any>={display:'none',visibility:'hidden',setProperty(key:string,value:string){this[key]=value;events.push(`geometry-${id}`);}};
-  const context={imageSmoothingEnabled:false,imageSmoothingQuality:'low',drawImage(){events.push(`draw-${id}`);}};
+  const context={imageSmoothingEnabled:false,imageSmoothingQuality:'low',fillRect(){events.push(`fill-${id}`);},drawImage(){events.push(`draw-${id}`);}};
   return new Proxy({width:1,height:1,style:new Proxy(style,{set(target,key,value){events.push(`${String(key)}-${id}-${value}`);target[String(key)]=value;return true;}}),getContext:()=>context},
     {set(target,key,value){events.push(`resize-${id}-${String(key)}`);(target as any)[key]=value;return true;}}) as unknown as HTMLCanvasElement;
 }

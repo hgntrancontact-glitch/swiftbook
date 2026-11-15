@@ -1,5 +1,5 @@
 import { presentDetailSample } from '../utils/pdfDetailSurface';
-import { rasterSampleRect, detailSampleRect, clipDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
+import { rasterSampleRect, detailSampleRect, clipDetailTile, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
@@ -145,7 +145,7 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
     const surfaces=[canvases[0],canvases[1]];
     let front=-1,frame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
     let lastSource:CanvasImageSource|null=null;
-    let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number}|null=null;
+    let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean}|null=null;
     let cancelCurrent=()=>{};
     const hide=()=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';};
     if(!near) {hide();return;}
@@ -154,13 +154,15 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
       const liveScale=r.width/size.width;
       const visible={left:Math.max(0,v.left-r.left,-r.left),top:Math.max(0,v.top-r.top,-r.top),
         right:Math.min(r.width,v.right-r.left,window.innerWidth-r.left),bottom:Math.min(r.height,v.bottom-r.top,window.innerHeight-r.top)};
-      const tile=pdfDetailTile(size,visible,liveScale,window.devicePixelRatio||1);
-      return {liveScale,visible,tile};
+      const crop=pdfDetailTile(size,visible,liveScale,window.devicePixelRatio||1);
+      const zooming=view.dataset.zoomGesture==='true';
+      const tile=crop && !zooming ? alignDetailTile(crop,r.left,r.top,liveScale) : crop;
+      return {liveScale,visible,tile,zooming};
     };
     const measure=()=> {
       if(frame) cancelAnimationFrame(frame);frame=0;
       if(disposed) return;
-      const started=performance.now(),{liveScale,visible,tile}=input();
+      const started=performance.now(),{liveScale,visible,tile,zooming}=input();
       if(view.dataset.renderVisible==='false' || !tile) {cancelCurrent();hide();return;}
       const cached=getPageRaster(cacheKey,pdfDoc);
       const fallback=[...page.querySelectorAll<HTMLCanvasElement>('canvas[data-raster-density]')].find(canvas=>getComputedStyle(canvas).visibility!=='hidden' && canvas.width>1);
@@ -175,17 +177,20 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
           fallback && sourceCoversDensity(fallback,size,tile.density)?fallback:null;
         if(full) {source=full;crop=rasterSampleRect(full,size,tile,liveScale);}
       }
+      const needsFinal=needsFinalDetailRender(detailSource,liveScale,visible,tile.density,zooming);
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
-        if(key===signature && lastSource===source) return;
-        front=presentDetailSample(surfaces,front,source,crop,sampleTile,liveScale);
-        key=signature;lastSource=source;
-        detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'sample',zooming:view.dataset.zoomGesture==='true'});
-        if(detailSamples.length>200) detailSamples.shift();
-        return;
+        if(key!==signature || lastSource!==source) {
+          front=presentDetailSample(surfaces,front,source,crop,sampleTile,liveScale);
+          key=signature;lastSource=source;
+          detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'sample',zooming});
+          if(detailSamples.length>200) detailSamples.shift();
+        }
+        if(!needsFinal) return;
       }
       if(rendering) {refreshAfterRender=true;return;}
-      const target=oversampleDetail(tile),epoch=view.dataset.zoomEpoch,own=++generation;
+      const final=!zooming;
+      const target=final?tile:oversampleDetail(tile),epoch=view.dataset.zoomEpoch,own=++generation;
       rendering=true;refreshAfterRender=false;
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null;
       cancelCurrent=()=>{cancelled=true;handle?.cancel();task?.cancel();};
@@ -201,10 +206,12 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
           task=proxy.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport:proxy.getViewport({scale:liveScale}),background:'#fff',transform:detailViewportTransform(target)});
           await task.promise;
           if(stale()) return;
-          // Retain the high-resolution crop as a source, rather than exposing
-          // an oversampled texture and changing pixel phase again on release.
+          const latest=input();
+          if(final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale))) {refreshAfterRender=true;return;}
+          // Keep previews and final native crops separate so a sampled preview
+          // cannot satisfy the final-resolution requirement after release.
           if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
-          detailSource={canvas,tile:target,scale:liveScale};retained=true;
+          detailSource={canvas,tile:target,scale:liveScale,final};retained=true;
           refreshAfterRender=true;
           detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'native',zooming:view.dataset.zoomGesture==='true'});
           if(detailSamples.length>200) detailSamples.shift();
