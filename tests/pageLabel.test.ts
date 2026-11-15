@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {PDFPageView} from '../src/components/PDFPageView';
+import {pageLabelPosition,registerPageLabel} from '../src/utils/pageLabels';
 
 test('page labels keep their screen size outside the zoomed canvas at all document scales',()=>{
   let labelClass='';
@@ -25,4 +26,38 @@ test('page labels keep their screen size outside the zoomed canvas at all docume
     }
     assert.ok(found);
   }
+});
+
+test('viewport labels preserve the bottom-centre attachment through live zoom and native scrolling',()=>{
+  const viewport={left:100,top:70,bottom:790,width:1200};
+  for(const zoom of [.2,.75,1,2.26,5]) for(const scroll of [{left:0,top:0},{left:500,top:900}]) {
+    const page={left:180-scroll.left,top:120-scroll.top,bottom:120+842*zoom-scroll.top,width:595*zoom};
+    const label=pageLabelPosition(page,viewport,scroll);
+    assert.equal(label.left+viewport.left-scroll.left,page.left+page.width/2);
+    assert.ok(Math.abs(label.top+viewport.top-scroll.top+18-(page.bottom-4))<1e-9);
+  }
+});
+
+test('live frame updates only label positions, with all page reads batched before writes',()=>{
+  const saved={window:globalThis.window,ResizeObserver:globalThis.ResizeObserver,requestAnimationFrame:globalThis.requestAnimationFrame,cancelAnimationFrame:globalThis.cancelAnimationFrame};
+  const trace:string[]=[];
+  Object.assign(globalThis,{window:new EventTarget(),ResizeObserver:class {observe(){} unobserve(){} disconnect(){}},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{}});
+  let a=0,b=0;
+  const view=Object.assign(new EventTarget(),{scrollLeft:0,scrollTop:0,getBoundingClientRect:()=>({left:0,top:0,bottom:800,width:1200})}) as unknown as HTMLElement;
+  const slotA={getBoundingClientRect:()=>{trace.push('read-a');return {left:50,top:0,bottom:842*a,width:595*a};}} as HTMLElement;
+  const slotB={getBoundingClientRect:()=>{trace.push('read-b');return {left:650,top:0,bottom:842*b,width:595*b};}} as HTMLElement;
+  const tag=(id:string)=>({style:new Proxy({fontSize:'10px',height:'18px'} as Record<string,string>,{set(target,key,value){trace.push('write-'+id);target[String(key)]=value;return true;}})}) as unknown as HTMLElement;
+  const labelA=tag('a'),labelB=tag('b');
+  let removeA=()=>{},removeB=()=>{};
+  try {
+    removeA=registerPageLabel(view,slotA,labelA);removeB=registerPageLabel(view,slotB,labelB);
+    for(const zoom of [.2,.75,1,2.26,5]) {
+      a=b=zoom;trace.length=0;view.dispatchEvent(new Event('pdf-viewport-pan'));
+      assert.deepEqual(trace.slice(0,2),['read-a','read-b']);
+      assert.equal(labelA.style.fontSize,'10px');assert.equal(labelA.style.height,'18px');
+      assert.equal(labelB.style.fontSize,'10px');assert.equal(labelB.style.height,'18px');
+      assert.equal(parseFloat(labelA.style.left),50+595*zoom/2);
+      assert.equal(parseFloat(labelB.style.top),842*zoom-22);
+    }
+  } finally {removeA();removeB();Object.assign(globalThis,saved);}
 });

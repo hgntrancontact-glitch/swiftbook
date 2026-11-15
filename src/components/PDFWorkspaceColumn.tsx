@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { WheelGesture, wheelOwner } from '../utils/wheelGesture';
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import {
@@ -114,10 +115,8 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   actionsRef.current = { onZoomChange, onActivate };
   const gestureActiveRef = useRef(false);
   const committedScaleRef = useRef(doc.scale);
-  committedScaleRef.current = doc.scale;
   const pendingCommitRef = useRef(false);
   const gestureEpochRef = useRef(0);
-  if (!gestureActiveRef.current && !pendingCommitRef.current) scaleRef.current = doc.scale;
   const panRef = useRef({ x: 0, y: 0 });
   type Anchor = { element: HTMLElement; x: number; y: number; clientX: number; clientY: number };
   const pendingAnchorRef = useRef<Anchor | null>(null);
@@ -309,6 +308,10 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       clearLiveZoom();
       releaseGesture();
     }
+    // Wheel handlers must see the scale of committed DOM, never a concurrent
+    // React render that has not reached layout yet.
+    committedScaleRef.current=doc.scale;
+    if(!gestureActiveRef.current && !pendingCommitRef.current) scaleRef.current=doc.scale;
     previousLayoutRef.current = { key: resetKey, baseScale, currentPage: doc.currentPage, visibleDocs: totalVisibleDocs, scale: doc.scale };
   }, [resetKey, baseScale, doc.scale, doc.zoomRevision, doc.currentPage, totalVisibleDocs]);
 
@@ -332,6 +335,9 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
       if (anchor) restoreAnchor(anchor);
+      // Apply the existing bounds during the live frame too. Release must not
+      // introduce a second correction that was absent from the last pinch frame.
+      panViewport(0,0,true,true);
       visualAnchorRef.current = anchor;
     };
     const cancel = () => {
@@ -368,7 +374,9 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       } else {
         scaleRef.current = targetScale;
         pendingCommitRef.current = true;
-        actionsRef.current.onZoomChange(doc.id, targetScale, false);
+        // Complete this one final layout transaction before another wheel can
+        // start. Intermediate gesture ticks still bypass React state entirely.
+        flushSync(()=>actionsRef.current.onZoomChange(doc.id,targetScale,false));
       }
     };
     const wheelGesture = new WheelGesture();
@@ -386,6 +394,9 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey) {
         if (event.metaKey) return;
+        // A real pan may follow the last pinch tick before gestureend/timeout.
+        // Finish that transaction first; never let its RAF race the pan RAF.
+        if(gestureActiveRef.current) finish();
         const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
         const dx = (event.deltaX || (event.shiftKey ? event.deltaY : 0)) * unit;
         const dy = event.shiftKey ? 0 : event.deltaY * unit;

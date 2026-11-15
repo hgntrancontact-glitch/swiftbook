@@ -1,3 +1,5 @@
+import { canPresentRaster, canReplaceRaster, sameRasterScale, type RasterTarget } from '../utils/rasterPresentation';
+import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
 import { pdfDetailTile, detailCovers, detailViewportTransform, type DetailTile } from '../utils/pdfDetailTile';
 import { canvasViewportTransform } from '../utils/pageCoordinates';
@@ -131,23 +133,38 @@ function requestPdfRenderSlot(priority:number, preempt?:()=>void) {
 
 // The base bitmap remains visible while a bounded high-resolution crop renders.
 function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pageNumber:number;scale:number;size:{width:number;height:number};near:boolean}) {
-  const canvasRef=useRef<HTMLCanvasElement>(null);
-  const [ready,setReady]=useState<{canvas:HTMLCanvasElement;tile:DetailTile;scale:number}|null>(null);
-  const copiedRef=useRef<typeof ready>(null);
+  const canvasRefs=useRef<[HTMLCanvasElement|null,HTMLCanvasElement|null]>([null,null]);
+  type DetailRaster=RasterTarget & {canvas:HTMLCanvasElement;tile:DetailTile};
+  const [completed,setCompleted]=useState<DetailRaster|null>(null);
+  const [front,setFront]=useState<{index:0|1;tile:DetailTile;scale:number}|null>(null);
+  const frontIndexRef=useRef<0|1>(0);
+  const currentRef=useRef({pdfDoc,pageNumber,scale});
+  currentRef.current={pdfDoc,pageNumber,scale};
   useLayoutEffect(()=> {
-    if(!canvasRef.current) return;
-    if(!ready) {canvasRef.current.width=canvasRef.current.height=1;copiedRef.current=null;return;}
-    if(copiedRef.current===ready) return;
-    const canvas=canvasRef.current;
-    canvas.width=ready.canvas.width;canvas.height=ready.canvas.height;
-    canvas.getContext('2d',{alpha:false})!.drawImage(ready.canvas,0,0);
-    copiedRef.current=ready;ready.canvas.width=ready.canvas.height=1;
-  },[ready]);
+    if(!completed) return;
+    const view=canvasRefs.current[0]?.closest<HTMLElement>('.pdf-viewport-container');
+    if(!near || view?.dataset.renderVisible==='false' || !canPresentRaster(completed,{doc:pdfDoc,page:pageNumber,scale,epoch:view?.dataset.zoomEpoch},view?.dataset.zoomGesture==='true')) {
+      completed.canvas.width=completed.canvas.height=1;setCompleted(null);return;
+    }
+    const index=frontIndexRef.current===0?1:0;
+    const canvas=canvasRefs.current[index];
+    if(!canvas) return;
+    // Fill the hidden texture first. Resizing the visible detail canvas cleared
+    // its GPU texture while the compositor could still be sampling that frame.
+    canvas.width=completed.canvas.width;canvas.height=completed.canvas.height;
+    canvas.getContext('2d',{alpha:false})!.drawImage(completed.canvas,0,0);
+    completed.canvas.width=completed.canvas.height=1;
+    frontIndexRef.current=index;
+    setFront({index,tile:completed.tile,scale:completed.scale});setCompleted(null);
+  },[completed,pdfDoc,pageNumber,scale,near]);
+  useLayoutEffect(()=> {
+    for(const [index,canvas] of canvasRefs.current.entries()) if(canvas && (!front || index!==front.index)) canvas.width=canvas.height=1;
+  },[front]);
   useEffect(()=> {
-    const page=canvasRef.current?.closest<HTMLElement>('[data-page-container="true"]');
+    const page=canvasRefs.current[0]?.closest<HTMLElement>('[data-page-container="true"]');
     const view=page?.closest<HTMLElement>('.pdf-viewport-container');
     if(!page || !view) return;
-    if(!near) {setReady(null);return;}
+    if(!near) {setFront(null);return;}
     let revision=0,frame=0,key='',currentTile:DetailTile|null=null,cancelCurrent=()=>{};
     const measure=()=> {
       frame=0;
@@ -156,11 +173,11 @@ function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pa
       const visible={left:Math.max(0,v.left-r.left,-r.left),top:Math.max(0,v.top-r.top,-r.top),
         right:Math.min(r.width,v.right-r.left,window.innerWidth-r.left),bottom:Math.min(r.height,v.bottom-r.top,window.innerHeight-r.top)};
       if(view.dataset.renderVisible==='false' || visible.right<=visible.left || visible.bottom<=visible.top) {
-        cancelCurrent();key='';currentTile=null;setReady(null);return;
+        cancelCurrent();key='';currentTile=null;setFront(null);return;
       }
       if (currentTile && detailCovers(currentTile,visible)) return;
       const tile=pdfDetailTile(size,visible,scale,window.devicePixelRatio||1);
-      if(!tile || tile.density<=rasterDensity(size,scale)+.001) {cancelCurrent();key='';currentTile=null;setReady(null);return;}
+      if(!tile || tile.density<=rasterDensity(size,scale)+.001) {cancelCurrent();key='';currentTile=null;setFront(null);return;}
       const nextKey=[tile.x,tile.y,tile.width,tile.height,tile.density].map(n=>Math.round(n*100)/100).join(':');
       if(nextKey===key) return;
       key=nextKey; currentTile=tile; cancelCurrent(); const own=++revision;
@@ -169,7 +186,7 @@ function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pa
       cancelCurrent=()=>{cancelled=true;handle?.cancel();task?.cancel();};
       void (async()=> {
         let release:(()=>void)|null=null;
-        const stale=()=>cancelled || own!==revision || !page.isConnected || view.dataset.zoomGesture==='true' || view.dataset.zoomEpoch!==epoch || view.dataset.renderVisible==='false';
+        const stale=()=>cancelled || own!==revision || currentRef.current.pdfDoc!==pdfDoc || currentRef.current.pageNumber!==pageNumber || currentRef.current.scale!==scale || !page.isConnected || view.dataset.zoomGesture==='true' || view.dataset.zoomEpoch!==epoch || view.dataset.renderVisible==='false';
         try {
           const proxy=await pdfDoc.getPage(pageNumber);
           if(stale()) return;
@@ -181,7 +198,7 @@ function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pa
           task=proxy.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,background:'#fff',
             transform:detailViewportTransform(tile)});
           await task.promise;
-          if(!stale()) setReady({canvas,tile,scale});
+          if(!stale()) setCompleted({canvas,tile,scale,doc:pdfDoc,page:pageNumber,epoch});
         } catch(error:any) {
           if(!stale() && error?.name!=='RenderingCancelledException') {key='';currentTile=null;console.warn('Detail tile failed',error);}
         } finally {release?.();}
@@ -198,10 +215,12 @@ function PDFDetailTile({ pdfDoc, pageNumber, scale, size, near }: {pdfDoc:any;pa
     return()=>{revision++;cancelCurrent();cancelAnimationFrame(frame);resize.disconnect();
       view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-viewport-pan',schedule);view.removeEventListener('pdf-viewport-visibility',schedule);view.removeEventListener('pdf-zoom-start',start);view.removeEventListener('pdf-zoom-end',schedule);};
   },[pdfDoc,pageNumber,scale,size.width,size.height,near]);
-  const ratio=ready ? scale/ready.scale : 1;
-  return <canvas ref={canvasRef} aria-hidden="true" data-pdf-detail-tile="true" className="absolute pointer-events-none"
-    style={{display:ready?'block':'none',left:(ready?.tile.x||0)*ratio,top:(ready?.tile.y||0)*ratio,
-      width:(ready?.tile.width||0)*ratio,height:(ready?.tile.height||0)*ratio}} />;
+  const ratio=front?scale/front.scale:1;
+  return <>{([0,1] as const).map(index=><canvas key={index} ref={node=>{canvasRefs.current[index]=node;}}
+    aria-hidden="true" data-pdf-detail-tile="true" className="absolute pointer-events-none"
+    style={{display:front?'block':'none',visibility:front?.index===index?'visible':'hidden',
+      left:(front?.tile.x||0)*ratio,top:(front?.tile.y||0)*ratio,
+      width:(front?.tile.width||0)*ratio,height:(front?.tile.height||0)*ratio}} />)}</>;
 }
 
 const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
@@ -253,6 +272,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   const frontCanvasIndexRef = useRef(0);
   const [frontCanvasIndex, setFrontCanvasIndex] = useState(0);
   const pageContainerRef = useRef<HTMLDivElement>(null);
+  const pageSlotRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
 
   const docId = fileId;
@@ -295,12 +315,18 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   const renderSlotHandleRef = useRef<ReturnType<typeof requestPdfRenderSlot> | null>(null);
   const renderSlotReleaseRef = useRef<(() => void) | null>(null);
   const [isSelectingText, setIsSelectingText] = useState(false);
-  const [completedRaster, setCompletedRaster] = useState<{ canvas: HTMLCanvasElement; density: number; scale: number; doc: any; page: number; epoch:string|undefined } | null>(null);
+  const [completedRaster, setCompletedRaster] = useState<{ canvas: HTMLCanvasElement; density: number; scale: number; doc: any; page: number; epoch:string|undefined; final:boolean } | null>(null);
   useLayoutEffect(() => {
     if (!completedRaster) return;
-    const { canvas, density, scale: target, doc, page, epoch } = completedRaster;
-    if (doc !== pdfDoc || page !== pageNumber || pinchActiveRef.current || epoch!==pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch || Math.abs(target-desiredScaleRef.current)>0.001) {
+    const { canvas, density, scale: target } = completedRaster;
+    if (!canPresentRaster(completedRaster,{doc:pdfDoc,page:pageNumber,scale:desiredScaleRef.current,
+      epoch:pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch},pinchActiveRef.current)) {
       canvas.width=canvas.height=1;setCompletedRaster(null);return;
+    }
+    if(!canReplaceRaster(density,frontDensityRef.current,completedRaster.final)) {
+      canvas.width=canvas.height=1;setCompletedRaster(null);
+      if(renderPriorityRef.current<10) setRenderCount(count=>count+1);
+      return;
     }
     // Only this layout commit may touch the hidden DOM buffer. A renderer never
     // writes into a canvas that React may still be presenting as the front.
@@ -466,7 +492,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   // Keep one request per page/scale instead of cancelling valid work on each
   // signal. Only a changed target, gesture, hidden page or unmount cancels it.
   useEffect(() => {
-    if (!isNearViewport || pinchActiveRef.current || !pdfDoc || Math.abs(rasterScale - desiredScaleRef.current) > 0.001) {
+    if (!isNearViewport || pinchActiveRef.current || !pdfDoc || !sameRasterScale(rasterScale,desiredScaleRef.current)) {
       rasterRequestRef.current?.cancel();
       return;
     }
@@ -483,7 +509,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       return;
     }
     const running = rasterRequestRef.current;
-    if (running && !running.done && !running.cancelled && running.pdfDoc === pdfDoc && running.page === pageNumber && Math.abs(running.scale - rasterScale) < 0.001) return;
+    if (running && !running.done && !running.cancelled && running.pdfDoc === pdfDoc && running.page === pageNumber && sameRasterScale(running.scale,rasterScale)) return;
     running?.cancel();
     const epoch=pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch;
     let cancelled = false;
@@ -504,7 +530,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     const obsolete = () => cancelled || !mountedRef.current || pinchActiveRef.current || !documentVisibleRef.current ||
       epoch!==pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch ||
       renderInputRef.current.pdfDoc !== pdfDoc || renderInputRef.current.pageNumber !== pageNumber ||
-      Math.abs(desiredScaleRef.current - rasterScale) > 0.001;
+      !sameRasterScale(desiredScaleRef.current,rasterScale);
     const work = async () => {
       // Detached canvases let cancelled requests finish without blocking the latest target.
       updatePriorityRef.current();
@@ -547,9 +573,9 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         await task.promise;
         if (obsolete()) return;
         rememberPagePreview(`${docId}_${pageNumber}`, pdfDoc, back);
-        rememberPageRaster(`${docId}_${pageNumber}`, pdfDoc, back, density, size);
+        rememberPageRaster(`${docId}_${pageNumber}`,pdfDoc,back,density,size,rasterMatches(density,targetDensity));
         outcome = 'committed';
-        setCompletedRaster({ canvas: back, density, scale: rasterScale, doc: pdfDoc, page: pageNumber, epoch });
+        setCompletedRaster({ canvas: back, density, scale: rasterScale, doc: pdfDoc, page: pageNumber, epoch, final:rasterMatches(density,targetDensity) });
       } catch (error: any) {
         if (!obsolete() && error?.name !== 'RenderingCancelledException') {
           console.error(`Error rendering page ${pageNumber}:`, error);
@@ -571,7 +597,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (renderSlotReleaseRef.current === release) renderSlotReleaseRef.current = null;
         release?.();
         const retry = rasterRequestRef.current === request && cancelled && mountedRef.current && !pinchActiveRef.current
-          && documentVisibleRef.current && renderPriorityRef.current < 10 && Math.abs(desiredScaleRef.current-rasterScale)<.001;
+          && documentVisibleRef.current && renderPriorityRef.current < 10 && sameRasterScale(desiredScaleRef.current,rasterScale);
         finishRequest();
         if (retry) setRenderCount(count => count+1);
       }
@@ -866,6 +892,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     <div
       className={`relative shrink-0 [&:has([data-highlight-note-open=true])]:z-[60000] p-0 bg-white border-0 rounded-none ${bookSpineClass} overflow-visible [&:has(.cursor-grabbing)]:z-50 [&:has([class*='z-[500]'])]:z-50 [&:has([class*='z-[8000]'])]:z-50 [&:has([class*='z-[9999]'])]:z-50 [&:has([class*='z-[20000]'])]:z-50 [&:has([class*='z-[30000]'])]:z-50 [&:has([class*='z-[35000]'])]:z-50`}
       data-pdf-page-slot="true"
+      ref={pageSlotRef}
       style={{
         '--pdf-page-width': `${effectiveWidth}px`,
         '--pdf-page-height': `${effectiveHeight}px`,
@@ -1064,14 +1091,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       />
 
       </div>
-      {/* Screen-space overlay: follow the page slot, never the canvas transform. */}
-      <div
-        data-page-label={pageNumber}
-        aria-hidden="true"
-        className="absolute z-[50000] bottom-1 left-1/2 -translate-x-1/2 h-[18px] leading-[18px] min-w-6 text-center text-[10px] text-neutral-400 font-mono tabular-nums select-none pointer-events-none bg-white/80 px-1 rounded shadow-2xs"
-      >
-        {pageNumber}
-      </div>
+      <PageNumberLabel pageNumber={pageNumber} slotRef={pageSlotRef} />
     </div>
   );
 };

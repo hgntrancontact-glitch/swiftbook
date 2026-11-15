@@ -30,5 +30,6 @@ test('zoom-out settles at the final density instead of permanently downsampling 
   assert.equal(rasterMatches(4.52,1.5),false);
   assert.equal(rasterMatches(1,2),false);
   assert.equal(rasterMatches(1.5,1.5),true);
-  assert.equal(rasterMatches(1.5001,1.5),true);
+  assert.equal(rasterMatches(1.5001,1.5),false);
+  assert.equal(rasterMatches(1.50000001,1.5),true);
 });

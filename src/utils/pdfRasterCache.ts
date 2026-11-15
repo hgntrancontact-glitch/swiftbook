@@ -20,7 +20,7 @@ export function rasterDensity(size: PageSize, scale: number) {
 // A larger bitmap is useful during a gesture, but downsampling it forever
 // leaves small text at a different pixel phase. Settle visible pages at target.
 export function rasterMatches(density:number,target:number):boolean {
-  return density>0 && Math.abs(density-target)<=Math.max(.0001,target*.015);
+  return density>0 && Math.abs(density-target)<=Math.max(1e-6,target*1e-6);
 }
 
 export function getPageRaster(key: string, pdfDoc: any) {
@@ -31,11 +31,12 @@ export function getPageRaster(key: string, pdfDoc: any) {
   return entry;
 }
 
-// Snapshot asynchronously, outside the visible-buffer swap. Retain the sharpest
-// raster, bounded by actual pixel memory, for mode changes and zooming back out.
-export function rememberPageRaster(key: string, pdfDoc: any, source: HTMLCanvasElement, density: number, size: PageSize) {
+// Snapshot outside the visible-buffer swap. Final renders replace the prior
+// zoom, including zoom-out. Prefetch may upgrade a cache but cannot downgrade it.
+export function rememberPageRaster(key: string, pdfDoc: any, source: HTMLCanvasElement, density: number, size: PageSize, final = true) {
   if (typeof createImageBitmap !== 'function') return;
-  if ((getPageRaster(key, pdfDoc)?.density || 0) >= density) return;
+  const known=getPageRaster(key,pdfDoc);
+  if(known && (rasterMatches(known.density,density) || (!final && known.density>=density))) return;
   const pixels = source.width * source.height;
   if (pendingPixels + pixels > PIXEL_BUDGET) return;
   pendingPixels += pixels;
@@ -48,7 +49,7 @@ export function rememberPageRaster(key: string, pdfDoc: any, source: HTMLCanvasE
     if (snapshots.get(key) !== token) { bitmap.close(); return; }
     snapshots.delete(key);
     const old = rasters.get(key);
-    if (old?.pdfDoc === pdfDoc && old.density >= density) { bitmap.close(); return; }
+    if (!final && old?.pdfDoc === pdfDoc && old.density >= density) { bitmap.close(); return; }
     old?.bitmap.close();
     rasters.delete(key);
     rasters.set(key, { pdfDoc, bitmap, density, size });
