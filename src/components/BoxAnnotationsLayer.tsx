@@ -1,3 +1,4 @@
+import { BoxBorder } from './BoxBorder';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import React, { useState, useRef, useEffect } from 'react';
 import { BoxAnnotation, BoxConfig, DEFAULT_BOX_CONFIG } from '../types';
@@ -471,8 +472,6 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
       {/* Existing Boxes */}
       {pageBoxes.map((box) => {
         const isSelected = selectedIds ? selectedIds.includes(box.id) : selectedBoxId === box.id;
-        const lineWidth = (box.borderWidth || 2) * scale / (box.referenceScale || 1);
-        const dashUnit = scale / (box.referenceScale || 1);
         const isDragging = draggingBoxId === box.id;
         const isDashed = box.borderStyle === 'dashed';
         const hasFill = box.fillColor && box.fillColor !== 'transparent';
@@ -588,15 +587,8 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
               backgroundColor: box.fillColor || 'transparent',
             }}
           >
-            {/* CSS borders round subpixel widths to whole pixels and disappear
-                at small zoom. SVG preserves the annotation's true thickness. */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" data-annotation-box-border="true">
-              <rect x={lineWidth / 2} y={lineWidth / 2}
-                width={`calc(100% - ${lineWidth}px)`} height={`calc(100% - ${lineWidth}px)`}
-                fill="none" stroke={box.color || '#ef4444'} strokeWidth={lineWidth}
-                strokeDasharray={box.borderStyle === 'dashed' ? `${6 * dashUnit} ${4 * dashUnit}` : box.borderStyle === 'dotted' ? `${lineWidth} ${lineWidth * 1.5}` : undefined}
-              />
-            </svg>
+            <BoxBorder borderWidth={box.borderWidth} borderStyle={box.borderStyle}
+              color={box.color} referenceScale={box.referenceScale} scale={scale} />
             {/* Option (Alt) Clone Ghost Badge */}
             {altGhost && altGhost.id === box.id && (
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded shadow pointer-events-none whitespace-nowrap z-50">
@@ -795,9 +787,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
         <div
           className="absolute pointer-events-none"
           style={{
-            borderColor: boxConfig.color || activeColor || '#ef4444',
-            borderWidth: `${boxConfig.borderWidth || 2}px`,
-            borderStyle: boxConfig.borderStyle || 'solid',
+            border: 'none',
             backgroundColor: (boxConfig.hasBackground ?? true)
               ? `${boxConfig.color || activeColor || '#ef4444'}25`
               : 'transparent',
@@ -806,7 +796,10 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
             width: `${currentBox.width}%`,
             height: `${currentBox.height}%`,
           }}
-        />
+        >
+          <BoxBorder borderWidth={boxConfig.borderWidth || 2} borderStyle={boxConfig.borderStyle || 'solid'}
+            color={boxConfig.color || activeColor || '#ef4444'} referenceScale={1} scale={scale} />
+        </div>
       )}
     </div>
   );
