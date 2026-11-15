@@ -1,5 +1,5 @@
-export const HIGHLIGHT_TOOLBAR_SIZE = 0.85;
-export const HIGHLIGHT_NOTE_SIZE = 0.84;
+export const HIGHLIGHT_TOOLBAR_SIZE = 0.89;
+export const HIGHLIGHT_NOTE_SIZE = 0.88;
 
 /** Fit-to-page scale is deliberately excluded: 100% is the UI size reference. */
 export function annotationZoom(userZoom: number, renderedPageWidth: number, layoutPageWidth: number): number {

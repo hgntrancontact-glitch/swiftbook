@@ -940,7 +940,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         points: strokePointsToSave,
         color: penColor,
         size: activePenSizeRef.current || penSize,
-        referenceScale: scale,
+        referenceScale: 1,
         opacity: isHighlighter ? 0.45 : (penOpacity ?? 1),
         isHighlighter: isHighlighter,
         isSmartShape: isSmartShape,
@@ -1270,7 +1270,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             fill="none"
             stroke={penColor}
             vectorEffect="non-scaling-stroke"
-            strokeWidth={(activePenSizeRef.current || penSize) * cssScaleFactor}
+            strokeWidth={(activePenSizeRef.current || penSize) * scale * cssScaleFactor}
             strokeOpacity={isHighlighter ? 0.45 : (penOpacity ?? 1)}
             strokeLinecap="round"
             strokeLinejoin="round"

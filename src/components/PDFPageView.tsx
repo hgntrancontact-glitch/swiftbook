@@ -207,7 +207,7 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
           await task.promise;
           if(stale()) return;
           const latest=input();
-          if(final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale))) {refreshAfterRender=true;return;}
+          if(final && (latest.zooming || Math.abs(liveScale - latest.liveScale) > 0.005)) {refreshAfterRender=true;return;}
           // Keep previews and final native crops separate so a sampled preview
           // cannot satisfy the final-resolution requirement after release.
           if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
@@ -403,7 +403,6 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       renderTaskRef.current?.cancel();
     };
     const end = () => {
-      if (!pinchActiveRef.current) return;
       pinchActiveRef.current = false;
       setRenderCount((count) => count + 1);
     };
@@ -437,8 +436,12 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   // This avoids repeatedly cancelling a costly render for every pinch event.
   useEffect(() => {
     if (!isNearViewport && hasRenderedOnceRef.current) return;
-    const frame = requestAnimationFrame(() => setRasterScale(scale));
-    return () => cancelAnimationFrame(frame);
+    if (pinchActiveRef.current) {
+      const frame = requestAnimationFrame(() => setRasterScale(scale));
+      return () => cancelAnimationFrame(frame);
+    } else {
+      setRasterScale(scale);
+    }
   }, [scale, isNearViewport]);
 
   // Keep previously rendered pages visible when scrolling back, but defer their
@@ -520,7 +523,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       rasterRequestRef.current?.cancel();
       return;
     }
-    if (hasRenderedOnceRef.current && (frontDensityRef.current>=rasterDensity(activeBaseDim,rasterScale)-.0001)) {
+    if (hasRenderedOnceRef.current && sameRasterScale(lastRenderedScaleRef.current, rasterScale) && (frontDensityRef.current>=rasterDensity(activeBaseDim,rasterScale)-.0001)) {
       rasterRequestRef.current?.cancel();
       lastRenderedScaleRef.current = rasterScale;
       const front = canvasRefs.current[frontCanvasIndexRef.current];

@@ -20,9 +20,9 @@ interface Props {
 }
 
 // Page-relative dimensions, calibrated at document zoom 100%.
-const ICON_SIZE = 19.5;
-const ICON_GLYPH_SIZE = 10;
-const POPUP_WIDTH = 224;
+const ICON_SIZE = 21;
+const ICON_GLYPH_SIZE = 11;
+const POPUP_WIDTH = 242;
 const POPUP_GAP = 6;
 
 // Page-local overlays scroll natively; dimensions follow document zoom.
@@ -173,6 +173,8 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       <button ref={iconRef} type="button" data-highlight-note-icon={highlightId}
         className="absolute bg-[#f5c41a] hover:bg-[#e5a84c] text-neutral-950 rounded-full shadow-md flex items-center justify-center border-2 border-white cursor-pointer pointer-events-auto z-[90000]"
         style={{ left: 0, top: 0, visibility: 'hidden', width: ICON_SIZE, height: ICON_SIZE, minWidth: ICON_SIZE, minHeight: ICON_SIZE, maxWidth: ICON_SIZE, maxHeight: ICON_SIZE, boxSizing: 'border-box', flexShrink: 0, transform: 'none', zoom: 1 }} title="Xem/Sửa ghi chú"
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
         onMouseDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); onEdit(); }}
         onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}

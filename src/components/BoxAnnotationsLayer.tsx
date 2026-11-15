@@ -389,7 +389,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
         height: Math.min(100, currentBox.height),
         color: activeBorderColor,
         borderWidth: boxConfig.borderWidth || 2,
-        referenceScale: scale,
+        referenceScale: 1,
         borderStyle: boxConfig.borderStyle || 'solid',
         fillColor: hasBg ? `${activeBorderColor}25` : 'transparent',
       });

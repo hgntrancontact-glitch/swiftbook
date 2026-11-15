@@ -198,12 +198,6 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
               height: `${rect.height}%`,
               clipPath: highlightClip(rect),
             }}
-            onMouseEnter={() => {
-              if (hl.note && activeHighlightId !== hl.id) openNotePreview(hl.id);
-            }}
-            onMouseLeave={() => {
-              if (previewMode === 'auto' && !isPinching()) setHoveredNoteHlId(prev => prev === hl.id ? null : prev);
-            }}
             onMouseDown={(e) => {
               e.stopPropagation();
               focusHighlight(hl.id);
@@ -252,17 +246,17 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                 {/* Quick note hover tooltip preview */}
                 {(
                   <div 
-                    className="highlight-note-preview w-full max-w-[280px] pointer-events-auto text-xs font-['Inter',sans-serif] cursor-default"
+                    className="highlight-note-preview w-full max-w-[300px] pointer-events-auto text-[12px] font-['Inter',sans-serif] cursor-default"
                     data-highlight-note-preview={hl.id} data-preview-mode={previewMode}
                     style={{ maxHeight: 'var(--highlight-popup-height)', display: 'flex', flexDirection: 'column', pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => e.stopPropagation()}
                   >
-                    <div className={`rounded-xl p-2 border flex flex-col min-h-0 ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
+                    <div className={`rounded-xl p-2.5 border flex flex-col min-h-0 ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
                       style={previewMode === 'transparent' ? { backgroundColor: 'rgba(255,255,255,0.16)' } : undefined}>
 
-                    <div data-highlight-note-header className="flex items-center gap-1 shrink-0 font-bold text-[#f5c41a] text-[10.5px] mb-0.5 pb-0.5 border-b border-neutral-800 pointer-events-auto">
-                      <MessageSquare size={10} className="fill-[#f5c41a]" />
+                    <div data-highlight-note-header className="flex items-center gap-1.5 shrink-0 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto">
+                      <MessageSquare size={11} className="fill-[#f5c41a]" />
                       <span className={previewMode === 'transparent' ? 'text-neutral-950' : ''}>Ghi chú</span>
                       <button type="button" className="ml-auto p-0.5 rounded hover:bg-neutral-500/20 pointer-events-auto"
                         data-highlight-note-mode="true"
@@ -278,10 +272,10 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                         onClick={e => { e.stopPropagation(); closeNotePreview(); }}><X size={12} /></button>
                     </div>
                     <div data-highlight-note-body className="overflow-y-auto min-h-0">
-                    <p className={`${previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} text-xs leading-relaxed whitespace-pre-wrap break-words`}>
+                    <p className={`${previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} text-[12px] leading-relaxed whitespace-pre-wrap break-words`}>
                       {hl.note}
                     </p>
-                    <div className="text-[10px] text-neutral-400 mt-1.5 text-right italic">
+                    <div className="text-[10.5px] text-neutral-400 mt-1.5 text-right italic">
                       Nhấp đúp chuột vào highlight để sửa
                     </div>
                     </div>
@@ -305,7 +299,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             scaleWithPage
             uiScale={HIGHLIGHT_TOOLBAR_SIZE}
             className="highlight-popup-toolbar bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 text-neutral-800 pointer-events-auto font-['Inter',sans-serif]"
-            style={{ width: 288 }}
+            style={{ width: 310 }}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => {
@@ -388,13 +382,13 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             ) : (
               <div>
                 {hl.note ? (
-                  <div className="group relative bg-amber-50/70 p-2 rounded-lg border border-amber-200/50 mb-2">
-                    <p className="text-neutral-800 text-[11.5px] leading-relaxed break-words max-h-80 overflow-y-auto">{hl.note}</p>
+                  <div className="group relative bg-amber-50/70 p-2.5 rounded-lg border border-amber-200/50 mb-2">
+                    <p className="text-neutral-800 text-[12px] leading-relaxed whitespace-pre-wrap break-words max-h-80 overflow-y-auto">{hl.note}</p>
                     <button
                       onClick={() => setEditingNote({ id: hl.id, text: hl.note || '' })}
-                      className="mt-1.5 text-[10px] text-amber-700 hover:text-amber-900 font-medium flex items-center gap-1 cursor-pointer"
+                      className="mt-1.5 text-[10.5px] text-amber-700 hover:text-amber-900 font-medium flex items-center gap-1 cursor-pointer"
                     >
-                      <Edit3 size={10} />
+                      <Edit3 size={11} />
                       <span>Chỉnh sửa ghi chú</span>
                     </button>
                   </div>
