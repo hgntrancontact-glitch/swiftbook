@@ -1,3 +1,4 @@
+import { sharpenAnnotation, snapUiPixel } from '../utils/annotationSharpness';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { getAnnotationZoom, placeAnnotationToolbar } from '../utils/annotationUi';
 import React, { forwardRef, useLayoutEffect, useRef } from 'react';
@@ -26,6 +27,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
       if (!toolbar || !anchor) return;
       let frame = 0;
       const position = () => {
+        if(frame) cancelAnimationFrame(frame);
         frame = 0;
         const rects = anchors.map(el => el.getBoundingClientRect());
         const bounds = { left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)), top: Math.min(...rects.map(r => r.top)), bottom: Math.max(...rects.map(r => r.bottom)) };
@@ -37,6 +39,8 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         // kept a low-resolution text layer after the gesture finished.
         toolbar.style.transform = '';
         toolbar.style.zoom = String(scale);
+        const dpr=window.devicePixelRatio || 1;
+        if(scaleWithPage) sharpenAnnotation(toolbar,scale,dpr);
         toolbar.dataset.annotationToolbarScale = String(scale);
         toolbar.style.maxWidth = `${Math.max(1, window.innerWidth - 16) / scale}px`;
         toolbar.style.maxHeight = '';
@@ -50,8 +54,8 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
           toolbar.style.maxHeight = `${placement.maxHeight}px`;
           toolbar.style.overflowY = 'auto';
         }
-        toolbar.style.left = `${placement.left/scale}px`;
-        toolbar.style.top = `${placement.top/scale}px`;
+        toolbar.style.left = `${snapUiPixel(placement.left,dpr)/scale}px`;
+        toolbar.style.top = `${snapUiPixel(placement.top,dpr)/scale}px`;
         toolbar.style.visibility = bounds.bottom <= topLimit || bounds.top >= bottomLimit || bounds.right <= Math.max(0, viewport?.left || 0) || bounds.left >= Math.min(window.innerWidth, viewport?.right || window.innerWidth) ? 'hidden' : 'visible';
       };
       const schedule = () => { if (!frame) frame = requestAnimationFrame(position); };
@@ -63,12 +67,14 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
       anchors.forEach(el => resize.observe(el));
       resize.observe(toolbar);
       const mutation = new MutationObserver(update);
+      mutation.observe(toolbar,{childList:true,subtree:true});
       const wrapper = anchor.closest('[data-scale]');
       if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
       const page = anchor.closest('[data-page-container="true"]');
       if (page) mutation.observe(page, { attributes: true, attributeFilter: ['style'] });
       anchors.forEach(el => mutation.observe(el, { attributes: true, attributeFilter: ['style'] }));
       viewport?.addEventListener('pdf-zoom-end', position);
+      viewport?.addEventListener('pdf-zoom-frame', position);
       viewport?.addEventListener('pdf-viewport-pan', update);
       window.addEventListener('scroll', update, true);
       window.addEventListener('resize', update);
@@ -77,6 +83,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         cancelAnimationFrame(frame);
         toolbar.removeEventListener('wheel', wheel);
         viewport?.removeEventListener('pdf-zoom-end', position);
+        viewport?.removeEventListener('pdf-zoom-frame', position);
         viewport?.removeEventListener('pdf-viewport-pan', update);
         resize.disconnect();
         mutation.disconnect();

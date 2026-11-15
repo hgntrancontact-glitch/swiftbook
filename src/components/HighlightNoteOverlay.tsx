@@ -1,4 +1,5 @@
-import { pageNoteGeometry, pointStyle } from '../utils/pageNoteGeometry';
+import { sharpenAnnotation, snapUiPixel, centeredGlyphSize } from '../utils/annotationSharpness';
+import { pageNoteGeometry, type PagePoint } from '../utils/pageNoteGeometry';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { HIGHLIGHT_NOTE_SIZE } from '../utils/annotationUi';
 import React, { useLayoutEffect, useRef, useState } from 'react';
@@ -46,21 +47,28 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const icon = iconRef.current;
     if (!anchor || !icon || !portalTarget) return;
     if (!showPopup) placementRef.current=null;
+    let frame=0;
     const position = () => {
+      if(frame) cancelAnimationFrame(frame);frame=0;
       const wrapper=anchor.closest<HTMLElement>('[data-user-zoom]');
       const factor=Number(wrapper?.dataset.userZoom || 1);
       const r=anchor.getBoundingClientRect();
       const slot=portalTarget.getBoundingClientRect();
       const layoutWidth=parseFloat(portalTarget.style.getPropertyValue('--pdf-page-width')) || slot.width;
       const live=slot.width/Math.max(1,layoutWidth);
-      const sized=(pixels:number)=>`calc(${pixels}px * var(--pdf-live-zoom, 1))`;
+      const dpr=window.devicePixelRatio || 1;
+      const sized=(pixels:number)=>`${snapUiPixel(pixels*live,dpr)}px`;
+      const aligned=(point:PagePoint)=>({
+        left:`${snapUiPixel(slot.left+slot.width*point.x/100+point.dx*live,dpr)-slot.left}px`,
+        top:`${snapUiPixel(slot.top+slot.height*point.y/100+point.dy*live,dpr)-slot.top}px`,
+      });
       const iconSize=ICON_SIZE*factor;
       if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor*live);
       icon.style.width=icon.style.height=icon.style.minWidth=icon.style.minHeight=icon.style.maxWidth=icon.style.maxHeight=sized(iconSize);
       icon.style.borderWidth=sized(2*factor);
       icon.style.boxShadow=`0 ${sized(2*factor)} ${sized(4*factor)} rgba(0,0,0,.16)`;
       const glyph=icon.querySelector('svg');
-      if(glyph) glyph.style.width=glyph.style.height=sized(ICON_GLYPH_SIZE*factor);
+      if(glyph) glyph.style.width=glyph.style.height=`${centeredGlyphSize(parseFloat(icon.style.width),parseFloat(icon.style.borderWidth),ICON_GLYPH_SIZE*factor*live,dpr)}px`;
       const viewport=anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
       const popup = popupRef.current;
       if (!popup) return;
@@ -81,8 +89,11 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       popup.style.borderRadius=sized(12*popupFactor);
       popup.style.overflow='hidden';
       const card=popup.firstElementChild as HTMLElement|null;
-      if(card) {card.style.zoom=`calc(${popupFactor} * var(--pdf-live-zoom, 1))`;card.style.width=`${POPUP_WIDTH}px`;}
-      if(popupHeightRef.current===null) popupHeightRef.current=card?.offsetHeight || popup.getBoundingClientRect().height/(popupFactor*live);
+      if(card) {
+        card.style.zoom=String(popupFactor*live);card.style.width=`${POPUP_WIDTH}px`;
+        if(showPopup || popupHeightRef.current===null) sharpenAnnotation(card,popupFactor*live,dpr);
+      }
+      if(showPopup || popupHeightRef.current===null) popupHeightRef.current=card?.offsetHeight || popup.getBoundingClientRect().height/(popupFactor*live);
       const height=popupHeightRef.current*popupFactor;
       const gap=POPUP_GAP*factor;
       let direction=placementRef.current?.direction || directionRef.current;
@@ -100,13 +111,13 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const geometry=pageNoteGeometry({x:parseFloat(anchor.style.left)||0,y:parseFloat(anchor.style.top)||0,
         width:parseFloat(anchor.style.width)||0,height:parseFloat(anchor.style.height)||0,rise:Number(anchor.dataset.highlightRise || 0)},
         factor,direction==='above',height,cardWidth,placementRef.current?.offsetX || 0);
-      Object.assign(icon.style,pointStyle(geometry.icon));
+      Object.assign(icon.style,aligned(geometry.icon));
       icon.style.visibility='visible';icon.dataset.popupDirection=direction;
-      Object.assign(popup.style,pointStyle(geometry.popup));
+      Object.assign(popup.style,aligned(geometry.popup));
       popup.style.visibility=showPopup?'visible':'hidden';popup.dataset.popupDirection=direction;
       const bridge=bridgeRef.current;
       if(bridge) {
-        Object.assign(bridge.style,pointStyle(geometry.bridge));
+        Object.assign(bridge.style,aligned(geometry.bridge));
         bridge.style.width=sized(cardWidth);bridge.style.height=sized(gap);
         bridge.style.visibility=showPopup?'visible':'hidden';
       }
@@ -118,10 +129,13 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       if (viewport) routeAnnotationWheel(event, viewport, popupRef.current);
     };
     viewport?.addEventListener('pdf-zoom-end', position);
+    viewport?.addEventListener('pdf-zoom-frame', position);
+    const pan=()=>{if(viewport?.dataset.zoomGesture!=='true') position();};
+    viewport?.addEventListener('pdf-viewport-pan', pan);
     const root = rootRef.current;
     root?.addEventListener('wheel', wheel, { passive: false });
-    let frame=0;
     const schedule=()=> {if(!frame) frame=requestAnimationFrame(()=>{frame=0;position();});};
+    viewport?.addEventListener('scroll',schedule,{passive:true});
     const resize = new ResizeObserver(schedule);
 
     const body=popupRef.current?.querySelector('[data-highlight-note-body]');
@@ -140,6 +154,9 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     return () => {
       positionRef.current = null;
       viewport?.removeEventListener('pdf-zoom-end', position);
+      viewport?.removeEventListener('pdf-zoom-frame', position);
+      viewport?.removeEventListener('pdf-viewport-pan', pan);
+      viewport?.removeEventListener('scroll',schedule);
       root?.removeEventListener('wheel', wheel);
       cancelAnimationFrame(frame);
       resize.disconnect();

@@ -1,3 +1,4 @@
+import { pageLabelZoom } from '../utils/annotationSharpness';
 import { flushSync } from 'react-dom';
 import { WheelGesture, wheelOwner } from '../utils/wheelGesture';
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
@@ -179,8 +180,9 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     }
   }, [containerSize, measuredPages, layoutKey, actualScale, doc.id, doc.drawings, doc.boxes, doc.textNotes, onResolveAnnotationScale]);
 
-  const clearLiveZoom = () => {
+  const clearLiveZoom = (zoom = scaleRef.current) => {
     wrapperRef.current?.style.removeProperty('--pdf-live-zoom');
+    wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(zoom)));
   };
   const clearPan = () => {
     panRef.current = { x: 0, y: 0 };
@@ -321,7 +323,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     } else if (previous.scale !== doc.scale) {
       // Toolbar/input zoom has no pending cursor anchor, but must still settle
       // an earlier pan and notify overlays/renderers of the final geometry.
-      clearLiveZoom();
+      clearLiveZoom(doc.scale);
       releaseGesture();
     }
     // Wheel handlers must see the scale of committed DOM, never a concurrent
@@ -350,6 +352,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       }
       const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
+      wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(targetScale)));
       if (anchor) restoreAnchor(anchor);
       panViewport(0,0,true,true,true);
       // Keep the original text target for subsequent pinch frames. The actual
@@ -376,6 +379,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const rebase = (scale: number) => {
       startScale = scale;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
+      wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(targetScale)));
       const anchor = visualAnchorRef.current;
       if (anchor) restoreAnchor(anchor);
     };
@@ -610,7 +614,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
             data-scale={actualScale}
             data-user-zoom={doc.scale}
             className={`flex flex-col relative shrink-0 ${doc.viewMode === 'continuous' ? 'mx-auto' : 'm-auto'}`}
-            style={{ width: 'fit-content', '--pdf-user-zoom': doc.scale } as React.CSSProperties}
+            style={{ width: 'fit-content', '--pdf-user-zoom': doc.scale, '--pdf-label-zoom': pageLabelZoom(doc.scale) } as React.CSSProperties}
           >
             {(isInViewport || isActive || hasRenderedOnceRef.current) ? (
               doc.viewMode === 'double' ? (
