@@ -43,7 +43,7 @@ export function fitPageScale(mode: ViewMode, pages: PageSize[], width: number, h
 // Cursor anchoring can require extra space at an edge. Mirror that allowance
 // at the opposite edge so panning has the same finite gutter in both directions.
 export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number, zoomOrigin?:number): number {
-  if (size < viewSize - 1) return viewStart+(viewSize-size)/2-start;
+  if (size <= viewSize-2*Math.min(24,viewSize*0.04)) return viewStart+(viewSize-size)/2-start;
   const gutter = Math.max(Math.min(24, viewSize * 0.04),
     zoomOrigin === undefined ? 0 : zoomOrigin-viewStart,
     zoomOrigin === undefined ? 0 : viewStart+viewSize-size-zoomOrigin);
@@ -56,4 +56,15 @@ export function boundedPanShift(start: number, size: number, viewStart: number, 
 export function settledPanShift(start:number,size:number,viewStart:number,viewSize:number,_centerFitting:boolean,zoomOrigin?:number):number {
   if (size < viewSize-1) return viewStart+(viewSize-size)/2-start;
   return boundedPanShift(start,size,viewStart,viewSize,0,zoomOrigin);
+}
+
+/** Keep the original cursor target throughout a pinch, constrained by equal
+ * reading gutters. The fitting and overflowing ranges meet at the same point,
+ * so crossing the fit boundary cannot snap the page sideways. */
+export function zoomPanShift(start:number,size:number,viewStart:number,viewSize:number):number {
+  const gutter=Math.min(24,viewSize*0.04);
+  const low=viewStart+viewSize-gutter-size,high=viewStart+gutter;
+  const target=low>=high ? viewStart+(viewSize-size)/2 : Math.max(low,Math.min(high,start));
+  const shift=target-start;
+  return Math.abs(shift)<1e-7?0:shift;
 }

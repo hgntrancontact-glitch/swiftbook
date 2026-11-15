@@ -16,7 +16,7 @@ import {
 } from '../types';
 import { BookSpreadView } from './BookSpreadView';
 import { PDFPageView, pageDimensionCache } from './PDFPageView';
-import { fitPageScale, viewportPages, boundedPanShift, settledPanShift, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
+import { fitPageScale, viewportPages, boundedPanShift, settledPanShift, zoomPanShift, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
 import { ContinuousView } from './ContinuousView';
 import { ChevronLeft, ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
 
@@ -187,15 +187,15 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     zoomPanOriginRef.current=null;
     if (wrapperRef.current) wrapperRef.current.style.translate = '';
   };
-  const panViewport = (dx: number, dy: number, settle = false, centerFitting = false) => {
+  const panViewport = (dx: number, dy: number, settle = false, centerFitting = false, cursorZoom = false) => {
     const container = containerRef.current, wrapper = wrapperRef.current;
     if (!container || !wrapper) return;
     const style = getComputedStyle(container), rect = container.getBoundingClientRect(), content = wrapper.getBoundingClientRect();
     const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
     const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
-    const sx = settle ? settledPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, centerFitting, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined)
+    const sx = cursorZoom ? zoomPanShift(content.left,content.width,rect.left+left,container.clientWidth-left-right) : settle ? settledPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, centerFitting, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined)
       : boundedPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, dx, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined);
-    const sy = settle ? settledPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, centerFitting, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined)
+    const sy = cursorZoom ? zoomPanShift(content.top,content.height,rect.top+top,container.clientHeight-top-bottom) : settle ? settledPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, centerFitting, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined)
       : boundedPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, dy, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined);
     const oldX = container.scrollLeft, oldY = container.scrollTop;
     container.scrollLeft -= sx;
@@ -351,16 +351,15 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
       if (anchor) restoreAnchor(anchor);
-      rememberZoomBounds();
-      panViewport(0,0,true,true);
-      // If a fitting axis was centred, rebase the page-local anchor now. This
-      // keeps crossing the fit boundary continuous and avoids release snaps.
+      panViewport(0,0,true,true,true);
+      // Keep the original text target for subsequent pinch frames. The actual
+      // displayed pose is a separate anchor, used only for the layout commit.
+      // Replacing the target each frame loses it while the page still fits.
       if(anchor) {
         const rect=anchor.element.getBoundingClientRect();
-        anchor.x=(clientX-rect.left)/rect.width;anchor.y=(clientY-rect.top)/rect.height;
-      }
+        visualAnchorRef.current={...anchor,x:(clientX-rect.left)/rect.width,y:(clientY-rect.top)/rect.height};
+      } else visualAnchorRef.current=null;
       container.dispatchEvent(new Event('pdf-zoom-frame'));
-      visualAnchorRef.current = anchor;
     };
     const cancel = () => {
       const hadGesture = gestureActiveRef.current || timer !== null || frame !== null;
@@ -386,7 +385,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       if (timer) clearTimeout(timer);
       timer = null;
       if (frame !== null) { cancelAnimationFrame(frame); apply(); }
-      pendingAnchorRef.current = gestureAnchor || captureAnchor(clientX, clientY);
+      pendingAnchorRef.current = visualAnchorRef.current || gestureAnchor || captureAnchor(clientX, clientY);
       gestureActiveRef.current = false;
       if (Math.abs(targetScale - startScale) < 0.000001 && !pendingCommitRef.current) {
         clearLiveZoom();
