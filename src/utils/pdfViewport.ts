@@ -40,15 +40,15 @@ export function fitPageScale(mode: ViewMode, pages: PageSize[], width: number, h
   return Math.max(0.0001, Math.min(Math.max(1, width - gap) / pageWidth, Math.max(1, usableHeight) / pageHeight));
 }
 
-// Manual pan has a small gutter. The current cursor-zoom origin may extend
-// that range, but wheel movement cannot push beyond that finite origin.
+// Cursor anchoring can require extra space at an edge. Mirror that allowance
+// at the opposite edge so panning has the same finite gutter in both directions.
 export function boundedPanShift(start: number, size: number, viewStart: number, viewSize: number, delta: number, zoomOrigin?:number): number {
   if (size < viewSize - 1) return viewStart+(viewSize-size)/2-start;
-  const gutter = Math.min(24, viewSize * 0.04);
-  // Cursor zoom may legitimately finish outside the manual pan gutter. Keep
-  // that position reachable, without allowing a wheel to extend it farther.
-  const low = Math.min(viewStart+viewSize-size-gutter,zoomOrigin ?? Infinity);
-  const high = Math.max(viewStart+gutter,zoomOrigin ?? -Infinity);
+  const gutter = Math.max(Math.min(24, viewSize * 0.04),
+    zoomOrigin === undefined ? 0 : zoomOrigin-viewStart,
+    zoomOrigin === undefined ? 0 : viewStart+viewSize-size-zoomOrigin);
+  const low = viewStart+viewSize-size-gutter;
+  const high = viewStart+gutter;
   const shift=Math.max(low,Math.min(high,start-delta))-start;
   return Math.abs(shift)<1e-7?0:shift;
 }

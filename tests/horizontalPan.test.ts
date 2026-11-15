@@ -74,3 +74,16 @@ test('left/right cursor zoom keeps its anchor even outside the manual gutter, wi
   }
   assert.equal(settledPanShift(-400,600,24,1200,true,-400),724);
 });
+
+test('cursor zoom allowances are mirrored at opposite edges on both axes',()=>{
+  for(const [viewStart,viewSize,size] of [[24,1872,3350],[16,918,1980]]) {
+    for(const origin of [viewStart+322,viewStart+viewSize-size-265]) {
+      const near=origin+boundedPanShift(origin,size,viewStart,viewSize,-100000,origin);
+      const far=origin+boundedPanShift(origin,size,viewStart,viewSize,100000,origin);
+      assert.ok(Math.abs((near-viewStart)-(viewStart+viewSize-(far+size)))<1e-9);
+      assert.equal(settledPanShift(origin,size,viewStart,viewSize,true,origin),0);
+      assert.equal(boundedPanShift(near,size,viewStart,viewSize,-1,origin),0);
+      assert.equal(boundedPanShift(far,size,viewStart,viewSize,1,origin),0);
+    }
+  }
+});

@@ -18,3 +18,20 @@ export function scaledDetailCovers(tile:DetailTile,preparedScale:number,scale:nu
   return tile.density>=density-.002 && tile.x*ratio<=visible.left && tile.y*ratio<=visible.top &&
     (tile.x+tile.width)*ratio>=visible.right && (tile.y+tile.height)*ratio>=visible.bottom;
 }
+
+/** A retained detail crop uses its PDF-space origin, not the current CSS origin. */
+export function detailSampleRect(source:{width:number;height:number},prepared:DetailTile,preparedScale:number,tile:DetailTile,scale:number) {
+  const x=source.width/(prepared.width/preparedScale),y=source.height/(prepared.height/preparedScale);
+  return {x:(tile.x/scale-prepared.x/preparedScale)*x,y:(tile.y/scale-prepared.y/preparedScale)*y,
+    width:tile.width/scale*x,height:tile.height/scale*y};
+}
+
+// Overscan is optional. Reuse a native crop while it covers the viewport even
+// if the next 128px overscan boundary would fall outside the prepared source.
+export function clipDetailTile(tile:DetailTile,prepared:DetailTile,preparedScale:number,scale:number):DetailTile {
+  const ratio=scale/preparedScale;
+  const x=Math.max(tile.x,prepared.x*ratio),y=Math.max(tile.y,prepared.y*ratio);
+  const width=Math.min(tile.x+tile.width,(prepared.x+prepared.width)*ratio)-x;
+  const height=Math.min(tile.y+tile.height,(prepared.y+prepared.height)*ratio)-y;
+  return {...tile,x,y,width,height,pixelsWide:Math.max(1,Math.round(width*tile.density/scale)),pixelsHigh:Math.max(1,Math.round(height*tile.density/scale))};
+}

@@ -119,7 +119,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   const gestureEpochRef = useRef(0);
   const panRef = useRef({ x: 0, y: 0 });
   const zoomPanOriginRef = useRef<{x:number;y:number}|null>(null);
-  const pendingZoomOutRef = useRef(false);
   type Anchor = { element: HTMLElement; x: number; y: number; clientX: number; clientY: number };
   const pendingAnchorRef = useRef<Anchor | null>(null);
   const visualAnchorRef = useRef<Anchor | null>(null);
@@ -266,16 +265,22 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       container.scrollTop = 0;
     }
   };
-  const releaseGesture = (cursorZoom=false,zoomingOut=false) => {
+  const rememberZoomBounds = () => {
+    const container=containerRef.current,wrapper=wrapperRef.current;
+    if(!container || !wrapper) return;
+    const content=wrapper.getBoundingClientRect(),view=container.getBoundingClientRect(),style=getComputedStyle(container);
+    zoomPanOriginRef.current={x:content.left-view.left-(parseFloat(style.paddingLeft)||0),y:content.top-view.top-(parseFloat(style.paddingTop)||0)};
+  };
+  const releaseGesture = (cursorZoom=false) => {
     const container = containerRef.current;
     if (!container || gestureActiveRef.current) return;
     // Layout, cursor anchor, fitting-axis centre and render epoch are committed
     // before the same paint. A delayed two-frame clamp visibly jumped at release.
     if(cursorZoom && wrapperRef.current) {
-      const content=wrapperRef.current.getBoundingClientRect(),view=container.getBoundingClientRect(),style=getComputedStyle(container);
-      zoomPanOriginRef.current={x:content.left-view.left-parseFloat(style.paddingLeft),y:content.top-view.top-parseFloat(style.paddingTop)};
-      if(zoomingOut) panViewport(0,0,true,true); // fitting axes retain zoom-out centring
-      else container.dispatchEvent(new Event('pdf-viewport-pan'));
+      // Preserve the already displayed final pose. Fitting-axis constraints
+      // were applied in the live frame, not as a second correction at release.
+      rememberZoomBounds();
+      container.dispatchEvent(new Event('pdf-viewport-pan'));
     } else {
       zoomPanOriginRef.current=null;
       panViewport(0,0,true,true);
@@ -312,7 +317,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       pendingCommitRef.current = false;
       clearLiveZoom();
       if (anchor) restoreAnchor(anchor);
-      releaseGesture(!!anchor,pendingZoomOutRef.current);
+      releaseGesture(!!anchor);
     } else if (previous.scale !== doc.scale) {
       // Toolbar/input zoom has no pending cursor anchor, but must still settle
       // an earlier pan and notify overlays/renderers of the final geometry.
@@ -346,8 +351,14 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
       if (anchor) restoreAnchor(anchor);
-      // Pan bounds apply to wheel panning, not to the cursor's zoom anchor.
-      container.dispatchEvent(new Event('pdf-viewport-pan'));
+      rememberZoomBounds();
+      panViewport(0,0,true,true);
+      // If a fitting axis was centred, rebase the page-local anchor now. This
+      // keeps crossing the fit boundary continuous and avoids release snaps.
+      if(anchor) {
+        const rect=anchor.element.getBoundingClientRect();
+        anchor.x=(clientX-rect.left)/rect.width;anchor.y=(clientY-rect.top)/rect.height;
+      }
       container.dispatchEvent(new Event('pdf-zoom-frame'));
       visualAnchorRef.current = anchor;
     };
@@ -376,13 +387,12 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       timer = null;
       if (frame !== null) { cancelAnimationFrame(frame); apply(); }
       pendingAnchorRef.current = gestureAnchor || captureAnchor(clientX, clientY);
-      pendingZoomOutRef.current=targetScale<startScale;
       gestureActiveRef.current = false;
       if (Math.abs(targetScale - startScale) < 0.000001 && !pendingCommitRef.current) {
         clearLiveZoom();
         if (pendingAnchorRef.current) restoreAnchor(pendingAnchorRef.current);
         pendingAnchorRef.current = null;
-        releaseGesture(true,pendingZoomOutRef.current);
+        releaseGesture(true);
       } else {
         scaleRef.current = targetScale;
         pendingCommitRef.current = true;
@@ -601,7 +611,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
             data-scale={actualScale}
             data-user-zoom={doc.scale}
             className={`flex flex-col relative shrink-0 ${doc.viewMode === 'continuous' ? 'mx-auto' : 'm-auto'}`}
-            style={{ width: 'fit-content' }}
+            style={{ width: 'fit-content', '--pdf-user-zoom': doc.scale } as React.CSSProperties}
           >
             {(isInViewport || isActive || hasRenderedOnceRef.current) ? (
               doc.viewMode === 'double' ? (
