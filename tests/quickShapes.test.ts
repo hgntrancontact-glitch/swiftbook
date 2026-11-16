@@ -35,6 +35,20 @@ test('Shift pins the initial endpoint horizontally; free rectangles retain their
   assert.equal(Math.max(...moved.map(p=>p.x)),100);assert.equal(Math.min(...moved.map(p=>p.y)),0);
 });
 
+test('endpoint edits pin the opposite end and preserve the midpoint bend for arrows and lines',()=>{
+  for(const kind of ['arrow','line'] as const) {
+    const original={...shape,quickShape:kind};
+    for(const index of [0,2]) {
+      const before=original.points;
+      const points=moveQuickHandle(original,index,{x:before[index].x+12,y:before[index].y-8});
+      assert.deepEqual(points[2-index],before[2-index]);
+      assert.deepEqual(points[1],{x:before[1].x+6,y:before[1].y-4});
+      for(const axis of ['x','y'] as const)assert.equal(points[1][axis]-(points[0][axis]+points[2][axis])/2,
+        before[1][axis]-(before[0][axis]+before[2][axis])/2);
+    }
+  }
+});
+
 test('temporary tools expire exactly 3 seconds after release; edits, page changes and other shapes do not restart the deadline',()=>{
   let now=1000,serial=0,latest:TemporaryShape[]=[];
   const jobs=new Map<number,{at:number;run:()=>void}>();

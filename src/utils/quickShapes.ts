@@ -41,8 +41,12 @@ export function quickHandles(stroke:Pick<DrawingStroke,'points'|'quickShape'>):D
 }
 export function moveQuickHandle(stroke:DrawingStroke,index:number,point:DrawingPoint):DrawingPoint[] {
   if(stroke.quickShape!=='rectangle') {
-    if(index!==1)return translateQuickPoints(stroke.points,point.x-stroke.points[index].x,point.y-stroke.points[index].y);
-    return stroke.points.map((p,i)=>i===index?point:p);
+    if(index===1)return stroke.points.map((p,i)=>i===index?point:p);
+    const dx=point.x-stroke.points[index].x,dy=point.y-stroke.points[index].y;
+    // Keep the opposite endpoint pinned. Moving the midpoint by half the
+    // endpoint delta preserves its bend relative to the chord midpoint.
+    return stroke.points.map((p,i)=>i===index?point:i===1?
+      {...p,x:Math.max(0,Math.min(100,p.x+dx/2)),y:Math.max(0,Math.min(100,p.y+dy/2))}:p);
   }
   const [a,b]=stroke.points;
   return index===0?[point,b]:index===2?[a,point]:index===1?[{x:a.x,y:point.y},{x:point.x,y:b.y}]:[{x:point.x,y:a.y},{x:b.x,y:point.y}];

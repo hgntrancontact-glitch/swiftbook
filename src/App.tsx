@@ -1,3 +1,4 @@
+import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
 import {isQuickShapeTool} from './utils/quickShapes';
 import { WheelGesture } from './utils/wheelGesture';
@@ -126,7 +127,6 @@ function SwiftbookApp() {
   const setPenColor=useCallback((color:string)=>updateDrawingSettings({color}),[updateDrawingSettings]);
   const [penOpacity, setPenOpacity] = useState<number>(1);
   const [eraserSize, setEraserSize] = useState<number>(20);
-  const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
   const [boxColor, setBoxColor] = useState<string>("#ef4444");
   const [boxConfig, setBoxConfig] = useState<BoxConfig>(DEFAULT_BOX_CONFIG);
@@ -154,19 +154,6 @@ function SwiftbookApp() {
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
-
-  // Eraser floating cursor tracker
-  useEffect(() => {
-    if (activeTool !== "eraser") {
-      setEraserPos(null);
-      return;
-    }
-    const handleMouseMove = (e: MouseEvent) => {
-      setEraserPos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [activeTool]);
 
   // Multi-PDF Workspace Container Ref & Smooth Bi-directional Horizontal Wheel
   const multiPdfContainerRef = useRef<HTMLDivElement>(null);
@@ -1836,18 +1823,7 @@ function SwiftbookApp() {
         onConfirm={handleConfirmOrderedImages}
       />
 
-      {/* Floating Eraser Cursor */}
-      {activeTool === "eraser" && eraserPos && (
-        <div
-          className="pointer-events-none fixed rounded-full border-2 border-red-500 bg-red-400/25 -translate-x-1/2 -translate-y-1/2 z-[999999] shadow-xs transition-transform duration-75"
-          style={{
-            left: `${eraserPos.x}px`,
-            top: `${eraserPos.y}px`,
-            width: `${eraserSize}px`,
-            height: `${eraserSize}px`,
-          }}
-        />
-      )}
+      <EraserCursor active={activeTool === "eraser"} size={eraserSize} />
 
       <ShortcutsWidget />
     </div>

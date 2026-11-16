@@ -27,6 +27,8 @@ test('paper uses five solid colours, Noto Sans and two 2px black separators with
       assert.equal(header.style.borderBottom,'2px solid rgb(0, 0, 0)');
       const palette=paper.querySelector('[aria-label="Màu giấy Vàng"]')!.parentElement!.parentElement!;
       assert.equal(palette.style.borderTop,'2px solid rgb(0, 0, 0)');
+      assert.equal(palette.style.height,'26px');
+      assert.equal(palette.querySelector('button')!.style.height,'12px');
       assert.equal(header.style.background,palette.style.background);
       assert.equal(paper.querySelectorAll('[aria-label^="Màu giấy "]').length,5);
       assert.ok(dom.window.getComputedStyle(paper.querySelector('textarea')!).fontFamily.includes('Noto Sans'));

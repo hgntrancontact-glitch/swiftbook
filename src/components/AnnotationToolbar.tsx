@@ -11,13 +11,14 @@ interface AnnotationToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
   preserveAnchorGap?: boolean;
   preferredAbove?: boolean;
   align?: 'left' | 'center';
+  fitAnchorEdges?: boolean;
   scaleWithPage?: boolean;
   uiScale?: number;
 }
 
 // Tool UI lives in screen coordinates; the annotation remains in page coordinates.
 export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarProps>(
-  ({ anchorId, anchorIds, scopeId, preserveAnchorGap = false, preferredAbove = true, align = 'center', scaleWithPage = false, uiScale = 1, children, className, style, ...props }, forwardedRef) => {
+  ({ anchorId, anchorIds, scopeId, preserveAnchorGap = false, preferredAbove = true, align = 'center', fitAnchorEdges = false, scaleWithPage = false, uiScale = 1, children, className, style, ...props }, forwardedRef) => {
     const toolbarRef = useRef<HTMLDivElement | null>(null);
     useLayoutEffect(() => {
       const toolbar = toolbarRef.current;
@@ -46,7 +47,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         const leftLimit = align === 'left' ? Math.max(8, (viewport?.left || 0) + 8) : 8;
         const rightLimit = align === 'left' ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
         const placement = placeAnnotationToolbar(bounds, { width: size.width / scale, height: size.height / scale },
-          { left: leftLimit, right: rightLimit, top: topLimit, bottom: bottomLimit }, scale, preferredAbove, preserveAnchorGap, align);
+          { left: leftLimit, right: rightLimit, top: topLimit, bottom: bottomLimit }, scale, preferredAbove, preserveAnchorGap, align, fitAnchorEdges);
         toolbar.style.left = `${snapUiPixel(placement.left,dpr)/scale}px`;
         toolbar.style.top = `${snapUiPixel(placement.top,dpr)/scale}px`;
         toolbar.style.visibility = bounds.bottom <= topLimit || bounds.top >= bottomLimit || bounds.right <= Math.max(0, viewport?.left || 0) || bounds.left >= Math.min(window.innerWidth, viewport?.right || window.innerWidth) ? 'hidden' : 'visible';
@@ -83,7 +84,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         window.removeEventListener('scroll', update, true);
         window.removeEventListener('resize', update);
       };
-    }, [anchorId, anchorIds?.join('|'), scopeId, preserveAnchorGap, preferredAbove, align, scaleWithPage, uiScale]);
+    }, [anchorId, anchorIds?.join('|'), scopeId, preserveAnchorGap, preferredAbove, align, fitAnchorEdges, scaleWithPage, uiScale]);
 
     return createPortal(
       <div {...props} ref={node => {

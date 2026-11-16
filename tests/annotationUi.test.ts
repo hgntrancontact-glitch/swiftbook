@@ -49,3 +49,17 @@ test('other annotation controls retain viewport fitting', () => {
   assert.ok(placed.top >= limits.top);
   assert.ok(placed.top + placed.height <= limits.bottom);
 });
+
+test('Box toolbar keeps a left anchor, opens inward at side edges, and flips only to fit top/bottom limits',()=>{
+  const size={width:380,height:44};
+  for(const bounds of [anchor,{left:10,right:160,top:300,bottom:400},{left:1050,right:1180,top:300,bottom:400},
+    {left:300,right:800,top:105,bottom:180},{left:300,right:800,top:920,bottom:980}]) {
+    const placed=placeAnnotationToolbar(bounds,size,limits,1,true,false,'left',true);
+    assert.ok(placed.left>=limits.left);assert.ok(placed.left+placed.width<=limits.right);
+    assert.ok(placed.top>=limits.top);assert.ok(placed.top+placed.height<=limits.bottom);
+    assert.equal(placed.above,bounds.top!==105);
+    if(bounds.left===300)assert.equal(placed.left,bounds.left);
+    if(bounds.left===1050)assert.equal(placed.left+placed.width,bounds.right);
+    if(bounds.left===10)assert.equal(placed.left,bounds.left);
+  }
+});

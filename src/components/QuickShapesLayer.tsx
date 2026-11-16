@@ -79,7 +79,7 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
     if(erasing) {interaction.current={mode:'erase',pointer:event.pointerId,start:p,last:p,dirty:false};erase(p);return;}
     if(shape) {
       state.select(shape,fileId);
-      interaction.current={mode:handle===undefined || (shape.quickShape!=='rectangle' && handle!==1)?'move':'handle',pointer:event.pointerId,start:p,last:p,shape,handle,temporary:temporary(shape.id),dirty:false};
+      interaction.current={mode:handle===undefined?'move':'handle',pointer:event.pointerId,start:p,last:p,shape,handle,temporary:temporary(shape.id),dirty:false};
       setDraft(shape);return;
     }
     if(!isQuickShapeTool(activeTool))return;
@@ -97,8 +97,9 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
     const p=point(event);own.last=p;own.dirty=own.dirty || Math.hypot((p.x-own.start.x)*width/100,(p.y-own.start.y)*height/100)>1;
     if(own.mode==='erase'){erase(p);return;}
     const shape=own.shape!;
+    const handle=own.mode==='handle'?quickHandles(shape)[own.handle!]:null;
     const points=own.mode==='create'?quickPoints(shape.quickShape!,own.start,p,event.shiftKey):
-      own.mode==='handle'?moveQuickHandle(shape,own.handle!,p):translateQuickPoints(shape.points,p.x-own.start.x,p.y-own.start.y);
+      handle?moveQuickHandle(shape,own.handle!,{x:Math.max(0,Math.min(100,handle.x+p.x-own.start.x)),y:Math.max(0,Math.min(100,handle.y+p.y-own.start.y))}):translateQuickPoints(shape.points,p.x-own.start.x,p.y-own.start.y);
     setDraft({...shape,points});
   };
   const finish=(event:React.PointerEvent,cancel=false)=>{

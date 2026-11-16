@@ -58,24 +58,24 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
       {state.group==='quick'?shapes.map(({tool,label,icon:Icon,temporary},index)=><React.Fragment key={tool}>
         {index===3 && <span className="drawing-tools-divider"/>}
         <button type="button" className="drawing-tool-button" data-active={activeTool===tool} style={{color:temporary?'#555':'#000'}}
-          title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}><Icon size={22} strokeWidth={3}/></button>
+          title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}>{Icon===ArrowUpRight?<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20 20 4M4 4h16v16"/></svg>:<Icon size={24} strokeWidth={1.8}/>}</button>
       </React.Fragment>):pens.map(({tool,label,icon:Icon,smart})=><button key={tool} type="button" className="drawing-tool-button drawing-pen-button"
         data-active={activeTool===tool} title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}>
         <Icon size={24} strokeWidth={1.8}/>{smart && <Sparkles size={10} className="drawing-smart-sparkles"/>}
       </button>)}
       <span className="drawing-tools-divider"/>
       <div data-shared-drawing-controls className="drawing-shared-controls">
-        <button type="button" className="drawing-tool-button drawing-control" data-active={activeTool==='eraser'} title="Xóa nét vẽ và hình" aria-label="Xóa nét vẽ và hình" onClick={()=>choose('eraser')}><Eraser size={23}/></button>
+        <button type="button" className="drawing-tool-button drawing-control" data-active={activeTool==='eraser'} title="Xóa nét vẽ và hình" aria-label="Xóa nét vẽ và hình" onClick={()=>choose('eraser')}><Eraser size={24} strokeWidth={1.8}/></button>
         <button type="button" className="drawing-tool-button drawing-px-control" title="Độ dày nét" aria-label="Độ dày nét" aria-expanded={popover==='size'} onClick={()=>setPopover(popover==='size'?null:'size')}>
-          {state.settings.size}px<ChevronDown size={11}/>
+          {state.settings.size}px<ChevronDown size={12} strokeWidth={1.8}/>
         </button>
         <button type="button" className="drawing-tool-button drawing-color-control" title="Màu nét" aria-label="Màu nét" aria-expanded={popover==='color'} onClick={()=>setPopover(popover==='color'?null:'color')}>
-          <span className="drawing-color-dot" style={{backgroundColor:state.settings.color}}/><ChevronDown size={11}/>
+          <span className="drawing-color-dot" style={{backgroundColor:state.settings.color}}/><ChevronDown size={12} strokeWidth={1.8}/>
         </button>
         <button type="button" className="drawing-tool-button drawing-line-control" title="Đổi nét liền/đứt" aria-label="Đổi nét liền hoặc nét đứt" aria-pressed={state.settings.dashStyle==='dashed'} onClick={()=>{state.updateSettings({dashStyle:state.settings.dashStyle==='solid'?'dashed':'solid'});setPopover(null);}}>
-          <svg width="28" height="16" aria-hidden="true"><path d="M1 8H27" fill="none" stroke="#000" strokeWidth="2.6" strokeDasharray={state.settings.dashStyle==='dashed'?'2.8 2.8':undefined}/></svg>
+          <svg width="28" height="24" aria-hidden="true"><path d="M1 12H27" fill="none" stroke="#000" strokeWidth="1.8" strokeDasharray={state.settings.dashStyle==='dashed'?'2.8 2.8':undefined}/></svg>
         </button>
-        <button type="button" className="drawing-tool-button drawing-close-control" title="Đóng thanh công cụ" aria-label="Đóng thanh công cụ" onClick={()=>{state.setOpen(false);state.setSelection(null);onActiveToolChange('select');}}><X size={21} strokeWidth={2.5}/></button>
+        <button type="button" className="drawing-tool-button drawing-close-control" title="Đóng thanh công cụ" aria-label="Đóng thanh công cụ" onClick={()=>{state.setOpen(false);state.setSelection(null);onActiveToolChange('select');}}><X size={24} strokeWidth={1.8}/></button>
       </div>
     </div>
     {popover==='size' && <div className="drawing-settings-popover drawing-size-popover" data-quick-shape-ui>

@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {EraserCursor} from '../src/components/EraserCursor';
 import {DrawingCanvas} from '../src/components/DrawingCanvas';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,6 +33,7 @@ async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1) {
     const [tool,setTool]=useState(initial),[shapes,setShapes]=useState<DrawingStroke[]>([]);
     const state=useQuickShapes()!;Object.assign(model,{tool,setTool,shapes,replaceShapes:setShapes,state,cleared});
     return React.createElement(React.Fragment,null,
+      React.createElement(EraserCursor,{active:tool==='eraser',size:20}),
       React.createElement('div',{'data-user-zoom':zoom},React.createElement('div',{'data-page-container':true},
         React.createElement(QuickShapesLayer,{fileId:'doc-a',pageNumber:1,width:1000*scale,height:800*scale,scale,activeTool:tool,drawings:shapes,
           onAddStroke:payload=>{const id=`shape-${++serial}`;setShapes(old=>[...old,{...payload,id,createdAt:Date.now()}]);return id;},
@@ -49,7 +51,7 @@ async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1) {
   await act(async()=>root.render(React.createElement(QuickShapesProvider,null,React.createElement(TestApp))));
   const svg=()=>dom.window.document.querySelector('[data-quick-shape-layer]')!;
   const pointer=async(target:Element,type:string,x:number,y:number,shiftKey=false)=>{
-    const event=new dom.window.MouseEvent(type,{bubbles:true,button:0,buttons:type==='pointerup'?0:1,clientX:x,clientY:y,shiftKey});
+    const event=new dom.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,buttons:type==='pointerup'?0:1,clientX:x,clientY:y,shiftKey});
     Object.defineProperty(event,'pointerId',{value:1});Object.defineProperty(event,'pointerType',{value:'mouse'});await act(async()=>{target.dispatchEvent(event);});
   };
   const click=async(label:string)=>{const target=dom.window.document.querySelector(`[aria-label="${label}"]`)!;assert.ok(target,label);await act(async()=>{target.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));});};
@@ -160,7 +162,7 @@ test('undo/restoring persisted drawings is not overwritten by remembered toolbar
   } finally {await h.dispose();}
 });
 
-test('handles stay hidden during drawing, appear on release, hide on canvas click and reappear on selection; endpoints translate the whole curve',async()=>{
+test('handles stay hidden during drawing, appear on release, hide on canvas click and reappear on selection; endpoint drags pin the opposite end and retain the bend',async()=>{
   for(const tool of ['quick_arrow','quick_line','quick_arrow_temporary','quick_line_temporary'] as const) {
     const h=await harness(tool);try {
       const get=()=>h.model.shapes[0] || h.model.state.temporary[0];
@@ -172,13 +174,16 @@ test('handles stay hidden during drawing, appear on release, hide on canvas clic
       await h.pointer(circles[1],'pointerdown',250,250);await h.pointer(h.svg(),'pointerup',250,100);
       const before=get().points.map(p=>({...p}));
       circles=h.svg().querySelectorAll('circle');
-      await h.pointer(circles[0],'pointerdown',100,200);await h.pointer(h.svg(),'pointerup',150,240);
-      assert.deepEqual(get().points,before.map(p=>({x:p.x+5,y:p.y+5})));
+      const preview=h.svg().querySelector('[data-quick-shape-hit] > g')!.innerHTML;
+      await h.pointer(circles[0],'pointerdown',102,202);await h.pointer(h.svg(),'pointermove',102,202);
+      assert.equal(h.svg().querySelector('[data-quick-shape-hit] > g')!.innerHTML,preview);
+      await h.pointer(h.svg(),'pointerup',152,242);
+      assert.deepEqual(get().points,[{x:before[0].x+5,y:before[0].y+5},{x:before[1].x+2.5,y:before[1].y+2.5},before[2]]);
       const moved=get().points.map(p=>({...p}));
       circles=h.svg().querySelectorAll('circle');const end=moved[2];
       await h.pointer(circles[2],'pointerdown',end.x*10,end.y*8);
       await h.pointer(h.svg(),'pointerup',end.x*10-20,end.y*8+16);
-      assert.deepEqual(get().points,moved.map(p=>({x:p.x-2,y:p.y+2})));
+      assert.deepEqual(get().points,[moved[0],{x:moved[1].x-1,y:moved[1].y+1},{x:moved[2].x-2,y:moved[2].y+2}]);
       await h.pointer(h.svg(),'pointerdown',900,700);await h.pointer(h.svg(),'pointerup',900,700);
       assert.equal(h.svg().querySelectorAll('circle').length,0);
       const hit=h.svg().querySelector('path[stroke="transparent"]')!;
@@ -224,5 +229,42 @@ test('one Noto Sans control strip shares colour, px, dash and eraser between sha
     await h.click('Mũi tên, Line và khung');
     assert.equal(h.model.state.group,'quick');assert.deepEqual(h.model.state.settings,{color:'#3b82f6',size:7,dashStyle:'dashed'});
     await h.click('Đóng thanh công cụ');assert.equal(doc.querySelector('[data-shared-drawing-controls]'),null);
+  } finally {await h.dispose();}
+});
+
+test('eraser cursor follows pointer events throughout captured erasing without waiting for release',async()=>{
+  const h=await harness();try {
+    await h.pointer(h.svg(),'pointerdown',100,200);await h.pointer(h.svg(),'pointerup',400,200);
+    await h.click('Xóa nét vẽ và hình');
+    const cursor=h.dom.window.document.querySelector<HTMLElement>('[data-eraser-cursor]')!;
+    await h.pointer(h.svg(),'pointerdown',200,200);
+    assert.equal(h.model.shapes.length,0);
+    assert.equal(cursor.style.left,'200px');assert.equal(cursor.style.visibility,'visible');
+    for(const [x,y] of [[300,240],[450,310],[500,380]]) {
+      await h.pointer(h.svg(),'pointermove',x,y);
+      assert.equal(cursor.style.left,`${x}px`);assert.equal(cursor.style.top,`${y}px`);
+    }
+    await h.pointer(h.svg(),'pointerup',500,380);
+    assert.equal(cursor.style.left,'500px');
+    await h.click('Mũi tên');
+    assert.equal(h.dom.window.document.querySelector('[data-eraser-cursor]'),null);
+  } finally {await h.dispose();}
+});
+
+test('all tool buttons share height and main icon size/weight in both panels, with a readable px control',async()=>{
+  const h=await harness();try {
+    const doc=h.dom.window.document;
+    for(const group of ['quick','draw']) {
+      if(group==='draw')await h.click('Bút vẽ và Highlight');
+      const buttons=doc.querySelectorAll('.drawing-tool-button');
+      for(const button of buttons) {
+        const css=h.dom.window.getComputedStyle(button);
+        assert.equal(css.height,'34px');
+        const svg=button.querySelector('svg')!;
+        assert.equal(svg.getAttribute('height'),button.classList.contains('drawing-px-control') || button.classList.contains('drawing-color-control')?'12':'24');
+        assert.equal(svg.getAttribute('stroke-width') || svg.querySelector('path')!.getAttribute('stroke-width'),'1.8');
+      }
+      assert.equal(h.dom.window.getComputedStyle(doc.querySelector('.drawing-px-control')!).fontSize,'14px');
+    }
   } finally {await h.dispose();}
 });

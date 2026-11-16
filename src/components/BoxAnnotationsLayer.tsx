@@ -2,7 +2,7 @@ import { BoxBorder } from './BoxBorder';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import React, { useState, useRef, useEffect } from 'react';
 import { BoxAnnotation, BoxConfig, DEFAULT_BOX_CONFIG } from '../types';
-import { Trash2, Check, Square } from 'lucide-react';
+import { BoxToolbarControls } from './BoxToolbarControls';
 import { findBestMatchingPage, elevatePageZIndex, resetPageZIndex } from '../utils/pageBoundaryHelper';
 
 interface BoxAnnotationsLayerProps {
@@ -21,16 +21,6 @@ interface BoxAnnotationsLayerProps {
   selectedIds?: string[];
   onSelect?: (id: string, isShift: boolean) => void;
 }
-
-const BOX_PRESET_COLORS = [
-  '#ef4444', // Red
-  '#3b82f6', // Blue
-  '#22c55e', // Green
-  '#eab308', // Yellow
-  '#171717', // Black
-];
-
-const BORDER_WIDTHS = [2, 3, 4, 6];
 
 export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
   fileId,
@@ -439,12 +429,6 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
   };
 
   const isMultiSelected = Boolean(selectedIds && selectedIds.length > 1);
-  const selectedBoxesOnPage = pageBoxes.filter((b) => selectedIds?.includes(b.id));
-  const primaryBoxId =
-    selectedBoxId && selectedIds?.includes(selectedBoxId)
-      ? selectedBoxId
-      : (selectedIds && selectedIds.find((id) => pageBoxes.some((b) => b.id === id))) || selectedBoxId;
-
   const isEditingAnyBox = Boolean(
     selectedBoxId ||
     draggingBoxId ||
@@ -473,28 +457,6 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
       {pageBoxes.map((box) => {
         const isSelected = selectedIds ? selectedIds.includes(box.id) : selectedBoxId === box.id;
         const isDragging = draggingBoxId === box.id;
-        const isDashed = box.borderStyle === 'dashed';
-        const hasFill = box.fillColor && box.fillColor !== 'transparent';
-        const isNearTop = box.y < 12;
-        const isPrimaryForToolbar = !isMultiSelected || box.id === primaryBoxId;
-
-        // Multi-selection mixed state calculations
-        const allSameColor = isMultiSelected
-          ? selectedBoxesOnPage.every((b) => (b.color || '#ef4444') === (box.color || '#ef4444'))
-          : true;
-        const allSameWidth = isMultiSelected
-          ? selectedBoxesOnPage.every((b) => (b.borderWidth || 2) === (box.borderWidth || 2))
-          : true;
-        const allSameStyle = isMultiSelected
-          ? selectedBoxesOnPage.every((b) => (b.borderStyle || 'solid') === (box.borderStyle || 'solid'))
-          : true;
-        const allSameFill = isMultiSelected
-          ? selectedBoxesOnPage.every((b) => {
-              const bf = b.fillColor && b.fillColor !== 'transparent';
-              return Boolean(bf) === Boolean(hasFill);
-            })
-          : true;
-
         return (
           <div
             key={box.id}
@@ -598,135 +560,18 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
 
             {/* Floating Toolbar with smart boundary positioning & compact sleek styling */}
             {isSelected && !isMultiSelected && !isDragging && (!altGhost || altGhost.id !== box.id) && (
-              <AnnotationToolbar anchorId={`box-${box.id}`} preferredAbove={!isNearTop}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-                className="box-floating-toolbar pointer-events-auto bg-white/98 backdrop-blur-md border border-neutral-200/90 shadow-lg rounded-lg px-2 py-1 flex items-center gap-1.5 whitespace-nowrap select-none"
-              >
-                {/* Border Color Swatches (5 colors: Red, Blue, Green, Yellow, Black) */}
-                <div className="flex items-center gap-1 pr-1.5 border-r border-neutral-200">
-                  {BOX_PRESET_COLORS.map((c) => {
-                    const isChecked = allSameColor && (box.color || '#ef4444') === c;
-                    return (
-                      <button
-                        key={c}
-                        onClick={() => {
-                          if (isMultiSelected && selectedBoxesOnPage.length > 1) {
-                            selectedBoxesOnPage.forEach((targetBox) => {
-                              const tHasFill = targetBox.fillColor && targetBox.fillColor !== 'transparent';
-                              const tNewFill = tHasFill ? `${c}25` : 'transparent';
-                              onUpdateBox(targetBox.id, { color: c, fillColor: tNewFill });
-                            });
-                          } else {
-                            const newFill = hasFill ? `${c}25` : 'transparent';
-                            onUpdateBox(box.id, { color: c, fillColor: newFill });
-                          }
-                          onUpdateBoxConfig?.({ color: c, hasBackground: hasFill });
-                        }}
-                        className="w-4.5 h-4.5 rounded-full border border-black/15 flex items-center justify-center transition-transform hover:scale-115 cursor-pointer shadow-2xs"
-                        style={{ backgroundColor: c }}
-                        title={`Đổi màu viền sang ${c}`}
-                      >
-                        {isChecked && (
-                          <Check size={10} className={c === '#eab308' ? 'text-black' : 'text-white'} />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Border Width Selector (2px, 3px, 4px, 6px) */}
-                <div className="flex items-center gap-0.5 px-1 border-r border-neutral-200">
-                  {BORDER_WIDTHS.map((w) => {
-                    const isActive = allSameWidth && (box.borderWidth || 2) === w;
-                    return (
-                      <button
-                        key={w}
-                        onClick={() => {
-                          if (isMultiSelected && selectedBoxesOnPage.length > 1) {
-                            selectedBoxesOnPage.forEach((targetBox) => {
-                              onUpdateBox(targetBox.id, { borderWidth: w });
-                            });
-                          } else {
-                            onUpdateBox(box.id, { borderWidth: w });
-                          }
-                          onUpdateBoxConfig?.({ borderWidth: w });
-                        }}
-                        className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer ${
-                          isActive
-                            ? 'bg-neutral-900 text-white shadow-2xs'
-                            : 'text-neutral-700 hover:bg-neutral-100'
-                        }`}
-                        title={`Độ dày viền ${w}px`}
-                      >
-                        {w}px
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Border Style (Solid / Dashed) */}
-                <div className="flex items-center gap-1 px-0.5">
-                  <button
-                    onClick={() => {
-                      const nextStyle = isDashed ? 'solid' : 'dashed';
-                      if (isMultiSelected && selectedBoxesOnPage.length > 1) {
-                        selectedBoxesOnPage.forEach((targetBox) => {
-                          onUpdateBox(targetBox.id, { borderStyle: nextStyle });
-                        });
-                      } else {
-                        onUpdateBox(box.id, { borderStyle: nextStyle });
-                      }
-                      onUpdateBoxConfig?.({ borderStyle: nextStyle });
-                    }}
-                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center justify-center cursor-pointer ${
-                      allSameStyle && isDashed ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                    title={isDashed ? 'Chuyển sang nét liền' : 'Chuyển sang nét đứt'}
-                  >
-                    <span>{isDashed ? 'Đứt' : 'Liền'}</span>
-                  </button>
-
-                  {/* Fill / Background Toggle */}
-                  <button
-                    onClick={() => {
-                      const nextHasFill = !hasFill;
-                      if (isMultiSelected && selectedBoxesOnPage.length > 1) {
-                        selectedBoxesOnPage.forEach((targetBox) => {
-                          const targetFill = nextHasFill ? `${targetBox.color || '#ef4444'}25` : 'transparent';
-                          onUpdateBox(targetBox.id, { fillColor: targetFill });
-                        });
-                      } else {
-                        const nextFill = nextHasFill ? `${box.color || '#ef4444'}25` : 'transparent';
-                        onUpdateBox(box.id, { fillColor: nextFill });
-                      }
-                      onUpdateBoxConfig?.({ hasBackground: nextHasFill });
-                    }}
-                    className={`p-1 rounded text-[11px] transition-colors cursor-pointer ${
-                      allSameFill && hasFill ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                    title={hasFill ? 'Bỏ màu nền (Trong suốt)' : 'Tô màu nền nhẹ'}
-                  >
-                    <Square size={13} className={hasFill ? 'fill-current' : ''} />
-                  </button>
-                </div>
-                
-                <div className="w-px h-3.5 bg-neutral-200" />
-
-                {/* Delete Button */}
-                <button
-                  onClick={() => {
-                    if (isMultiSelected && selectedBoxesOnPage.length > 1) {
-                      selectedBoxesOnPage.forEach((targetBox) => onDeleteBox(targetBox.id));
-                    } else {
-                      onDeleteBox(box.id);
-                    }
-                  }}
-                  className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer shrink-0"
-                  title="Xóa khung"
-                >
-                  <Trash2 size={13.5} />
-                </button>
+              <AnnotationToolbar anchorId={`box-${box.id}`} align="left" fitAnchorEdges
+                onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                className="box-floating-toolbar noto-ui pointer-events-auto select-none">
+                <BoxToolbarControls box={box} onChange={patch=>{
+                  onUpdateBox(box.id,patch);
+                  onUpdateBoxConfig?.({
+                    ...(patch.color!==undefined?{color:patch.color}:{}),
+                    ...(patch.borderWidth!==undefined?{borderWidth:patch.borderWidth}:{}),
+                    ...(patch.borderStyle!==undefined?{borderStyle:patch.borderStyle}:{}),
+                    ...(patch.fillColor!==undefined?{hasBackground:!!patch.fillColor && patch.fillColor!=='transparent'}:{}),
+                  });
+                }} onDelete={()=>onDeleteBox(box.id)}/>
               </AnnotationToolbar>
             )}
 
