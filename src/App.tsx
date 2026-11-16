@@ -1,3 +1,4 @@
+import {useWorkspaceDocumentFocus} from './hooks/useWorkspaceDocumentFocus';
 import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
 import {isQuickShapeTool,isDrawingHighlighter} from './utils/quickShapes';
@@ -159,20 +160,7 @@ function SwiftbookApp() {
   const multiPdfContainerRef = useRef<HTMLDivElement>(null);
   const workspacePairIndexRef = useRef(0);
 
-  const scrollWorkspaceToDoc = useCallback((docId: string) => {
-    requestAnimationFrame(() => {
-      const container = multiPdfContainerRef.current;
-      if (!container) return;
-      const columns = Array.from(
-        container.querySelectorAll<HTMLElement>(':scope > [data-workspace-doc]')
-      ).filter((column) => column.style.display !== 'none');
-      const selectedIndex = columns.findIndex((column) => column.dataset.workspaceDoc === docId);
-      if (selectedIndex < 0 || columns.length < 2) return;
-      const pairIndex = Math.max(0, Math.min(columns.length - 2, selectedIndex === 0 ? 0 : selectedIndex - 1));
-      workspacePairIndexRef.current = pairIndex;
-      container.scrollTo({ left: pairIndex * (container.clientWidth / 2), behavior: 'smooth' });
-    });
-  }, []);
+  const scrollWorkspaceToDoc = useWorkspaceDocumentFocus(multiPdfContainerRef,workspacePairIndexRef,visibleDocs.map(doc=>doc.id));
 
   useEffect(() => {
     const container = multiPdfContainerRef.current;
@@ -867,6 +855,7 @@ function SwiftbookApp() {
       const existing = openDocs.find((d) => d.fileId === book.id);
       if (existing) {
         setActiveDocId(existing.id);
+        scrollWorkspaceToDoc(existing.id);
         if (existing.isHidden) {
           setOpenDocs((prev) =>
             prev.map((d) => (d.id === existing.id ? { ...d, isHidden: false } : d))

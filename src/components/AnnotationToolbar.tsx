@@ -35,18 +35,26 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         const viewport = anchor.closest('.pdf-viewport-container')?.getBoundingClientRect();
         const topLimit = Math.max(8, viewport?.top || 0, document.getElementById('app-header')?.getBoundingClientRect().bottom || 0) + 8;
         const bottomLimit = Math.min(window.innerHeight - 8, viewport?.bottom || window.innerHeight, document.getElementById('bottom-toolbar-dock')?.getBoundingClientRect().top || window.innerHeight) - 8;
-        const scale = uiScale * (scaleWithPage ? getAnnotationZoom(anchor) : 1);
+        let scale = uiScale * (scaleWithPage ? getAnnotationZoom(anchor) : 1);
         // Native CSS zoom rasterizes text at its actual display size. A transform
         // kept a low-resolution text layer after the gesture finished.
         toolbar.style.transform = '';
         toolbar.style.zoom = String(scale);
         const dpr=window.devicePixelRatio || 1;
-        toolbar.dataset.annotationToolbarScale = String(scale);
-        const leftLimit = align === 'left' ? Math.max(8, (viewport?.left || 0) + 8) : 8;
-        const rightLimit = align === 'left' ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
+        const leftLimit = align === 'left' || fitAnchorEdges ? Math.max(8, (viewport?.left || 0) + 8) : 8;
+        const rightLimit = align === 'left' || fitAnchorEdges ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
         const screenLimits={left:leftLimit,right:rightLimit,top:topLimit,bottom:bottomLimit};
         const page=anchor.closest<HTMLElement>('[data-page-container="true"]');
         const limits=fitAnchorEdges && page?toolbarLimitsWithinPage(screenLimits,page.getBoundingClientRect()):screenLimits;
+        if(fitAnchorEdges) {
+          // Measure one unchanged row at the requested zoom, then fit that
+          // whole row to the visible paper instead of wrapping its controls.
+          toolbar.style.maxWidth='none';
+          const natural=toolbar.getBoundingClientRect();
+          scale*=Math.min(1,Math.max(1,limits.right-limits.left)/Math.max(1,natural.width));
+          toolbar.style.zoom=String(scale);
+        }
+        toolbar.dataset.annotationToolbarScale = String(scale);
         toolbar.style.maxWidth = `${Math.max(1, (fitAnchorEdges?limits.right-limits.left:window.innerWidth-16)) / scale}px`;
         const size = toolbar.getBoundingClientRect();
         const placement = placeAnnotationToolbar(bounds, { width: size.width / scale, height: size.height / scale },
@@ -95,7 +103,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         toolbarRef.current = node;
         if (typeof forwardedRef === 'function') forwardedRef(node);
         else if (forwardedRef) forwardedRef.current = node;
-      }} className={className} style={{ position: 'fixed', zIndex: 90000, left: 0, top: 0, visibility: 'hidden', width: style?.width || 'max-content', flexWrap: 'wrap', transformOrigin: '0 0' }}>
+      }} className={className} style={{ position: 'fixed', zIndex: 90000, left: 0, top: 0, visibility: 'hidden', width: style?.width || 'max-content', flexWrap: fitAnchorEdges ? 'nowrap' : 'wrap', transformOrigin: '0 0' }}>
         {children}
       </div>, document.body
     );

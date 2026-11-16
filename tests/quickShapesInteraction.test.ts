@@ -202,6 +202,10 @@ test('one Noto Sans control strip shares colour, dash and eraser while Highlight
     assert.equal(doc.querySelectorAll('.lucide-timer').length,0);
     assert.equal((doc.querySelector('[aria-label="Mũi tên"]') as HTMLElement).style.color,'rgb(0, 0, 0)');
     assert.equal((doc.querySelector('[aria-label="Mũi tên tạm — mất sau 3 giây"]') as HTMLElement).style.color,'rgb(85, 85, 85)');
+    for(const icon of doc.querySelectorAll('[data-temporary="true"] > svg')) {
+      assert.equal(h.dom.window.getComputedStyle(icon).opacity,'0.7');
+      assert.ok(h.dom.window.getComputedStyle(icon).maskImage.includes('linear-gradient'));
+    }
     await h.click('Màu nét');
     assert.equal(doc.querySelectorAll('.drawing-palette-color').length,10);
     await h.click('Chọn màu Xanh lam');assert.equal(h.model.state.settings.color,'#3b82f6');

@@ -560,7 +560,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
 
             {/* Floating Toolbar with smart boundary positioning & compact sleek styling */}
             {isSelected && !isMultiSelected && !isDragging && (!altGhost || altGhost.id !== box.id) && (
-              <AnnotationToolbar anchorId={`box-${box.id}`} align="left" fitAnchorEdges
+              <AnnotationToolbar anchorId={`box-${box.id}`} align="center" fitAnchorEdges scaleWithPage
                 onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 className="box-floating-toolbar noto-ui pointer-events-auto select-none">
                 <BoxToolbarControls box={box} onChange={patch=>{

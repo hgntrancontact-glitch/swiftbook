@@ -18,7 +18,7 @@ test('mounted Box toolbar measures its PDF page and repositions on box movement 
   let box={left:1000,right:1100,top:600,bottom:640};
   dom.window.HTMLElement.prototype.getBoundingClientRect=function(){
     const bounds=this.id==='test-box'?box:this.hasAttribute('data-page-container')?paper:this.classList.contains('box-floating-toolbar')?
-      {left:0,top:0,right:Math.min(400,Number.parseFloat(this.style.maxWidth)||400),bottom:44}:{left:0,right:1996,top:160,bottom:1248};
+      {left:0,top:0,right:Math.min(400,Number.parseFloat(this.style.maxWidth)||400)*(Number(this.style.zoom)||1),bottom:44*(Number(this.style.zoom)||1)}:{left:0,right:1996,top:160,bottom:1248};
     return {...bounds,width:bounds.right-bounds.left,height:bounds.bottom-bounds.top,x:bounds.left,y:bounds.top,toJSON(){}};
   };
   const {createRoot}=await import('react-dom/client');const root=createRoot(dom.window.document.getElementById('root')!);
@@ -28,21 +28,29 @@ test('mounted Box toolbar measures its PDF page and repositions on box movement 
   });
   try {
     await act(async()=>root.render(React.createElement('div',{className:'pdf-viewport-container'},
-      React.createElement('div',{'data-page-container':'true'},React.createElement('div',{id:'test-box'}),
-        React.createElement(AnnotationToolbar,{anchorId:'test-box',align:'left',fitAnchorEdges:true,className:'box-floating-toolbar'},'Controls')))));
+      React.createElement('div',{'data-page-container':'true','data-user-zoom':'1'},React.createElement('div',{id:'test-box'}),
+        React.createElement(AnnotationToolbar,{anchorId:'test-box',align:'center',fitAnchorEdges:true,scaleWithPage:true,className:'box-floating-toolbar'},'Controls')))));
     const doc=dom.window.document,toolbar=doc.querySelector<HTMLElement>('.box-floating-toolbar')!;
-    assert.equal(toolbar.style.left,'1000px');
+    assert.equal(toolbar.style.left,'850px');assert.equal(toolbar.style.flexWrap,'nowrap');
     box={...box,left:1237,right:1337};
     doc.getElementById('test-box')!.style.left='1237px';await flush();
-    assert.equal(toolbar.style.left,'937px'); // right edge of the box, well before the screen edge
+    assert.equal(toolbar.style.left,'1087px'); // remains balanced instead of snapping to the opposite box edge
     assert.ok(Number.parseFloat(toolbar.style.left)+400<=paper.right);
     box={...box,top:260,bottom:300};doc.getElementById('test-box')!.style.top='260px';await flush();
     assert.equal(toolbar.style.top,'310px');
     paper={left:500,right:800,top:250,bottom:1160};box={left:650,right:750,top:600,bottom:640};
     doc.querySelector('.pdf-viewport-container')!.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));
-    assert.equal(toolbar.style.maxWidth,'292px');
-    assert.ok(Number.parseFloat(toolbar.style.left)>=paper.left);
-    assert.ok(Number.parseFloat(toolbar.style.left)+292<=paper.right);
+    assert.equal(Number(toolbar.dataset.annotationToolbarScale),.73);
+    for(const zoom of [.25,.5,1,1.5,3]) {
+      doc.querySelector<HTMLElement>('[data-page-container]')!.dataset.userZoom=String(zoom);
+      doc.querySelector('.pdf-viewport-container')!.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));
+      const scale=Number(toolbar.dataset.annotationToolbarScale);
+      const left=Number.parseFloat(toolbar.style.left)*scale;
+      assert.equal(toolbar.style.flexWrap,'nowrap');
+      assert.ok(left>=paper.left);assert.ok(left+400*scale<=paper.right);
+      assert.equal(scale,Math.min(zoom,292/400));
+      assert.equal(toolbar.getBoundingClientRect().height,44*scale);
+    }
   } finally {
     await act(async()=>root.unmount());dom.window.close();
     for(const [key,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete (globalThis as any)[key];}

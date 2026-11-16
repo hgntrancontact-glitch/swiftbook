@@ -4,6 +4,7 @@ import React,{act,useState} from 'react';
 import {JSDOM} from 'jsdom';
 import {BoxToolbarControls} from '../src/components/BoxToolbarControls';
 import type {BoxAnnotation} from '../src/types';
+import {readFileSync} from 'node:fs';
 
 test('Box toolbar changes width, toggles dash/fill directly, retains fill when recoloured and deletes the selected box',async()=>{
   const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost'});
@@ -37,6 +38,10 @@ test('Box toolbar changes width, toggles dash/fill directly, retains fill when r
     await act(async()=>{setter.call(input,'7');input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
     assert.equal(saved.borderWidth,7);
     const number=doc.querySelector<HTMLInputElement>('[aria-label="Độ dày viền khung (px)"]')!;
+    const style=doc.createElement('style'),css=readFileSync(new URL('../src/index.css',import.meta.url),'utf8');
+    style.textContent=css.slice(css.indexOf('/* The redesigned drawing panels'));doc.head.appendChild(style);
+    await act(async()=>number.focus());
+    assert.equal(doc.activeElement,number);assert.equal(dom.window.getComputedStyle(number).outline,'none');
     assert.equal(number.value,'7');assert.equal(number.hasAttribute('max'),false);
     assert.equal(input.max,'16');
     for(const value of ['50','125','0.5']) {

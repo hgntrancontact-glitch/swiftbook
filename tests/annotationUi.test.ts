@@ -50,7 +50,7 @@ test('other annotation controls retain viewport fitting', () => {
   assert.ok(placed.top + placed.height <= limits.bottom);
 });
 
-test('Box toolbar keeps a left anchor, opens inward at side edges, and flips only to fit top/bottom limits',()=>{
+test('Box toolbar centres around its box, shifts within the paper and flips only to fit top/bottom limits',()=>{
   const size={width:380,height:44};
   for(const bounds of [anchor,{left:10,right:160,top:300,bottom:400},{left:1050,right:1180,top:300,bottom:400},
     {left:300,right:800,top:105,bottom:180},{left:300,right:800,top:920,bottom:980}]) {
@@ -58,13 +58,11 @@ test('Box toolbar keeps a left anchor, opens inward at side edges, and flips onl
     assert.ok(placed.left>=limits.left);assert.ok(placed.left+placed.width<=limits.right);
     assert.ok(placed.top>=limits.top);assert.ok(placed.top+placed.height<=limits.bottom);
     assert.equal(placed.above,bounds.top!==105);
-    if(bounds.left===300)assert.equal(placed.left,bounds.left);
-    if(bounds.left===1050)assert.equal(placed.left+placed.width,bounds.right);
-    if(bounds.left===10)assert.equal(placed.left,bounds.left);
+    assert.equal(placed.left,Math.max(limits.left,Math.min(limits.right-size.width,(bounds.left+bounds.right-size.width)/2)));
   }
 });
 
-test('Box toolbar switches sides at the PDF edge before approaching the viewport edge',()=>{
+test('Box toolbar shifts continuously at PDF edges without switching abruptly between box edges',()=>{
   const viewport={left:8,right:1990,top:160,bottom:1220};
   for(const page of [{left:350,right:1640,top:250,bottom:1160},{left:550,right:1450,top:200,bottom:1200},
     {left:-400,right:2100,top:-600,bottom:2000}]) {
@@ -76,8 +74,9 @@ test('Box toolbar switches sides at the PDF edge before approaching the viewport
       const result=placeAnnotationToolbar(anchor,size,paper,1,true,false,'left',true);
       assert.ok(result.left>=Math.max(page.left,viewport.left));
       assert.ok(result.left+result.width<=Math.min(page.right,viewport.right));
-      if(left<=threshold)assert.equal(result.left,left);
-      else assert.equal(result.left+result.width,anchor.right);
+      assert.equal(result.left,Math.max(paper.left,Math.min(paper.right-size.width,(anchor.left+anchor.right-size.width)/2)));
+      const next=placeAnnotationToolbar({...anchor,left:anchor.left+1,right:anchor.right+1},size,paper,1,true,false,'left',true);
+      assert.ok(Math.abs(next.left-result.left)<=1);
     }
     const above=placeAnnotationToolbar({left:paper.left,right:paper.left+100,top:paper.top+3,bottom:paper.top+70},size,paper,1,true,false,'left',true);
     assert.equal(above.above,false);assert.ok(above.top>=page.top);
