@@ -32,10 +32,21 @@ test('Box toolbar changes width, toggles dash/fill directly, retains fill when r
     await click('Màu khung #3b82f6');assert.equal(saved.color,'#3b82f6');assert.equal(saved.fillColor,'#3b82f625');
     await click('Bật hoặc tắt nền khung');assert.equal(saved.fillColor,'transparent');
     await click('Màu khung #ef4444');assert.equal(saved.fillColor,'transparent');
-    const input=doc.querySelector('input')!;
+    const input=doc.querySelector<HTMLInputElement>('[aria-label="Độ dày viền khung"]')!;
     const setter=Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!;
     await act(async()=>{setter.call(input,'7');input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
-    assert.equal(saved.borderWidth,7);assert.equal(doc.querySelector('.box-toolbar-width')!.textContent,'7 px');
+    assert.equal(saved.borderWidth,7);
+    const number=doc.querySelector<HTMLInputElement>('[aria-label="Độ dày viền khung (px)"]')!;
+    assert.equal(number.value,'7');assert.equal(number.hasAttribute('max'),false);
+    assert.equal(input.max,'16');
+    for(const value of ['50','125','0.5']) {
+      await act(async()=>{setter.call(number,value);number.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+      assert.equal(saved.borderWidth,Number(value));assert.equal(input.max,'16');
+    }
+    await act(async()=>{setter.call(number,'80');number.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+    assert.equal(saved.borderWidth,80);assert.equal(input.value,'16');
+    await act(async()=>{setter.call(input,'12');input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+    assert.equal(saved.borderWidth,12);assert.equal(number.value,'12');
     assert.deepEqual([saved.x,saved.y,saved.width,saved.height],[20,20,30,15]);
     await click('Xóa khung');assert.equal(deleted,true);
   } finally {

@@ -424,7 +424,9 @@
 .box-toolbar-color { width:18px; height:18px; border:0; border-radius:50%; cursor:pointer; }
 .box-toolbar-color:focus-visible, .box-toolbar-button:focus-visible { outline:2px solid #f5c41a; outline-offset:2px; }
 .box-toolbar-slider { width:100px; margin:0 2px 0 4px; flex-shrink:1; min-width:50px; }
-.box-toolbar-width { font-size:14px; font-weight:400; white-space:nowrap; min-width:32px; }
+.box-toolbar-width { display:inline-flex; align-items:center; gap:3px; font-size:14px; font-weight:400; white-space:nowrap; min-width:32px; }
+.box-toolbar-width-input { padding:2px 0; border:0; border-bottom:1px solid #ccc; background:transparent; color:inherit; font:inherit; text-align:right; appearance:textfield; }
+.box-toolbar-width-input::-webkit-inner-spin-button, .box-toolbar-width-input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .box-toolbar-button { display:inline-flex; align-items:center; justify-content:center; padding:0; width:28px; height:28px; border:0; background:transparent; color:inherit; cursor:pointer; }
 .box-toolbar-button:hover { background:#f4f4f4; }
 .box-toolbar-divider { width:1px; height:24px; background:#e0e0e5; }

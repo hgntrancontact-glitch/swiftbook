@@ -2,6 +2,7 @@ import type {ActiveTool,DrawingPoint,DrawingStroke,QuickShapeKind,QuickShapeTool
 
 export interface QuickShapeSettings {color:string;size:number;dashStyle:'solid'|'dashed'}
 export const DEFAULT_QUICK_SHAPE_SETTINGS:QuickShapeSettings={color:'#ef4444',size:4,dashStyle:'solid'};
+export function isDrawingHighlighter(tool:ActiveTool):boolean {return tool==='highlighter' || tool==='smart_highlighter';}
 export function isQuickShapeTool(tool:ActiveTool):tool is QuickShapeTool {return tool.startsWith('quick_');}
 export function quickToolKind(tool:QuickShapeTool):QuickShapeKind {
   return tool.includes('rectangle')?'rectangle':tool.includes('line')?'line':'arrow';

@@ -19,6 +19,13 @@ export function getAnnotationZoom(anchor: HTMLElement): number {
 
 type Bounds = { left: number; right: number; top: number; bottom: number };
 
+/** Box controls must fit the visible paper, including when it is narrower than the viewport. */
+export function toolbarLimitsWithinPage(limits:Bounds,page:Bounds):Bounds {
+  const left=Math.max(limits.left,page.left+4),right=Math.min(limits.right,page.right-4);
+  const top=Math.max(limits.top,page.top+4),bottom=Math.min(limits.bottom,page.bottom-4);
+  return {left,right:Math.max(left+1,right),top,bottom:Math.max(top+1,bottom)};
+}
+
 export function placeAnnotationToolbar(anchor: Bounds, size: { width: number; height: number }, limits: Bounds,
   scale: number, preferredAbove: boolean, preserveAnchorGap: boolean, align: 'left' | 'center', fitAnchorEdges = false) {
   const width = size.width * scale;

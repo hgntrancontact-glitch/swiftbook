@@ -1,6 +1,6 @@
 import { snapUiPixel } from '../utils/annotationSharpness';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
-import { getAnnotationZoom, placeAnnotationToolbar } from '../utils/annotationUi';
+import { getAnnotationZoom, placeAnnotationToolbar, toolbarLimitsWithinPage } from '../utils/annotationUi';
 import React, { forwardRef, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -42,12 +42,15 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         toolbar.style.zoom = String(scale);
         const dpr=window.devicePixelRatio || 1;
         toolbar.dataset.annotationToolbarScale = String(scale);
-        toolbar.style.maxWidth = `${Math.max(1, window.innerWidth - 16) / scale}px`;
-        const size = toolbar.getBoundingClientRect();
         const leftLimit = align === 'left' ? Math.max(8, (viewport?.left || 0) + 8) : 8;
         const rightLimit = align === 'left' ? Math.min(window.innerWidth - 8, viewport?.right || window.innerWidth) : window.innerWidth - 8;
+        const screenLimits={left:leftLimit,right:rightLimit,top:topLimit,bottom:bottomLimit};
+        const page=anchor.closest<HTMLElement>('[data-page-container="true"]');
+        const limits=fitAnchorEdges && page?toolbarLimitsWithinPage(screenLimits,page.getBoundingClientRect()):screenLimits;
+        toolbar.style.maxWidth = `${Math.max(1, (fitAnchorEdges?limits.right-limits.left:window.innerWidth-16)) / scale}px`;
+        const size = toolbar.getBoundingClientRect();
         const placement = placeAnnotationToolbar(bounds, { width: size.width / scale, height: size.height / scale },
-          { left: leftLimit, right: rightLimit, top: topLimit, bottom: bottomLimit }, scale, preferredAbove, preserveAnchorGap, align, fitAnchorEdges);
+          limits, scale, preferredAbove, preserveAnchorGap, align, fitAnchorEdges);
         toolbar.style.left = `${snapUiPixel(placement.left,dpr)/scale}px`;
         toolbar.style.top = `${snapUiPixel(placement.top,dpr)/scale}px`;
         toolbar.style.visibility = bounds.bottom <= topLimit || bounds.top >= bottomLimit || bounds.right <= Math.max(0, viewport?.left || 0) || bounds.left >= Math.min(window.innerWidth, viewport?.right || window.innerWidth) ? 'hidden' : 'visible';
@@ -66,6 +69,7 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
       if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['style', 'data-scale', 'data-user-zoom'] });
       const page = anchor.closest('[data-page-container="true"]');
       if (page) mutation.observe(page, { attributes: true, attributeFilter: ['style'] });
+      if (page && fitAnchorEdges) resize.observe(page);
       anchors.forEach(el => mutation.observe(el, { attributes: true, attributeFilter: ['style'] }));
       viewport?.addEventListener('pdf-zoom-end', position);
       viewport?.addEventListener('pdf-zoom-frame', position);

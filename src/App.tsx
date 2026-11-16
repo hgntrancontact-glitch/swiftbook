@@ -1,6 +1,6 @@
 import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
-import {isQuickShapeTool} from './utils/quickShapes';
+import {isQuickShapeTool,isDrawingHighlighter} from './utils/quickShapes';
 import { WheelGesture } from './utils/wheelGesture';
 import { openingPage, reopenDocument } from './utils/documentOpening';
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
@@ -121,7 +121,7 @@ function SwiftbookApp() {
 
   // Shared Tool State (Toolbar & Floating Toolbar)
   const [activeTool, setActiveTool] = useState<ActiveTool>("select");
-  const {settings:drawingSettings,updateSettings:updateDrawingSettings}=useDrawingSettings()!;
+  const {settings:drawingSettings,updateSettings:updateDrawingSettings,highlightSize,updateHighlightSize}=useDrawingSettings()!;
   const penColor=drawingSettings.color;
   const penSize=drawingSettings.size;
   const setPenColor=useCallback((color:string)=>updateDrawingSettings({color}),[updateDrawingSettings]);
@@ -283,8 +283,10 @@ function SwiftbookApp() {
     setBoxConfig((prev) => ({ ...prev, color }));
   }, []);
 
-  const activePenSize = penSize;
-  const handlePenSizeChange=useCallback((size:number)=>updateDrawingSettings({size}),[updateDrawingSettings]);
+  const activePenSize = isDrawingHighlighter(activeTool)?highlightSize:penSize;
+  const handlePenSizeChange=useCallback((size:number)=>{
+    if(isDrawingHighlighter(activeTool))updateHighlightSize(size);else updateDrawingSettings({size});
+  },[activeTool,updateHighlightSize,updateDrawingSettings]);
 
   // Helper to update a document in openDocs
   const updateDoc = useCallback((docId: string, updater: (d: WorkspaceDoc) => WorkspaceDoc) => {

@@ -2,7 +2,8 @@ import React,{useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,Minus,Square,Shapes,Eraser,X,ChevronDown,Pencil,Highlighter,PencilRuler,Sparkles} from 'lucide-react';
 import type {ActiveTool,QuickShapeTool} from '../types';
 import {useQuickShapes} from '../contexts/QuickShapesContext';
-import {isQuickShapeTool} from '../utils/quickShapes';
+import {isQuickShapeTool,isDrawingHighlighter} from '../utils/quickShapes';
+import {StrokeWidthInput,STROKE_SLIDER_MAX} from './StrokeWidthInput';
 type Props={activeTool:ActiveTool;onActiveToolChange:(tool:ActiveTool)=>void};
 export const DRAWING_COLORS=[
   {name:'Đen',hex:'#171717'},{name:'Xám đậm',hex:'#4b5563'},{name:'Xám nhạt',hex:'#9ca3af'},
@@ -52,7 +53,10 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
   },[]);
   if(!state.open)return null;
   const choose=(tool:ActiveTool)=>{onActiveToolChange(tool);setPopover(null);};
-  const progress=(state.settings.size-1)/15*100;
+  const highlighting=isDrawingHighlighter(activeTool) || (activeTool==='eraser' && state.group==='draw' && isDrawingHighlighter(state.lastDrawTool));
+  const size=highlighting?state.highlightSize:state.settings.size;
+  const changeSize=(size:number)=>highlighting?state.updateHighlightSize(size):state.updateSettings({size});
+  const progress=Math.max(0,Math.min(100,(size-1)/(STROKE_SLIDER_MAX-1)*100));
   return <div ref={root} data-quick-shape-ui data-drawing-tools-panel={state.group} className="drawing-tools-panel noto-ui">
     <div className="drawing-tools-row">
       {state.group==='quick'?shapes.map(({tool,label,icon:Icon,temporary},index)=><React.Fragment key={tool}>
@@ -67,7 +71,7 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
       <div data-shared-drawing-controls className="drawing-shared-controls">
         <button type="button" className="drawing-tool-button drawing-control" data-active={activeTool==='eraser'} title="Xóa nét vẽ và hình" aria-label="Xóa nét vẽ và hình" onClick={()=>choose('eraser')}><Eraser size={24} strokeWidth={1.8}/></button>
         <button type="button" className="drawing-tool-button drawing-px-control" title="Độ dày nét" aria-label="Độ dày nét" aria-expanded={popover==='size'} onClick={()=>setPopover(popover==='size'?null:'size')}>
-          {state.settings.size}px<ChevronDown size={12} strokeWidth={1.8}/>
+          {size}px<ChevronDown size={12} strokeWidth={1.8}/>
         </button>
         <button type="button" className="drawing-tool-button drawing-color-control" title="Màu nét" aria-label="Màu nét" aria-expanded={popover==='color'} onClick={()=>setPopover(popover==='color'?null:'color')}>
           <span className="drawing-color-dot" style={{backgroundColor:state.settings.color}}/><ChevronDown size={12} strokeWidth={1.8}/>
@@ -80,10 +84,10 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
     </div>
     {popover==='size' && <div className="drawing-settings-popover drawing-size-popover" data-quick-shape-ui>
       <label className="drawing-size-heading">Độ dày nét
-        <input aria-label="Độ dày nét (px)" type="number" min={1} max={48} value={state.settings.size} onChange={e=>{const n=Number(e.target.value);if(n>=1 && n<=48)state.updateSettings({size:n});}}/>
+        <StrokeWidthInput aria-label="Độ dày nét (px)" value={size} onChange={changeSize}/>
       </label>
-      <input aria-label="Điều chỉnh độ dày nét" type="range" min={1} max={Math.max(16,state.settings.size)} step={1} value={state.settings.size}
-        className="drawing-size-slider" style={{background:`linear-gradient(to right, #f5c41a 0%, #f5c41a ${Math.min(100,progress)}%, #000 ${Math.min(100,progress)}%, #000 100%)`}} onChange={e=>state.updateSettings({size:Number(e.target.value)})}/>
+      <input aria-label="Điều chỉnh độ dày nét" type="range" min={1} max={STROKE_SLIDER_MAX} step={1} value={Math.min(STROKE_SLIDER_MAX,size)}
+        className="drawing-size-slider" style={{background:`linear-gradient(to right, #f5c41a 0%, #f5c41a ${progress}%, #000 ${progress}%, #000 100%)`}} onChange={e=>changeSize(Number(e.target.value))}/>
     </div>}
     {popover==='color' && <div className="drawing-settings-popover drawing-color-popover" data-quick-shape-ui>
       {DRAWING_COLORS.map(c=><button key={c.hex} type="button" title={c.name} aria-label={`Chọn màu ${c.name}`} aria-pressed={state.settings.color===c.hex}

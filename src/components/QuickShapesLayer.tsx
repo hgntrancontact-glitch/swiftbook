@@ -136,9 +136,21 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
         <QuickShapeVisual shape={shape} width={width} height={height} scale={scale}/>
         <path d={g.path} fill="none" stroke="transparent" strokeWidth={Math.max(18,g.lineWidth+12)}
           style={{pointerEvents:interactive?'stroke':'none',cursor:erasing?'crosshair':'move',touchAction:'none'}} onPointerDown={e=>start(e,shape)}/>
-        {chosen && interactive && !erasing && quickHandles(shape).map((p,index)=><circle key={index} cx={p.x/100*width} cy={p.y/100*height} r={4}
-          fill="white" stroke="#f5c41a" strokeWidth={1.5} style={{pointerEvents:'all',cursor:shape.quickShape!=='rectangle' && index!==1?'move':'grab',touchAction:'none'}}
-          onPointerDown={e=>start(e,shape,index)}/>)}
+        {chosen && interactive && !erasing && quickHandles(shape).map((p,index)=><g key={index}>
+          {shape.quickShape!=='rectangle' && <rect data-quick-handle-hit={index} x={p.x/100*width-11} y={p.y/100*height-11} width={22} height={22}
+            fill="transparent" style={{pointerEvents:'all',cursor:index===1?'grab':'move',touchAction:'none'}}
+            onPointerDown={e=>{
+              const position=point(e),rect=svg.current!.getBoundingClientRect();
+              const handles=quickHandles(shape);
+              // Prefer the nearest dot if the generous target areas overlap.
+              const nearest=handles.reduce((best,p,i)=>Math.hypot((p.x-position.x)*rect.width,(p.y-position.y)*rect.height)<
+                Math.hypot((handles[best].x-position.x)*rect.width,(handles[best].y-position.y)*rect.height)?i:best,0);
+              start(e,shape,nearest);
+            }}/>}
+          <circle cx={p.x/100*width} cy={p.y/100*height} r={4}
+            fill="white" stroke="#f5c41a" strokeWidth={1.5} style={{pointerEvents:'all',cursor:shape.quickShape!=='rectangle' && index!==1?'move':'grab',touchAction:'none'}}
+            onPointerDown={e=>start(e,shape,index)}/>
+        </g>)}
       </g>;
     })}
   </svg>;

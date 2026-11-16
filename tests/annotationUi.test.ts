@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { annotationZoom, HIGHLIGHT_TOOLBAR_SIZE, HIGHLIGHT_NOTE_SIZE, placeAnnotationToolbar } from '../src/utils/annotationUi';
+import { annotationZoom, HIGHLIGHT_TOOLBAR_SIZE, HIGHLIGHT_NOTE_SIZE, placeAnnotationToolbar, toolbarLimitsWithinPage } from '../src/utils/annotationUi';
 
 const anchor = { left: 300, right: 800, top: 300, bottom: 320 };
 const limits = { left: 8, right: 1192, top: 100, bottom: 1000 };
@@ -61,5 +61,25 @@ test('Box toolbar keeps a left anchor, opens inward at side edges, and flips onl
     if(bounds.left===300)assert.equal(placed.left,bounds.left);
     if(bounds.left===1050)assert.equal(placed.left+placed.width,bounds.right);
     if(bounds.left===10)assert.equal(placed.left,bounds.left);
+  }
+});
+
+test('Box toolbar switches sides at the PDF edge before approaching the viewport edge',()=>{
+  const viewport={left:8,right:1990,top:160,bottom:1220};
+  for(const page of [{left:350,right:1640,top:250,bottom:1160},{left:550,right:1450,top:200,bottom:1200},
+    {left:-400,right:2100,top:-600,bottom:2000}]) {
+    const paper=toolbarLimitsWithinPage(viewport,page);
+    const size={width:380,height:44};
+    const threshold=paper.right-size.width;
+    for(const left of [paper.left,threshold-1,threshold+1,paper.right-120]) {
+      const anchor={left,right:left+100,top:350,bottom:410};
+      const result=placeAnnotationToolbar(anchor,size,paper,1,true,false,'left',true);
+      assert.ok(result.left>=Math.max(page.left,viewport.left));
+      assert.ok(result.left+result.width<=Math.min(page.right,viewport.right));
+      if(left<=threshold)assert.equal(result.left,left);
+      else assert.equal(result.left+result.width,anchor.right);
+    }
+    const above=placeAnnotationToolbar({left:paper.left,right:paper.left+100,top:paper.top+3,bottom:paper.top+70},size,paper,1,true,false,'left',true);
+    assert.equal(above.above,false);assert.ok(above.top>=page.top);
   }
 });

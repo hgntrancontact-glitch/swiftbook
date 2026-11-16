@@ -8,6 +8,7 @@ import React,{act,useState} from 'react';
 import type {Root} from 'react-dom/client';
 import type {ActiveTool,DrawingStroke} from '../src/types';
 import {QuickShapesProvider,useQuickShapes} from '../src/contexts/QuickShapesContext';
+import {isDrawingHighlighter,quickGeometry} from '../src/utils/quickShapes';
 import {QuickShapesLayer} from '../src/components/QuickShapesLayer';
 import {LarkFloatingToolbar} from '../src/components/LarkFloatingToolbar';
 
@@ -42,7 +43,7 @@ async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1) {
         React.createElement(DrawingCanvas,{pageNumber:1,width:1000*scale,height:800*scale,scale,
           isDrawingMode:['pen','smart_pen','highlighter','smart_highlighter'].includes(tool),isHighlighter:tool==='highlighter' || tool==='smart_highlighter',
           isSmartPen:tool==='smart_pen',isSmartHighlighter:tool==='smart_highlighter',isEraserMode:tool==='eraser',
-          penColor:state.settings.color,penSize:state.settings.size,strokes:shapes,
+          penColor:state.settings.color,penSize:isDrawingHighlighter(tool)?state.highlightSize:state.settings.size,strokes:shapes,
           onAddStroke:payload=>{const id=`pen-${++serial}`;setShapes(old=>[...old,{...payload,id,createdAt:Date.now()}]);return id;},
           onUpdateStroke:(id,patch)=>setShapes(old=>old.map(s=>s.id===id?{...s,...patch}:s)),onDeleteStroke:id=>setShapes(old=>old.filter(s=>s.id!==id))}))),
       React.createElement(LarkFloatingToolbar,{activeTool:tool,onActiveToolChange:setTool,penColor:'#171717',penSize:4,penOpacity:1,eraserSize:20,onPenColorChange(){},onPenSizeChange(){},onPenOpacityChange(){},onEraserSizeChange(){}}));
@@ -193,7 +194,7 @@ test('handles stay hidden during drawing, appear on release, hide on canvas clic
   }
 });
 
-test('one Noto Sans control strip shares colour, px, dash and eraser between shapes, pens and highlights',async()=>{
+test('one Noto Sans control strip shares colour, dash and eraser while Highlight keeps its own width',async()=>{
   const h=await harness('select');try {
     await h.click('Mũi tên, Line và khung');
     const doc=h.dom.window.document;
@@ -222,7 +223,7 @@ test('one Noto Sans control strip shares colour, px, dash and eraser between sha
     const canvas=doc.querySelector('canvas')!;
     await h.pointer(canvas,'pointerdown',100,600);await h.pointer(canvas,'pointermove',300,620);await h.pointer(canvas,'pointerup',300,620);
     assert.equal(h.model.shapes.length,1);
-    assert.equal(h.model.shapes[0].color,'#3b82f6');assert.equal(h.model.shapes[0].size,7);
+    assert.equal(h.model.shapes[0].color,'#3b82f6');assert.equal(h.model.shapes[0].size,10);
     assert.equal(h.model.shapes[0].dashStyle,'dashed');assert.equal(h.model.shapes[0].isHighlighter,true);
     await h.click('Xóa nét vẽ và hình');await h.pointer(h.svg(),'pointerdown',200,610);await h.pointer(h.svg(),'pointerup',200,610);
     assert.equal(h.model.shapes.length,0);
@@ -267,4 +268,95 @@ test('all tool buttons share height and main icon size/weight in both panels, wi
       assert.equal(h.dom.window.getComputedStyle(doc.querySelector('.drawing-px-control')!).fontSize,'14px');
     }
   } finally {await h.dispose();}
+});
+
+test('ordinary tools remember 6px while the two Highlights remember 15px; colour/dash stay shared and reset restores 4/10',async()=>{
+  const h=await harness();try {
+    const doc=h.dom.window.document;
+    const inputWidth=async(value:string)=>{
+      if(!doc.querySelector('[aria-label="Độ dày nét (px)"]'))await h.click('Độ dày nét');
+      const input=doc.querySelector<HTMLInputElement>('[aria-label="Độ dày nét (px)"]')!;
+      const setter=Object.getOwnPropertyDescriptor(h.dom.window.HTMLInputElement.prototype,'value')!.set!;
+      await act(async()=>{setter.call(input,value);input.dispatchEvent(new h.dom.window.Event('input',{bubbles:true}));});
+    };
+    const size=()=>doc.querySelector('[aria-label="Độ dày nét"]')!.textContent;
+    assert.equal(size(),'4px');await inputWidth('6');
+    await h.click('Màu nét');await h.click('Chọn màu Xanh lam');await h.click('Đổi nét liền hoặc nét đứt');
+    const ordinary=['Mũi tên','Đường Line','Khung chữ nhật','Mũi tên tạm — mất sau 3 giây','Line tạm — mất sau 3 giây','Khung tạm — mất sau 3 giây'];
+    for(const label of ordinary){await h.click(label);assert.equal(size(),'6px');}
+    await h.click('Bút vẽ và Highlight');
+    for(const label of ['Bút vẽ tự do','Bút vẽ thông minh']){await h.click(label);assert.equal(size(),'6px');}
+    await h.click('Highlight tự do');assert.equal(size(),'10px');await inputWidth('15');
+    await h.click('Highlight thông minh');assert.equal(size(),'15px');
+    await h.click('Xóa nét vẽ và hình');assert.equal(size(),'15px');
+    await h.click('Highlight tự do');
+    const canvas=doc.querySelector('canvas')!;
+    await h.pointer(canvas,'pointerdown',100,600);await h.pointer(canvas,'pointermove',300,620);await h.pointer(canvas,'pointerup',300,620);
+    assert.equal(h.model.shapes[0].size,15);assert.equal(h.model.shapes[0].isHighlighter,true);
+    await h.click('Mũi tên, Line và khung');assert.equal(size(),'6px');await h.click('Mũi tên');
+    await h.pointer(h.svg(),'pointerdown',100,100);await h.pointer(h.svg(),'pointerup',400,100);
+    assert.equal(h.model.shapes[1].size,6);
+    for(const shape of h.model.shapes){assert.equal(shape.color,'#3b82f6');assert.equal(shape.dashStyle,'dashed');}
+    await h.click('Bút vẽ và Highlight');assert.equal(size(),'15px');
+    await act(async()=>h.model.state.reset());
+    assert.equal(h.model.state.settings.size,4);assert.equal(h.model.state.highlightSize,10);
+    assert.equal(h.model.state.settings.color,'#ef4444');assert.equal(h.model.state.settings.dashStyle,'solid');
+    await h.click('Mũi tên, Line và khung');assert.equal(size(),'4px');
+    await h.click('Bút vẽ và Highlight');await h.click('Highlight thông minh');assert.equal(size(),'10px');
+  } finally {await h.dispose();}
+});
+
+test('manual widths above 16 reach the actual stroke; slider stays at 16 and invalid/empty drafts do not damage settings',async()=>{
+  const h=await harness();try {
+    const doc=h.dom.window.document;
+    const setter=Object.getOwnPropertyDescriptor(h.dom.window.HTMLInputElement.prototype,'value')!.set!;
+    const enter=async(input:HTMLInputElement,text:string)=>act(async()=>{setter.call(input,text);input.dispatchEvent(new h.dom.window.Event('input',{bubbles:true}));});
+    await h.click('Độ dày nét');
+    const number=doc.querySelector<HTMLInputElement>('[aria-label="Độ dày nét (px)"]')!;
+    const slider=doc.querySelector<HTMLInputElement>('[aria-label="Điều chỉnh độ dày nét"]')!;
+    assert.equal(number.hasAttribute('max'),false);
+    for(const value of ['50','125','0.5']) {
+      await enter(number,value);assert.equal(h.model.state.settings.size,Number(value));assert.equal(slider.max,'16');
+    }
+    await enter(number,'125');assert.equal(slider.value,'16');
+    await enter(number,'');assert.equal(number.value,'');assert.equal(h.model.state.settings.size,125);
+    await enter(number,'0');assert.equal(h.model.state.settings.size,125);
+    await enter(number,'-4');assert.equal(h.model.state.settings.size,125);
+    await enter(number,'80');
+    await h.pointer(h.svg(),'pointerdown',100,200);await h.pointer(h.svg(),'pointerup',500,200);
+    assert.equal(h.model.shapes[0].size,80);
+    assert.equal(quickGeometry(h.model.shapes[0],1000,800,1).lineWidth,80);
+    assert.equal(h.svg().querySelector('[data-quick-shape-hit] > g')!.getAttribute('stroke-width'),'80');
+    if(!doc.querySelector('[aria-label="Điều chỉnh độ dày nét"]'))await h.click('Độ dày nét');
+    const newSlider=doc.querySelector<HTMLInputElement>('[aria-label="Điều chỉnh độ dày nét"]')!;
+    await enter(newSlider,'12');assert.equal(h.model.state.settings.size,12);
+    assert.equal(doc.querySelector<HTMLInputElement>('[aria-label="Độ dày nét (px)"]')!.value,'12');
+    await h.click('Bút vẽ và Highlight');await h.click('Highlight tự do');await h.click('Độ dày nét');
+    await enter(doc.querySelector<HTMLInputElement>('[aria-label="Độ dày nét (px)"]')!,'50');
+    const canvas=doc.querySelector('canvas')!;
+    await h.pointer(canvas,'pointerdown',100,600);await h.pointer(canvas,'pointermove',300,620);await h.pointer(canvas,'pointerup',300,620);
+    assert.equal(h.model.shapes.at(-1)!.size,50);assert.equal(h.model.shapes.at(-1)!.isHighlighter,true);
+    assert.equal(h.model.state.settings.size,12);assert.equal(h.model.state.highlightSize,50);
+  } finally {await h.dispose();}
+});
+
+test('nearby handle targets edit the closest endpoint/midpoint without enlarging the visible dots or jumping to the click',async()=>{
+  for(const tool of ['quick_arrow','quick_line','quick_arrow_temporary','quick_line_temporary'] as const) {
+    const h=await harness(tool);try {
+      const get=()=>h.model.shapes[0] || h.model.state.temporary[0];
+      await h.pointer(h.svg(),'pointerdown',100,200);await h.pointer(h.svg(),'pointerup',500,200);
+      for(const index of [0,1,2]) {
+        const before=get().points.map(p=>({...p}));
+        const dot=before[index],x=dot.x*10+8,y=dot.y*8+8;
+        const target=h.svg().querySelector(`[data-quick-handle-hit="${index}"]`)!;
+        assert.equal(target.getAttribute('width'),'22');
+        for(const circle of h.svg().querySelectorAll('circle'))assert.equal(circle.getAttribute('r'),'4');
+        await h.pointer(target,'pointerdown',x,y);
+        await h.pointer(h.svg(),'pointerup',x+20,y+16);
+        assert.ok(Math.abs(get().points[index].x-dot.x-2)<1e-10);assert.ok(Math.abs(get().points[index].y-dot.y-2)<1e-10);
+        if(index===1){assert.deepEqual(get().points[0],before[0]);assert.deepEqual(get().points[2],before[2]);}
+        else assert.deepEqual(get().points[2-index],before[2-index]);
+      }
+    } finally {await h.dispose();}
+  }
 });
