@@ -206,11 +206,16 @@ test('one Noto Sans control strip shares colour, dash and eraser while Highlight
     assert.equal(doc.querySelectorAll('[data-shared-drawing-controls]').length,1);
     assert.equal(doc.querySelectorAll('.lucide-timer').length,0);
     assert.equal((doc.querySelector('[aria-label="Mũi tên"]') as HTMLElement).style.color,'rgb(0, 0, 0)');
-    assert.equal((doc.querySelector('[aria-label="Mũi tên tạm — mất sau 3 giây"]') as HTMLElement).style.color,'rgb(245, 196, 26)');
-    for(const icon of doc.querySelectorAll('[data-temporary="true"] > svg')) {
-      assert.equal(h.dom.window.getComputedStyle(icon.parentElement!).color,'rgb(245, 196, 26)');
-      assert.equal(h.dom.window.getComputedStyle(icon).opacity,'1');
-      assert.ok(h.dom.window.getComputedStyle(icon).maskImage.includes('linear-gradient'));
+    assert.equal(doc.querySelectorAll('.drawing-temporary-icon').length,3);
+    for(const icon of doc.querySelectorAll('.drawing-temporary-icon')) {
+      const gold=icon.querySelector('.drawing-temporary-gold')!,black=icon.querySelector('.drawing-temporary-black')!;
+      assert.equal(h.dom.window.getComputedStyle(gold).color,'rgb(245, 196, 26)');
+      assert.equal(h.dom.window.getComputedStyle(black).color,'rgb(0, 0, 0)');
+      assert.equal(h.dom.window.getComputedStyle(gold).opacity,'1');
+      assert.ok(!h.dom.window.getComputedStyle(gold).maskImage.includes('gradient'));
+      assert.ok(h.dom.window.getComputedStyle(black).maskImage.includes('linear-gradient'));
+      assert.equal(gold.innerHTML,black.innerHTML);
+      assert.equal(h.dom.window.getComputedStyle(gold).gridArea,h.dom.window.getComputedStyle(black).gridArea);
     }
     await h.click('Màu nét');
     assert.equal(doc.querySelectorAll('.drawing-palette-color').length,10);

@@ -22,6 +22,12 @@ const pens:{tool:ActiveTool;label:string;icon:typeof Pencil;smart?:boolean}[]=[
   {tool:'smart_pen',label:'Bút vẽ thông minh',icon:PencilRuler,smart:true},
   {tool:'smart_highlighter',label:'Highlight thông minh',icon:Highlighter,smart:true},
 ];
+function ShapeToolIcon({icon:Icon,temporary}:{icon:typeof ArrowUpRight;temporary?:boolean}) {
+  const glyph=(className?:string)=>Icon===ArrowUpRight?
+    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20 20 4M4 4h16v16"/></svg>:
+    <Icon className={className} size={24} strokeWidth={1.8} aria-hidden="true"/>;
+  return temporary?<span className="drawing-temporary-icon" aria-hidden="true">{glyph('drawing-temporary-gold')}{glyph('drawing-temporary-black')}</span>:glyph();
+}
 export function QuickShapesToggle({activeTool,onActiveToolChange}:Props) {
   const state=useQuickShapes();if(!state)return null;
   const chosen=state.group==='quick' && (isQuickShapeTool(activeTool) || activeTool==='eraser');
@@ -61,8 +67,8 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
     <div className="drawing-tools-row">
       {state.group==='quick'?shapes.map(({tool,label,icon:Icon,temporary},index)=><React.Fragment key={tool}>
         {index===3 && <span className="drawing-tools-divider"/>}
-        <button type="button" className="drawing-tool-button" data-active={activeTool===tool} data-temporary={temporary || undefined} style={{color:temporary?'#f5c41a':'#000'}}
-          title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}>{Icon===ArrowUpRight?<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20 20 4M4 4h16v16"/></svg>:<Icon size={24} strokeWidth={1.8}/>}</button>
+        <button type="button" className="drawing-tool-button" data-active={activeTool===tool} data-temporary={temporary || undefined} style={{color:'#000'}}
+          title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}><ShapeToolIcon icon={Icon} temporary={temporary}/></button>
       </React.Fragment>):pens.map(({tool,label,icon:Icon,smart})=><button key={tool} type="button" className="drawing-tool-button drawing-pen-button"
         data-active={activeTool===tool} title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}>
         <Icon size={24} strokeWidth={1.8}/>{smart && <Sparkles size={10} className="drawing-smart-sparkles"/>}
