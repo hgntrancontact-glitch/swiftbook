@@ -206,8 +206,9 @@ test('one Noto Sans control strip shares colour, dash and eraser while Highlight
     assert.equal(doc.querySelectorAll('[data-shared-drawing-controls]').length,1);
     assert.equal(doc.querySelectorAll('.lucide-timer').length,0);
     assert.equal((doc.querySelector('[aria-label="Mũi tên"]') as HTMLElement).style.color,'rgb(0, 0, 0)');
-    assert.equal((doc.querySelector('[aria-label="Mũi tên tạm — mất sau 3 giây"]') as HTMLElement).style.color,'rgb(0, 0, 0)');
+    assert.equal((doc.querySelector('[aria-label="Mũi tên tạm — mất sau 3 giây"]') as HTMLElement).style.color,'rgb(245, 196, 26)');
     for(const icon of doc.querySelectorAll('[data-temporary="true"] > svg')) {
+      assert.equal(h.dom.window.getComputedStyle(icon.parentElement!).color,'rgb(245, 196, 26)');
       assert.equal(h.dom.window.getComputedStyle(icon).opacity,'1');
       assert.ok(h.dom.window.getComputedStyle(icon).maskImage.includes('linear-gradient'));
     }

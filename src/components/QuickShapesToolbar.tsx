@@ -61,7 +61,7 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
     <div className="drawing-tools-row">
       {state.group==='quick'?shapes.map(({tool,label,icon:Icon,temporary},index)=><React.Fragment key={tool}>
         {index===3 && <span className="drawing-tools-divider"/>}
-        <button type="button" className="drawing-tool-button" data-active={activeTool===tool} data-temporary={temporary || undefined} style={{color:'#000'}}
+        <button type="button" className="drawing-tool-button" data-active={activeTool===tool} data-temporary={temporary || undefined} style={{color:temporary?'#f5c41a':'#000'}}
           title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}>{Icon===ArrowUpRight?<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20 20 4M4 4h16v16"/></svg>:<Icon size={24} strokeWidth={1.8}/>}</button>
       </React.Fragment>):pens.map(({tool,label,icon:Icon,smart})=><button key={tool} type="button" className="drawing-tool-button drawing-pen-button"
         data-active={activeTool===tool} title={label} aria-label={label} aria-pressed={activeTool===tool} onClick={()=>choose(tool)}>
