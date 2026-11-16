@@ -1,6 +1,7 @@
+import {STICKY_NOTE_DESIGN as PAPER,noteSwatchColor} from '../utils/stickyNoteDesign';
 import { createStickyNote } from '../utils/stickyNoteCreation';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { TextNoteAnnotation, NOTE_PAPER_COLORS, NoteColorTheme } from '../types';
+import { TextNoteAnnotation, NOTE_PAPER_COLORS, NoteColorTheme, getNoteColorTheme } from '../types';
 import { MessageSquare, Trash2, Move, Minimize2, StickyNote } from 'lucide-react';
 import { findBestMatchingPage, elevatePageZIndex, resetPageZIndex } from '../utils/pageBoundaryHelper';
 
@@ -333,14 +334,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
       }`}
     >
       {pageNotes.map((note) => {
-        const theme: NoteColorTheme =
-          NOTE_PAPER_COLORS.find(
-            (c) =>
-              c.contentBg === note.color ||
-              c.headerBg === note.color ||
-              c.noteBg === note.color ||
-              c.id === note.color
-          ) || NOTE_PAPER_COLORS[0];
+        const theme: NoteColorTheme = getNoteColorTheme(note.color);
 
         const isSelected = selectedIds?.includes(note.id);
         const isDragging = draggingNoteId === note.id;
@@ -361,12 +355,12 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
             onMouseDown={() => {
               elevatePageZIndex(pageNumber);
             }}
-            className={`sticky-note-paper absolute pointer-events-auto select-none ${
+            className={`sticky-note-paper noto-ui absolute pointer-events-auto select-none ${
               !note.isMinimized ? 'sticky-note-expanded' : ''
             } ${
-              isSelected ? 'ring-2 ring-blue-500 rounded-lg shadow-lg' : ''
+              isSelected ? 'rounded-xl' : ''
             } ${
-              isDragging ? 'z-[9999] transition-none shadow-2xl' : 'transition-shadow'
+              isDragging ? 'z-[9999] transition-none' : ''
             }`}
             style={{
               left: `${note.x}%`,
@@ -380,7 +374,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
                 data-sticky-note-icon={note.id}
                 onMouseDown={(e) => startDrag(e, note)}
                 onClick={(e) => handleNoteClick(e, note)}
-                className="rounded-full shadow-md border border-black/30 flex items-center justify-center cursor-grab active:cursor-grabbing group"
+                className="rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing group"
                 style={{
                   background: theme.noteBg,
                   zoom: 1,
@@ -459,8 +453,8 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     const contW = parseFloat(page?.style.width || '') || cont?.offsetWidth || 595 * scale;
     const contH = parseFloat(page?.style.height || '') || cont?.offsetHeight || 842 * scale;
 
-    let wPx = 224 * noteScale;
-    let hPx = 160 * noteScale;
+    let wPx = PAPER.width * noteScale;
+    let hPx = PAPER.height * noteScale;
 
     if (typeof note.width === 'number' && note.width > 0) {
       if (note.width <= 100) {
@@ -586,18 +580,18 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const headerH = 28;
-  const footerH = 24;
-  const pad = 10;
-  const cornerR = 12;
-  const bodyFontSize = 12;
-  const bodyLineH = 18;
-  const iconSize = 13;
+  const headerH = PAPER.header;
+  const footerH = PAPER.footer;
+  const pad = PAPER.padding;
+  const cornerR = PAPER.radius;
+  const bodyFontSize = PAPER.bodyFont;
+  const bodyLineH = PAPER.lineHeight;
+  const iconSize = PAPER.icon;
 
   return (
     <div
       ref={noteBoxRef}
-      className="relative shadow-2xl flex flex-col font-['Inter',sans-serif] select-none"
+      data-note-paper className="relative flex flex-col noto-ui select-none"
       style={{
         // One native layout scale for the entire paper, including all controls.
         // Stored dimensions remain in page space; no per-child scaling accumulates.
@@ -612,9 +606,6 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       }}
       onFocusCapture={() => elevatePageZIndex(pageNumber)}
     >
-      <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" aria-hidden="true">
-        <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="11.5" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
-      </svg>
       {/* Corner and Edge handles for free-form resizing */}
       <div onMouseDown={(e) => handleResizeStart(e, 'nw')} className="absolute -top-1.5 -left-1.5 w-5 h-5 cursor-nwse-resize z-[100]" />
       <div onMouseDown={(e) => handleResizeStart(e, 'ne')} className="absolute -top-1.5 -right-1.5 w-5 h-5 cursor-nesw-resize z-[100]" />
@@ -626,7 +617,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       <div onMouseDown={(e) => handleResizeStart(e, 'n')} className="absolute -top-1.5 left-4 right-4 h-3 cursor-ns-resize z-[100]" />
 
       <div
-        className="absolute inset-px overflow-hidden pointer-events-none flex flex-col"
+        className="absolute inset-0 overflow-hidden pointer-events-none flex flex-col"
         style={{ borderRadius: `${cornerR}px` }}
       >
         {/* LAYER 1: Top Header Bar */}
@@ -635,8 +626,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
           className="pointer-events-auto flex items-center justify-between cursor-grab active:cursor-grabbing select-none text-black shrink-0"
           style={{
             background: theme.headerBg,
-            paddingBottom: '1px',
-            boxShadow: 'inset 0 -1px 0 rgba(0,0,0,0.1)',
+            borderBottom: `${PAPER.separator}px solid #000`,
             height: `${headerH}px`,
             paddingLeft: `${pad}px`,
             paddingRight: `${pad}px`,
@@ -644,8 +634,8 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
           title="Kéo thanh tiêu đề để di chuyển giữa các trang"
         >
           <div
-            className="flex items-center gap-1.5 font-bold tracking-tight min-w-0 flex-1"
-            style={{ fontSize: '11.5px' }}
+            className="flex items-center gap-1.5 font-normal min-w-0 flex-1"
+            style={{ fontSize: `${PAPER.titleFont}px` }}
           >
             <Move size={iconSize} className="opacity-70" />
             {editingTitle ? (
@@ -718,7 +708,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
             value={note.text}
             onChange={(e) => onUpdateNote(note.id, { text: e.target.value })}
             placeholder="Nhập ghi chú tại đây..."
-            className="w-full h-full bg-transparent border-0 focus:outline-none resize-none text-neutral-900 placeholder:text-neutral-500/80 selection:bg-black/15 font-sans"
+            className="w-full h-full bg-transparent border-0 focus:outline-none resize-none text-neutral-900 placeholder:text-neutral-400 selection:bg-black/15"
             style={{
               fontSize: `${bodyFontSize}px`,
               lineHeight: `${bodyLineH}px`,
@@ -732,34 +722,28 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
           className="pointer-events-auto flex items-center justify-between shrink-0"
           style={{
             background: theme.contentBg,
-            paddingTop: '1px',
-            boxShadow: 'inset 0 1px 0 rgba(0,0,0,0.1)',
+            borderTop: `${PAPER.separator}px solid #000`,
             height: `${footerH}px`,
             paddingLeft: `${pad}px`,
             paddingRight: `${pad}px`,
           }}
         >
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center" style={{gap:PAPER.dotGap}}>
             {NOTE_PAPER_COLORS.map((c) => (
               <button
                 key={c.id}
                 onClick={() => onUpdateNote(note.id, { color: c.contentBg })}
-                className={`rounded-full border-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.3)] transition-transform cursor-pointer ${
-                  theme.id === c.id ? 'scale-125 ring-1.5 ring-black/70' : 'hover:scale-110 opacity-80'
-                }`}
-                style={{
-                  background: c.noteBg,
-                  width: '14px',
-                  height: '14px',
-                }}
+                className="rounded-full border-0 cursor-pointer"
+                aria-label={`Màu giấy ${c.name}`} aria-pressed={theme.id===c.id}
+                style={{background:noteSwatchColor(c.noteBg,theme.id===c.id),width:PAPER.dot,height:PAPER.dot}}
                 title={`Đổi sang ${c.name}`}
               />
             ))}
           </div>
 
           <span
-            className="text-black/50 font-medium tracking-tight"
-            style={{ fontSize: '9.5px' }}
+            className="text-black font-normal"
+            style={{ fontSize: `${PAPER.pageFont}px` }}
           >
             P.{pageNumber}
           </span>

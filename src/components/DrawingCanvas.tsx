@@ -1,3 +1,5 @@
+import {useDrawingSettings} from '../contexts/QuickShapesContext';
+import {drawingDashArray} from '../utils/drawingStyle';
 import { annotationCreationScale } from '../utils/annotationCreation';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -201,6 +203,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   const [isPainting, setIsPainting] = useState(false);
   const [currentStroke, setCurrentStroke] = useState<DrawingPoint[]>([]);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const drawingSettings=useDrawingSettings();
+  const activeDashStyleRef=useRef<'solid'|'dashed'>('solid');
   const activePenSizeRef = useRef<number>(penSize);
   const activeReferenceScaleRef = useRef(1);
   const [cssScaleFactor, setCssScaleFactor] = useState<number>(1);
@@ -810,6 +814,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
     updateScaleFactor();
     activePenSizeRef.current = penSize;
+    activeDashStyleRef.current=drawingSettings?.settings.dashStyle || 'solid';
     const userZoom=Number(canvasRef.current?.closest<HTMLElement>('[data-user-zoom]')?.dataset.userZoom || 1);
     activeReferenceScaleRef.current=annotationCreationScale(scale,userZoom);
     setIsPainting(true);
@@ -944,6 +949,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         points: strokePointsToSave,
         color: penColor,
         size: activePenSizeRef.current || penSize,
+        dashStyle:activeDashStyleRef.current,
         referenceScale: activeReferenceScaleRef.current,
         opacity: isHighlighter ? 0.45 : (penOpacity ?? 1),
         isHighlighter: isHighlighter,
@@ -1064,6 +1070,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         {pageStrokes.filter(stroke => stroke.isHighlighter && stroke.id !== draggingStrokeId).map(stroke => (
           <path key={stroke.id} d={getSvgPathData(stroke.points, stroke.isSmartShape || stroke.points.length <= 6)}
             fill="none" stroke={stroke.color} strokeWidth={stroke.size * scale / (stroke.referenceScale || 1)}
+                strokeDasharray={drawingDashArray(stroke.dashStyle,scale,stroke.referenceScale)}
             vectorEffect="non-scaling-stroke" strokeOpacity={stroke.opacity ?? 0.45}
             strokeLinecap="round" strokeLinejoin="round" />
         ))}
@@ -1095,6 +1102,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 fill={isGeom && stroke.fillColor && stroke.fillColor !== 'transparent' ? stroke.fillColor : 'none'}
                 stroke={stroke.color}
                 strokeWidth={stroke.size * scale / (stroke.referenceScale || 1)}
+                strokeDasharray={drawingDashArray(stroke.dashStyle,scale,stroke.referenceScale)}
                 vectorEffect="non-scaling-stroke"
                 strokeOpacity={stroke.opacity ?? (stroke.isHighlighter ? 0.45 : 1)}
                 strokeLinecap="round"
@@ -1178,6 +1186,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                       fill={isGeom && stroke.fillColor && stroke.fillColor !== 'transparent' ? stroke.fillColor : 'none'}
                       stroke={stroke.color}
                       strokeWidth={stroke.size * scale / (stroke.referenceScale || 1)}
+                strokeDasharray={drawingDashArray(stroke.dashStyle,scale,stroke.referenceScale)}
                       vectorEffect="non-scaling-stroke"
                       strokeOpacity={stroke.opacity ?? (stroke.isHighlighter ? 0.45 : 1)}
                       strokeLinecap="round"
@@ -1275,6 +1284,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             stroke={penColor}
             vectorEffect="non-scaling-stroke"
             strokeWidth={(activePenSizeRef.current || penSize) * scale / activeReferenceScaleRef.current * cssScaleFactor}
+            strokeDasharray={drawingDashArray(activeDashStyleRef.current,scale,activeReferenceScaleRef.current,cssScaleFactor)}
             strokeOpacity={isHighlighter ? 0.45 : (penOpacity ?? 1)}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -1485,6 +1495,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                     stroke={activeStroke.color}
                     vectorEffect="non-scaling-stroke"
                     strokeWidth={activeStroke.size * scale / (activeStroke.referenceScale || 1) * cssScaleFactor}
+                    strokeDasharray={drawingDashArray(activeStroke.dashStyle,scale,activeStroke.referenceScale,cssScaleFactor)}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={activeStroke.opacity ?? (activeStroke.isHighlighter ? 0.45 : 1)}

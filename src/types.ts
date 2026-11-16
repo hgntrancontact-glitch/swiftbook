@@ -302,6 +302,7 @@ export const BOX_COLORS = [
 ];
 
 export interface NoteColorTheme {
+  legacyColors?: string[];
   name: string;
   id: string;
   noteBg: string;
@@ -310,42 +311,16 @@ export interface NoteColorTheme {
 }
 
 export const NOTE_PAPER_COLORS: NoteColorTheme[] = [
-  {
-    name: 'Màu 1',
-    id: 'color-1',
-    headerBg: '#ffefae',
-    contentBg: '#fff4c9',
-    noteBg: '#ffefae',
-  },
-  {
-    name: 'Màu 2',
-    id: 'color-2',
-    headerBg: '#d9f7b2',
-    contentBg: '#e8ffcb',
-    noteBg: '#d9f7b2',
-  },
-  {
-    name: 'Màu 3',
-    id: 'color-3',
-    headerBg: '#fbd4ec',
-    contentBg: '#ffe6f5',
-    noteBg: '#fbd4ec',
-  },
-  {
-    name: 'Màu 4',
-    id: 'color-4',
-    headerBg: '#bce6ff',
-    contentBg: '#d4efff',
-    noteBg: '#bce6ff',
-  },
-  {
-    name: 'Màu 5',
-    id: 'color-5',
-    headerBg: '#f7f5f5',
-    contentBg: '#fdfdfd',
-    noteBg: '#f7f5f5',
-  },
+  {name:'Vàng',id:'color-1',headerBg:'#ffde59',contentBg:'#ffde59',noteBg:'#ffde59',legacyColors:['#ffefae','#fff4c9','#fef08a','#fde047']},
+  {name:'Xanh lá',id:'color-2',headerBg:'#98d08a',contentBg:'#98d08a',noteBg:'#98d08a',legacyColors:['#d9f7b2','#e8ffcb','#bbf7d0']},
+  {name:'Hồng',id:'color-3',headerBg:'#f6a6a1',contentBg:'#f6a6a1',noteBg:'#f6a6a1',legacyColors:['#fbd4ec','#ffe6f5','#fbcfe8']},
+  {name:'Xanh dương',id:'color-4',headerBg:'#9bc4fd',contentBg:'#9bc4fd',noteBg:'#9bc4fd',legacyColors:['#bce6ff','#d4efff','#bfdbfe']},
+  {name:'Trắng',id:'color-5',headerBg:'#ffffff',contentBg:'#ffffff',noteBg:'#ffffff',legacyColors:['#f7f5f5','#fdfdfd']},
 ];
+export function getNoteColorTheme(color:string):NoteColorTheme {
+  const value=(color || '').toLowerCase();
+  return NOTE_PAPER_COLORS.find(c=>c.contentBg===value || c.id===value || c.legacyColors?.includes(value)) || NOTE_PAPER_COLORS[0];
+}
 
 export const TEXT_COLORS = [
   { name: 'Đen', hex: '#171717' },

@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "@fontsource/noto-sans/latin-400.css";
+@import "@fontsource/noto-sans/vietnamese-400.css";
+@import "@fontsource/noto-sans/latin-600.css";
+@import "@fontsource/noto-sans/vietnamese-600.css";
 
 @font-face {
   font-family: "Open Sans";
@@ -386,3 +390,31 @@
   display: none !important;
 }
 
+
+
+/* The redesigned drawing panels and paper use their own typography. */
+.noto-ui, .noto-ui * { font-family: "Noto Sans", sans-serif; }
+.drawing-tools-panel { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin-bottom:10px; z-index:50; width:max-content; max-width:95vw; color:#555; }
+.drawing-tools-row { display:flex; align-items:center; gap:2px; background:#fff; border-radius:999px; padding:7px 10px; overflow-x:auto; scrollbar-width:none; }
+.drawing-tool-button { display:inline-flex; position:relative; align-items:center; justify-content:center; flex-shrink:0; min-width:30px; height:32px; padding:4px; border:0; border-radius:7px; background:transparent; color:inherit; cursor:pointer; font-size:12px; font-weight:400; line-height:1; }
+.drawing-tool-button:hover, .drawing-tool-button[data-active="true"] { background:#f4f4f4; }
+.drawing-tool-button:focus-visible { outline:2px solid #f5c41a; outline-offset:1px; }
+.drawing-pen-button { color:#666; width:34px; }
+.drawing-smart-sparkles { position:absolute; right:0; top:0; color:#f59e0b; fill:#fff; }
+.drawing-tools-divider { width:1px; height:28px; background:#e0e0e5; margin:0 4px; flex-shrink:0; }
+.drawing-shared-controls { display:flex; align-items:center; gap:3px; }
+.drawing-px-control { gap:4px; min-width:44px; }
+.drawing-color-control { gap:4px; min-width:39px; }
+.drawing-color-dot { width:18px; height:18px; border-radius:50%; box-shadow:0 1px 1px #0002; }
+.drawing-line-control { min-width:35px; }
+.drawing-close-control { color:#777; min-width:28px; margin-left:2px; }
+.drawing-settings-popover { position:absolute; bottom:100%; right:8px; margin-bottom:8px; background:#fff; border-radius:14px; width:224px; padding:12px; color:#000; }
+.drawing-size-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14px; font-weight:400; }
+.drawing-size-heading input { width:74px; height:30px; border:1px solid #aaa; border-radius:8px; background:#fff; font-size:15px; color:#000; text-align:right; padding:3px 12px; outline:none; appearance:textfield; }
+.drawing-size-heading input::-webkit-inner-spin-button, .drawing-size-heading input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.drawing-size-slider { display:block; appearance:none; -webkit-appearance:none; width:100%; height:6px; border-radius:999px; margin:22px 0 8px; cursor:pointer; outline:none; }
+.drawing-size-slider::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:16px; height:16px; border:0; border-radius:50%; background:#f5c41a; }
+.drawing-size-slider::-moz-range-thumb { width:16px; height:16px; border:0; border-radius:50%; background:#f5c41a; }
+.drawing-color-popover { display:grid; grid-template-columns:repeat(5,1fr); gap:10px 12px; padding:14px; }
+.drawing-palette-color { justify-self:center; width:26px; height:26px; border:0; border-radius:50%; box-shadow:0 0 0 1px #ddd; cursor:pointer; }
+.drawing-palette-color[aria-pressed="true"] { outline:2px solid #171717; outline-offset:2px; box-shadow:0 0 0 2px #fff; }

@@ -1041,7 +1041,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       />
 
       <QuickShapesLayer fileId={fileId} pageNumber={pageNumber} width={effectiveWidth} height={effectiveHeight}
-        scale={scale} activeTool={activeTool} drawings={drawings} onAddStroke={onAddStroke}
+        scale={scale} eraserSize={eraserSize} activeTool={activeTool} drawings={drawings} onAddStroke={onAddStroke}
         onUpdateStroke={onUpdateStroke} onDeleteStroke={onDeleteStroke} onClearSelection={()=>onSelect?.('',false)}/>
       {/* Freehand & Smart Drawing Overlay */}
       <DrawingCanvas

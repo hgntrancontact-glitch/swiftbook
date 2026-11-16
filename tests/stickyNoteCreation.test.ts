@@ -10,15 +10,15 @@ function renderNote(fitScale:number,creationZoom:number,viewZoom:number) {
   const html=renderToStaticMarkup(React.createElement(StickyNotesLayer,{
     pageNumber:4,notes:[note],scale:fitScale*viewZoom,isStickyToolActive:false,
     onAddNote:()=>{},onUpdateNote:()=>{},onDeleteNote:()=>{}}));
-  return html.match(/class="relative shadow-2xl flex flex-col[^>]+style="([^"]+)"/)![1];
+  return html.match(/data-note-paper=[^>]+style="([^"]+)"/)![1];
 }
 
-test('creating paper at any zoom returns the same 224 by 160 default at viewer 100%, including fitted PDFs',()=>{
+test('creating paper at any zoom returns the same 224 by 184 default at viewer 100%, including fitted PDFs',()=>{
   for(const fit of [.7,1,1.9,2.42]) for(const creationZoom of [.5,1,1.5,2,4]) {
     const style=renderNote(fit,creationZoom,1);
     assert.ok(Math.abs(Number(style.match(/zoom:([^;]+)/)![1])-1)<1e-9);
     assert.ok(Math.abs(parseFloat(style.match(/width:([^;]+)/)![1])-224)<1e-9);
-    assert.ok(Math.abs(parseFloat(style.match(/height:([^;]+)/)![1])-160)<1e-9);
+    assert.ok(Math.abs(parseFloat(style.match(/height:([^;]+)/)![1])-184)<1e-9);
   }
 });
 
@@ -27,7 +27,7 @@ test('paper created at any zoom scales with subsequent viewer zoom and retains i
     const style=renderNote(1.9,creationZoom,viewZoom);
     assert.ok(Math.abs(Number(style.match(/zoom:([^;]+)/)![1])-viewZoom)<1e-9);
     assert.ok(Math.abs(parseFloat(style.match(/width:([^;]+)/)![1])-224)<1e-9);
-    assert.ok(Math.abs(parseFloat(style.match(/height:([^;]+)/)![1])-160)<1e-9);
+    assert.ok(Math.abs(parseFloat(style.match(/height:([^;]+)/)![1])-184)<1e-9);
   }
   const created=createStickyNote(4,20,30,1.9*1.5,1.5);
   assert.ok(Math.abs(created.referenceScale!-1.9)<1e-9);

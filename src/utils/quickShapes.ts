@@ -40,7 +40,10 @@ export function quickHandles(stroke:Pick<DrawingStroke,'points'|'quickShape'>):D
   return [a,{x:b.x,y:a.y},b,{x:a.x,y:b.y}];
 }
 export function moveQuickHandle(stroke:DrawingStroke,index:number,point:DrawingPoint):DrawingPoint[] {
-  if(stroke.quickShape!=='rectangle') return stroke.points.map((p,i)=>i===index?point:p);
+  if(stroke.quickShape!=='rectangle') {
+    if(index!==1)return translateQuickPoints(stroke.points,point.x-stroke.points[index].x,point.y-stroke.points[index].y);
+    return stroke.points.map((p,i)=>i===index?point:p);
+  }
   const [a,b]=stroke.points;
   return index===0?[point,b]:index===2?[a,point]:index===1?[{x:a.x,y:point.y},{x:point.x,y:b.y}]:[{x:point.x,y:a.y},{x:b.x,y:point.y}];
 }

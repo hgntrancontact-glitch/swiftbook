@@ -1,3 +1,4 @@
+import {STICKY_NOTE_DESIGN as PAPER,noteSwatchColor} from './stickyNoteDesign';
 import {drawQuickShape} from './quickShapes';
 import { highlightCorners, highlightDisplayRects } from './highlightGeometry';
 import { canvasViewportTransform } from './pageCoordinates';
@@ -12,6 +13,7 @@ import {
   FreeTextAnnotation,
   HIGHLIGHT_COLORS,
   NOTE_PAPER_COLORS,
+  getNoteColorTheme,
   DrawingPoint,
   NormalizedRect,
 } from '../types';
@@ -934,23 +936,15 @@ function renderFreeTextOnCanvas(
 /**
  * Native 2D Canvas Sticky Note renderer matching StickyNotesLayer.tsx exactly without UI control buttons.
  */
-function renderStickyNoteOnCanvas(
+export function renderStickyNoteOnCanvas(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   ratio: number,
   note: TextNoteAnnotation
 ) {
-  const theme =
-    NOTE_PAPER_COLORS.find(
-      (c) =>
-        c.contentBg === note.color ||
-        c.headerBg === note.color ||
-        c.noteBg === note.color ||
-        c.id === note.color
-    ) || NOTE_PAPER_COLORS[0];
-
-  const fontSans = "'Inter', sans-serif";
+  const theme = getNoteColorTheme(note.color);
+  const fontSans = '"Noto Sans", sans-serif';
 
   // 1. Authoritative state from annotation object
   const isMinimized = typeof note.isMinimized === 'boolean' ? note.isMinimized : false;
@@ -973,19 +967,11 @@ function renderStickyNoteOnCanvas(
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.22)';
-    ctx.shadowBlur = Math.max(2, Math.round(4 * ratio));
-    ctx.shadowOffsetY = Math.max(1, Math.round(2 * ratio));
-
+    ctx.shadowColor = 'transparent';
     ctx.fillStyle = theme.noteBg || theme.headerBg || '#ffefae';
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.shadowColor = 'transparent';
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.lineWidth = Math.max(1, Math.round(1 * ratio));
-    ctx.stroke();
 
     const iconSize = Math.max(8, Math.round(13 * ratio));
     ctx.save();
@@ -1006,8 +992,8 @@ function renderStickyNoteOnCanvas(
   // -------------------------------------------------------------
   // STATE 2: EXPANDED STICKY NOTE (Pristine Post-it Note Paper Card with 3 Layers)
   // -------------------------------------------------------------
-  let cardW = 224 * ratio;
-  let cardH = 160 * ratio;
+  let cardW = PAPER.width * ratio;
+  let cardH = PAPER.height * ratio;
 
   if (typeof note.width === 'number' && note.width > 0) {
     if (note.width <= 100) {
@@ -1025,15 +1011,13 @@ function renderStickyNoteOnCanvas(
     }
   }
 
-  const r = Math.max(2, Math.round(12 * ratio));
+  const r = PAPER.radius * ratio;
 
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.16)';
-  ctx.shadowBlur = Math.max(2, Math.round(6 * ratio));
-  ctx.shadowOffsetY = Math.max(1, Math.round(2 * ratio));
+  ctx.shadowColor = 'transparent';
 
   ctx.fillStyle = theme.contentBg || '#fff4c9';
   ctx.beginPath();
@@ -1043,11 +1027,6 @@ function renderStickyNoteOnCanvas(
     ctx.rect(nx, ny, cardW, cardH);
   }
   ctx.fill();
-
-  ctx.shadowColor = 'transparent';
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)';
-  ctx.lineWidth = Math.max(1, Math.round(1 * ratio));
-  ctx.stroke();
 
   // Clip to card rounded rectangle for internal rendering
   ctx.save();
@@ -1059,82 +1038,79 @@ function renderStickyNoteOnCanvas(
   }
   ctx.clip();
 
-  // LAYER 1: Header Bar (height = 28 * ratio)
-  const headerH = Math.max(16, Math.round(28 * ratio));
+  // LAYER 1: Header Bar
+  const headerH = PAPER.header * ratio;
   ctx.fillStyle = theme.headerBg || '#fde047';
   ctx.fillRect(nx, ny, cardW, headerH);
 
   // Header bottom border
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-  ctx.lineWidth = Math.max(1, Math.round(1 * ratio));
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = PAPER.separator * ratio;
   ctx.beginPath();
-  ctx.moveTo(nx, ny + headerH);
-  ctx.lineTo(nx + cardW, ny + headerH);
+  ctx.moveTo(nx, ny + headerH - PAPER.separator * ratio / 2);
+  ctx.lineTo(nx + cardW, ny + headerH - PAPER.separator * ratio / 2);
   ctx.stroke();
 
   // Header text "Note" & Move icon
-  const moveIconSize = Math.max(8, Math.round(13 * ratio));
-  const headerPadLeft = Math.round(10 * ratio);
+  const moveIconSize = PAPER.icon * ratio;
+  const headerPadLeft = PAPER.padding * ratio;
   drawLucideIcon(
     ctx,
     'M5 9l-3 3 3 3M9 5l3-3 3 3M15 9l3 3-3 3M9 19l3 3 3 3M2 12h20M12 2v20',
     nx + headerPadLeft,
-    ny + (headerH - moveIconSize) / 2,
+    ny + (headerH - PAPER.separator * ratio - moveIconSize) / 2,
     moveIconSize,
     'rgba(0,0,0,0.7)',
     1.6
   );
 
   ctx.fillStyle = '#000000';
-  ctx.font = `bold ${Math.max(8, Math.round(11.5 * ratio))}px ${fontSans}`;
+  ctx.font = `normal ${PAPER.titleFont * ratio}px ${fontSans}`;
   ctx.textBaseline = 'middle';
-  ctx.fillText(note.title || 'Note', nx + headerPadLeft + moveIconSize + Math.round(6 * ratio), ny + headerH / 2, Math.max(1, cardW - headerPadLeft * 2 - moveIconSize - 6 * ratio));
+  ctx.fillText(note.title || 'Note', nx + headerPadLeft + moveIconSize + Math.round(6 * ratio), ny + (headerH - PAPER.separator * ratio) / 2, Math.max(1, cardW - headerPadLeft * 2 - moveIconSize - 6 * ratio));
 
-  // LAYER 3: Footer Bar (height = 24 * ratio) at bottom
-  const footerH = Math.max(14, Math.round(24 * ratio));
+  // LAYER 3: Footer Bar at bottom
+  const footerH = PAPER.footer * ratio;
   const footerY = ny + cardH - footerH;
 
   ctx.fillStyle = theme.contentBg || '#fff4c9';
   ctx.fillRect(nx, footerY, cardW, footerH);
 
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-  ctx.lineWidth = Math.max(1, Math.round(1 * ratio));
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = PAPER.separator * ratio;
   ctx.beginPath();
-  ctx.moveTo(nx, footerY);
-  ctx.lineTo(nx + cardW, footerY);
+  ctx.moveTo(nx, footerY + PAPER.separator * ratio / 2);
+  ctx.lineTo(nx + cardW, footerY + PAPER.separator * ratio / 2);
   ctx.stroke();
 
   // Footer page indicator right aligned
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.font = `normal ${Math.max(7, Math.round(9.5 * ratio))}px ${fontSans}`;
+  ctx.fillStyle = '#000';
+  ctx.font = `normal ${PAPER.pageFont * ratio}px ${fontSans}`;
   ctx.textBaseline = 'middle';
   const pageStr = `P.${note.pageNumber || 1}`;
   const pageTextW = ctx.measureText(pageStr).width;
-  ctx.fillText(pageStr, nx + cardW - Math.round(10 * ratio) - pageTextW, footerY + footerH / 2);
+  ctx.fillText(pageStr, nx + cardW - PAPER.padding * ratio - pageTextW, footerY + (footerH + PAPER.separator * ratio) / 2);
 
   // Footer color dots left aligned
-  const dotRadius = Math.max(2, Math.round(5 * ratio));
-  const dotSpacing = Math.max(2, Math.round(5 * ratio));
-  let dotX = nx + Math.round(10 * ratio);
-  const dotY = footerY + footerH / 2;
+  const dotRadius = PAPER.dot * ratio / 2;
+  const dotSpacing = PAPER.dotGap * ratio;
+  let dotX = nx + PAPER.padding * ratio;
+  const dotY = footerY + (footerH + PAPER.separator * ratio) / 2;
   NOTE_PAPER_COLORS.forEach((c) => {
-    ctx.fillStyle = c.noteBg;
+    ctx.fillStyle = noteSwatchColor(c.noteBg,theme.id===c.id);
     ctx.beginPath();
     ctx.arc(dotX + dotRadius, dotY, dotRadius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = theme.id === c.id ? '#000000' : 'rgba(0,0,0,0.3)';
-    ctx.lineWidth = theme.id === c.id ? Math.max(1, 1.5 * ratio) : 0.5;
-    ctx.stroke();
     dotX += dotRadius * 2 + dotSpacing;
   });
 
   // LAYER 2: Textarea Body Area
-  const padX = Math.max(4, Math.round(10 * ratio));
-  const bodyTop = ny + headerH + Math.round(8 * ratio);
+  const padX = PAPER.padding * ratio;
+  const bodyTop = ny + headerH + PAPER.padding * ratio;
 
   if (cardH > headerH + footerH) {
-    const bodyFontSize = Math.max(7, Math.round(12 * ratio));
-    const bodyLineH = Math.max(10, Math.round(18 * ratio));
+    const bodyFontSize = PAPER.bodyFont * ratio;
+    const bodyLineH = PAPER.lineHeight * ratio;
 
     ctx.fillStyle = '#171717';
     ctx.font = `normal ${bodyFontSize}px ${fontSans}`;
@@ -1154,7 +1130,7 @@ function renderStickyNoteOnCanvas(
 
     wrappedLines.forEach((line, i) => {
       const lineY = bodyTop + i * bodyLineH;
-      if (lineY + bodyFontSize <= footerY - 2) {
+      if (lineY + bodyFontSize <= footerY - PAPER.padding * ratio) {
         ctx.fillText(line, nx + padX, lineY);
       }
     });
@@ -1187,6 +1163,8 @@ export async function renderPageWithAnnotations(
   if (typeof document !== 'undefined' && document.fonts?.ready) {
     try {
       await document.fonts.ready;
+      if(includeAnnotations && annotations?.textNotes.some(n=>n.pageNumber===pageNumber))
+        await document.fonts.load?.('13px "Noto Sans"','Nhập ghi chú tại đây');
     } catch (_) {}
   }
 
@@ -1298,6 +1276,8 @@ export async function renderPageWithAnnotations(
     if(stroke.quickShape) {
       drawQuickShape(ctx,stroke,width,height,scale);ctx.restore();return;
     }
+    const dashUnit=scale/(stroke.referenceScale || 1);
+    ctx.setLineDash(stroke.dashStyle==='dashed'?[6*dashUnit,4*dashUnit]:[]);
     const isPolygon = stroke.isSmartShape || (stroke.points && stroke.points.length <= 6);
     drawSmoothStroke(ctx, stroke.points, width, height, isPolygon);
 

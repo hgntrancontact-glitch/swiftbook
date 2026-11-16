@@ -1,4 +1,4 @@
-import {QuickShapesProvider,useQuickShapesReset} from './contexts/QuickShapesContext';
+import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
 import {isQuickShapeTool} from './utils/quickShapes';
 import { WheelGesture } from './utils/wheelGesture';
 import { openingPage, reopenDocument } from './utils/documentOpening';
@@ -120,9 +120,10 @@ function SwiftbookApp() {
 
   // Shared Tool State (Toolbar & Floating Toolbar)
   const [activeTool, setActiveTool] = useState<ActiveTool>("select");
-  const [penColor, setPenColor] = useState<string>("#ef4444");
-  const [penSize, setPenSize] = useState<number>(4);
-  const [highlighterSize, setHighlighterSize] = useState<number>(14);
+  const {settings:drawingSettings,updateSettings:updateDrawingSettings}=useDrawingSettings()!;
+  const penColor=drawingSettings.color;
+  const penSize=drawingSettings.size;
+  const setPenColor=useCallback((color:string)=>updateDrawingSettings({color}),[updateDrawingSettings]);
   const [penOpacity, setPenOpacity] = useState<number>(1);
   const [eraserSize, setEraserSize] = useState<number>(20);
   const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null);
@@ -288,28 +289,15 @@ function SwiftbookApp() {
     if (matched) {
       handleHighlightColorChange(matched);
     }
-  }, [handleHighlightColorChange, mapHexToHighlightColor]);
+  }, [handleHighlightColorChange, mapHexToHighlightColor, setPenColor]);
 
   const handleSetBoxColor = useCallback((color: string) => {
     setBoxColor(color);
     setBoxConfig((prev) => ({ ...prev, color }));
   }, []);
 
-  const activePenSize =
-    activeTool === "highlighter" || activeTool === "smart_highlighter"
-      ? highlighterSize
-      : penSize;
-
-  const handlePenSizeChange = useCallback(
-    (size: number) => {
-      if (activeTool === "highlighter" || activeTool === "smart_highlighter") {
-        setHighlighterSize(size);
-      } else {
-        setPenSize(size);
-      }
-    },
-    [activeTool]
-  );
+  const activePenSize = penSize;
+  const handlePenSizeChange=useCallback((size:number)=>updateDrawingSettings({size}),[updateDrawingSettings]);
 
   // Helper to update a document in openDocs
   const updateDoc = useCallback((docId: string, updater: (d: WorkspaceDoc) => WorkspaceDoc) => {
