@@ -348,7 +348,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
         return (
           <div
             key={note.id}
-            id={`sticky-${note.id}`}
+            id={`sticky-${note.id}`} data-annotation-id={note.id}
             onMouseEnter={() => {
               elevatePageZIndex(pageNumber);
             }}

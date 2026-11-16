@@ -1,3 +1,4 @@
+import {AnnotationSelectionController} from '../src/components/AnnotationSelectionController';
 import {readFileSync} from 'node:fs';
 import {EraserCursor} from '../src/components/EraserCursor';
 import {DrawingCanvas} from '../src/components/DrawingCanvas';
@@ -12,10 +13,10 @@ import {isDrawingHighlighter,quickGeometry} from '../src/utils/quickShapes';
 import {QuickShapesLayer} from '../src/components/QuickShapesLayer';
 import {LarkFloatingToolbar} from '../src/components/LarkFloatingToolbar';
 
-async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1) {
+async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1,managed=false) {
   const dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost'});
   const descriptors=new Map<string,PropertyDescriptor|undefined>();
-  const globals={window:dom.window,document:dom.window.document,Node:dom.window.Node,Element:dom.window.Element,HTMLElement:dom.window.HTMLElement,SVGElement:dom.window.SVGElement,IS_REACT_ACT_ENVIRONMENT:true};
+  const globals={window:dom.window,document:dom.window.document,Node:dom.window.Node,Element:dom.window.Element,HTMLElement:dom.window.HTMLElement,SVGElement:dom.window.SVGElement,Event:dom.window.Event,CustomEvent:dom.window.CustomEvent,CSS:{escape:(id:string)=>id},IS_REACT_ACT_ENVIRONMENT:true};
   for(const [key,value] of Object.entries(globals)){descriptors.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{value,writable:true,configurable:true});}
   const css=readFileSync(new URL('../src/index.css',import.meta.url),'utf8');
   const style=dom.window.document.createElement('style');style.textContent=css.slice(css.indexOf('/* The redesigned drawing panels'));dom.window.document.head.appendChild(style);
@@ -29,23 +30,27 @@ async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1) {
   dom.window.HTMLElement.prototype.releasePointerCapture=dom.window.SVGElement.prototype.releasePointerCapture;
   dom.window.HTMLElement.prototype.getBoundingClientRect=dom.window.SVGElement.prototype.getBoundingClientRect;
   const model:{tool:ActiveTool;setTool:(tool:ActiveTool)=>void;shapes:DrawingStroke[];replaceShapes:(shapes:DrawingStroke[])=>void;cleared:number;state:NonNullable<ReturnType<typeof useQuickShapes>>}={} as any;
-  let serial=0,cleared=0;
+  let serial=0,cleared=0,commits=0;
   function TestApp() {
     const [tool,setTool]=useState(initial),[shapes,setShapes]=useState<DrawingStroke[]>([]);
+    const [selectedIds,setSelectedIds]=useState<string[]>([]);
+    const select=(id:string,shift:boolean)=>setSelectedIds(old=>!id?[]:shift?old.includes(id)?old.filter(x=>x!==id):[...old,id]:[id]);
     const state=useQuickShapes()!;Object.assign(model,{tool,setTool,shapes,replaceShapes:setShapes,state,cleared});
     return React.createElement(React.Fragment,null,
       React.createElement(EraserCursor,{active:tool==='eraser',size:20}),
-      React.createElement('div',{'data-user-zoom':zoom},React.createElement('div',{'data-page-container':true},
-        React.createElement(QuickShapesLayer,{fileId:'doc-a',pageNumber:1,width:1000*scale,height:800*scale,scale,activeTool:tool,drawings:shapes,
+      React.createElement('div',{'data-user-zoom':zoom,'data-workspace-doc':'doc-a'},React.createElement('div',{'data-page-container':true},
+        React.createElement(QuickShapesLayer,{fileId:'doc-a',pageNumber:1,width:1000*scale,height:800*scale,scale,activeTool:tool,drawings:shapes,...(managed?{selectedIds,onSelect:select}:{}),
           onAddStroke:payload=>{const id=`shape-${++serial}`;setShapes(old=>[...old,{...payload,id,createdAt:Date.now()}]);return id;},
           onClearSelection:()=>{cleared++;model.cleared=cleared;},
           onUpdateStroke:(id,patch)=>setShapes(old=>old.map(s=>s.id===id?{...s,...patch}:s)),onDeleteStroke:id=>setShapes(old=>old.filter(s=>s.id!==id))}),
         React.createElement(DrawingCanvas,{pageNumber:1,width:1000*scale,height:800*scale,scale,
           isDrawingMode:['pen','smart_pen','highlighter','smart_highlighter'].includes(tool),isHighlighter:tool==='highlighter' || tool==='smart_highlighter',
           isSmartPen:tool==='smart_pen',isSmartHighlighter:tool==='smart_highlighter',isEraserMode:tool==='eraser',
-          penColor:state.settings.color,penSize:isDrawingHighlighter(tool)?state.highlightSize:state.settings.size,strokes:shapes,
+          penColor:state.settings.color,penSize:isDrawingHighlighter(tool)?state.highlightSize:state.settings.size,strokes:shapes,...(managed?{selectedIds,onSelect:select}:{}),
           onAddStroke:payload=>{const id=`pen-${++serial}`;setShapes(old=>[...old,{...payload,id,createdAt:Date.now()}]);return id;},
           onUpdateStroke:(id,patch)=>setShapes(old=>old.map(s=>s.id===id?{...s,...patch}:s)),onDeleteStroke:id=>setShapes(old=>old.filter(s=>s.id!==id))}))),
+      managed?React.createElement(AnnotationSelectionController,{docs:[{id:'doc-a',fileId:'doc-a',selectedIds,drawings:shapes,boxes:[],textNotes:[],freeTexts:[],highlights:[]} as any],activeId:'doc-a',activeTool:tool,disabled:false,
+        onSelect:(_,id,shift)=>select(id,shift),onApply:(_,snapshot,ids,base)=>{setShapes(snapshot.drawings);setSelectedIds(ids);if(base)commits++;}}):null,
       React.createElement(LarkFloatingToolbar,{activeTool:tool,onActiveToolChange:setTool,penColor:'#171717',penSize:4,penOpacity:1,eraserSize:20,onPenColorChange(){},onPenSizeChange(){},onPenOpacityChange(){},onEraserSizeChange(){}}));
   }
   const {createRoot}=await import('react-dom/client');let root:Root=createRoot(dom.window.document.getElementById('root')!);
@@ -56,7 +61,7 @@ async function harness(initial:ActiveTool='quick_arrow',scale=1,zoom=1) {
     Object.defineProperty(event,'pointerId',{value:1});Object.defineProperty(event,'pointerType',{value:'mouse'});await act(async()=>{target.dispatchEvent(event);});
   };
   const click=async(label:string)=>{const target=dom.window.document.querySelector(`[aria-label="${label}"]`)!;assert.ok(target,label);await act(async()=>{target.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));});};
-  return {model,svg,pointer,click,dom,async dispose(){await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete (globalThis as any)[key];}}};
+  return {model,svg,pointer,click,dom,commits:()=>commits,async dispose(){await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete (globalThis as any)[key];}}};
 }
 
 test('pointer creation holds the start, shows a live preview, commits on release, bends via the yellow middle handle and moves as one shape',async()=>{
@@ -201,9 +206,9 @@ test('one Noto Sans control strip shares colour, dash and eraser while Highlight
     assert.equal(doc.querySelectorAll('[data-shared-drawing-controls]').length,1);
     assert.equal(doc.querySelectorAll('.lucide-timer').length,0);
     assert.equal((doc.querySelector('[aria-label="Mũi tên"]') as HTMLElement).style.color,'rgb(0, 0, 0)');
-    assert.equal((doc.querySelector('[aria-label="Mũi tên tạm — mất sau 3 giây"]') as HTMLElement).style.color,'rgb(85, 85, 85)');
+    assert.equal((doc.querySelector('[aria-label="Mũi tên tạm — mất sau 3 giây"]') as HTMLElement).style.color,'rgb(0, 0, 0)');
     for(const icon of doc.querySelectorAll('[data-temporary="true"] > svg')) {
-      assert.equal(h.dom.window.getComputedStyle(icon).opacity,'0.7');
+      assert.equal(h.dom.window.getComputedStyle(icon).opacity,'1');
       assert.ok(h.dom.window.getComputedStyle(icon).maskImage.includes('linear-gradient'));
     }
     await h.click('Màu nét');
@@ -361,6 +366,25 @@ test('nearby handle targets edit the closest endpoint/midpoint without enlarging
         if(index===1){assert.deepEqual(get().points[0],before[0]);assert.deepEqual(get().points[2],before[2]);}
         else assert.deepEqual(get().points[2-index],before[2-index]);
       }
+    } finally {await h.dispose();}
+  }
+});
+
+test('real arrow and Highlight layers reopen their editor in select mode, edit once through shared selection and close on empty paper',async()=>{
+  for(const tool of ['quick_arrow','highlighter'] as const) {
+    const h=await harness(tool,1,1,true);try {
+      const canvas=tool==='quick_arrow'?h.svg():h.dom.window.document.querySelector('canvas')!;
+      await h.pointer(canvas,'pointerdown',100,200);await h.pointer(canvas,'pointermove',400,200);await h.pointer(canvas,'pointerup',400,200);
+      assert.equal(h.model.shapes.length,1);
+      await act(async()=>h.model.setTool('select'));
+      const hit=h.dom.window.document.querySelector(`[data-annotation-id="${h.model.shapes[0].id}"] path[stroke="transparent"]`)!;
+      await h.pointer(hit,'pointerdown',250,200);await h.pointer(h.svg(),'pointerup',250,200);
+      assert.equal(h.model.state.open,true);assert.equal(h.model.state.group,tool==='quick_arrow'?'quick':'draw');
+      if(tool==='highlighter')await act(async()=>h.model.state.updateHighlightSize(15));
+      else await act(async()=>h.model.state.updateSettings({size:9,color:'#22c55e'}));
+      assert.equal(h.model.shapes[0].size,tool==='quick_arrow'?9:15);assert.equal(h.commits(),1);
+      await h.pointer(h.svg(),'pointerdown',900,700);await h.pointer(h.svg(),'pointerup',900,700);
+      assert.equal(h.model.state.open,false);
     } finally {await h.dispose();}
   }
 });

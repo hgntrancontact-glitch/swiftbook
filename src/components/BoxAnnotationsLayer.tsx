@@ -460,7 +460,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
         return (
           <div
             key={box.id}
-            id={`box-${box.id}`}
+            id={`box-${box.id}`} data-annotation-id={box.id}
             onClick={(e) => {
               e.stopPropagation();
               if (e.shiftKey || shiftClickHandledRef.current) {
@@ -531,7 +531,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
             className={`absolute pointer-events-auto group ${
               isDragging
                 ? 'cursor-grabbing shadow-2xl z-[9999]'
-                : isSelected
+                : isSelected && !isMultiSelected
                 ? 'cursor-grab active:cursor-grabbing ring-2 ring-blue-500/80 shadow-md z-[9000]'
                 : 'cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-black/40 z-20 transition-shadow'
             }`}
@@ -576,7 +576,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
             )}
 
             {/* 8 Smart Resize Handles (4 corners + 4 edge centers) */}
-            {isSelected && (() => {
+            {isSelected && !isMultiSelected && (() => {
               // Smart adaptive size calculation:
               // Smaller, cleaner base size (7.5px - 8px down from old 14px)
               // Auto-adapts if box is small to prevent handle collisions, and scales gracefully with zoom

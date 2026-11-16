@@ -399,7 +399,7 @@
 .drawing-tool-button { display:inline-flex; position:relative; align-items:center; justify-content:center; flex-shrink:0; min-width:34px; height:34px; padding:4px; border:0; border-radius:7px; background:transparent; color:inherit; cursor:pointer; font-size:12px; font-weight:400; line-height:1; }
 .drawing-tool-button:hover, .drawing-tool-button[data-active="true"] { background:#f4f4f4; }
 .drawing-tool-button:focus-visible { outline:2px solid #f5c41a; outline-offset:1px; }
-.drawing-tool-button[data-temporary="true"] > svg { opacity:.7; mask-image:linear-gradient(135deg,#000 45%,#0009 100%); }
+.drawing-tool-button[data-temporary="true"] > svg { opacity:1; mask-image:linear-gradient(90deg,#000 45%,#0008 80%,#0000 100%); }
 .drawing-pen-button { color:#666; width:34px; }
 .drawing-smart-sparkles { position:absolute; right:0; top:0; color:#f59e0b; fill:#fff; }
 .drawing-tools-divider { width:1px; height:28px; background:#e0e0e5; margin:0 4px; flex-shrink:0; }
@@ -432,3 +432,7 @@
 .box-toolbar-button:hover { background:#f4f4f4; }
 .box-toolbar-divider { width:1px; height:24px; background:#e0e0e5; }
 .box-toolbar-delete { color:#ef2020; }
+.annotation-group-toolbar { display:flex; align-items:center; gap:7px; padding:8px 10px; background:#fff; border-radius:10px; box-shadow:0 4px 18px #0003; font-size:12px; max-width:calc(100vw - 16px); }
+.annotation-group-toolbar button { display:flex; align-items:center; justify-content:center; border:0; background:transparent; cursor:pointer; padding:3px; }
+.annotation-group-toolbar .annotation-group-color { border-radius:50%; width:17px; height:17px; padding:0; flex-shrink:0; }
+.annotation-group-width { width:38px; border:0; border-bottom:1px solid #ccc; background:transparent; outline:none; text-align:right; font:inherit; }

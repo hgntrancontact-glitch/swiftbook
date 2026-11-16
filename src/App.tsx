@@ -1,4 +1,5 @@
 import {useWorkspaceDocumentFocus} from './hooks/useWorkspaceDocumentFocus';
+import {AnnotationSelectionController} from './components/AnnotationSelectionController';
 import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
 import {isQuickShapeTool,isDrawingHighlighter} from './utils/quickShapes';
@@ -1299,6 +1300,13 @@ function SwiftbookApp() {
     [updateDoc]
   );
 
+  const handleApplyAnnotationSelection=useCallback((docId:string,snapshot:HistorySnapshot,ids:string[],historyBase?:HistorySnapshot)=>{
+    setActiveDocId(docId);
+    updateDoc(docId,doc=>({...doc,...snapshot,selectedIds:ids,
+      ...(historyBase?{pastStates:[...doc.pastStates,historyBase].slice(-50),futureStates:[]}:{}),
+    }));
+  },[updateDoc]);
+
   // Custom TOC Handlers for activeDoc
   const handleAddCustomTOCItem = (
     title: string,
@@ -1727,8 +1735,11 @@ function SwiftbookApp() {
           )}
 
           {/* Unified Cross-Page Selection Toolbar for Active Document */}
+          <AnnotationSelectionController docs={openDocs} activeId={activeDocId} activeTool={activeTool}
+            disabled={isLibraryModalOpen || isSaveBookModalOpen || isExportModalOpen || isImageOrderModalOpen}
+            onSelect={handleSelect} onApply={handleApplyAnnotationSelection}/>
           <UnifiedSelectionToolbar
-            selectedIds={activeDoc?.selectedIds || []}
+            selectedIds={activeDoc?.selectedIds.every(id=>activeDoc.freeTexts.some(text=>text.id===id))?activeDoc.selectedIds:[]}
             freeTexts={activeDoc?.freeTexts || []}
             boxes={activeDoc?.boxes || []}
             boxConfig={boxConfig}

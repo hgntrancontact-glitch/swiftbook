@@ -77,6 +77,9 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
     return { ...hl, selectionKind: isText ? 'text' as const : hl.selectionKind, rects: hl.selectionGeometry === 'line' ? hl.rects : highlightDisplayRects(hl.rects, isText) };
   }), [highlights, pageNumber]);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  useEffect(()=>{
+    if(selectedIds) setActiveHighlightId(selectedIds.length===1 && pageHighlights.some(hl=>hl.id===selectedIds[0])?selectedIds[0]:null);
+  },[selectedIds?.join('|')]);
   const [hoveredNoteHlId, setHoveredNoteHlId] = useState<string | null>(null);
   const [editingNote, setEditingNote] = useState<{ id: string; text: string } | null>(null);
 
@@ -184,10 +187,10 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
           <div
             key={`${isElevated ? 'elevated-' : 'base-'}${hl.id}-interactive-${idx}`}
             id={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${idx}`}
-            data-highlight-rise={rect.rise || 0}
+            data-annotation-id={hl.id} data-highlight-rise={rect.rise || 0}
             data-highlight-height={rect.height}
             className={`absolute pointer-events-auto cursor-pointer select-none ${
-              isSelected ? 'ring-2 ring-blue-500' : ''
+              isSelected && (!selectedIds || selectedIds.length<2) ? 'ring-2 ring-blue-500' : ''
             }`}
             style={{
               left: `${rect.x}%`,

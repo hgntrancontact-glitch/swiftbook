@@ -1095,7 +1095,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             : selectedStrokeId === stroke.id;
 
           return (
-            <g key={`stroke-render-${stroke.id}`} className="stroke-vector-group">
+            <g key={`stroke-render-${stroke.id}`} className="stroke-vector-group" data-annotation-id={stroke.id}>
               {/* Visible vector stroke */}
               <path
                 d={d}
@@ -1179,7 +1179,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 const hitStrokeWidth = Math.max(24, stroke.size * scale / (stroke.referenceScale || 1) + 20);
 
                 return (
-                  <g key={`elevated-stroke-render-${stroke.id}`} className="stroke-vector-group">
+                  <g key={`elevated-stroke-render-${stroke.id}`} className="stroke-vector-group" data-annotation-id={stroke.id}>
                     {/* Visible vector stroke (elevated above sticky notes) */}
                     <path
                       d={d}

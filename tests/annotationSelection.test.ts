@@ -1,0 +1,33 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {annotationEntries,editAnnotations,transformAnnotations,styleAnnotations,type PageBounds} from '../src/utils/annotationSelection';
+import {fixture} from './fixtures/annotations';
+test('mixed annotation transforms preserve relative screen placement on pages of different sizes and leave originals untouched',()=>{
+  const base=fixture();base.textNotes[0].pageNumber=2;
+  const pages:PageBounds={1:{left:0,top:0,width:1000,height:800},2:{left:1200,top:0,width:500,height:400}};
+  const ids=annotationEntries(base).map(({item})=>item.id),before=JSON.stringify(base);
+  const moved=transformAnnotations(base,ids,pages,{dx:20,dy:32,scale:1,originX:0,originY:0});
+  assert.equal(moved.boxes[0].x,12);assert.ok(Math.abs(moved.boxes[0].y-14)<1e-10);
+  assert.equal(moved.textNotes[0].x,44);assert.equal(moved.textNotes[0].y,18);
+  assert.equal(moved.highlights[0].rects[0].x,12);assert.equal(moved.drawings[0].points[0].y,74);
+  assert.equal(moved.textNotes[0].text,base.textNotes[0].text);assert.equal(moved.freeTexts[0].text,base.freeTexts[0].text);
+  const resized=transformAnnotations(base,ids,pages,{dx:0,dy:0,scale:2,originX:0,originY:0});
+  assert.equal(resized.drawings[0].size,8);assert.equal(resized.boxes[0].borderWidth,8);
+  assert.equal(resized.boxes[0].width,40);assert.equal(resized.textNotes[0].width,448);
+  assert.equal(resized.freeTexts[0].fontSize,32);assert.ok(resized.freeTexts[0].text.includes('font-size:32px'));
+  assert.equal(JSON.stringify(base),before);
+});
+test('group styles apply compatible fields, cloning keeps originals, and deletion removes all selected types',()=>{
+  const base=fixture(),ids=annotationEntries(base).map(({item})=>item.id);
+  const changed=styleAnnotations(base,ids,{color:'green',size:80,dashStyle:'dashed'});
+  assert.equal(changed.drawings[0].size,80);assert.equal(changed.drawings[0].dashStyle,'dashed');
+  assert.equal(changed.boxes[0].fillColor,'#22c55e25');assert.equal(changed.boxes[0].borderWidth,80);
+  assert.equal(changed.highlights[0].color,'green');assert.equal(changed.textNotes[0].color,'#98d08a');
+  assert.equal(changed.freeTexts[0].fontSize,16);
+  const copies=Object.fromEntries(ids.map(id=>[id,id+'-copy']));
+  const cloned=transformAnnotations(base,ids,{1:{left:0,top:0,width:1000,height:800}},{dx:30,dy:40,scale:1,originX:0,originY:0},copies);
+  assert.equal(annotationEntries(cloned).length,ids.length*2);
+  assert.deepEqual(cloned.boxes[0],base.boxes[0]);assert.equal(cloned.boxes[1].x,13);
+  const deleted=editAnnotations(cloned,Object.values(copies),()=>null);
+  assert.deepEqual(deleted,base);
+});

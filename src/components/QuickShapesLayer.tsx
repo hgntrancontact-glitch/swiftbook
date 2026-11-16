@@ -7,7 +7,8 @@ import {hitQuickShape,isQuickShapeTool,moveQuickHandle,quickGeometry,quickHandle
 
 type Props={fileId:string;pageNumber:number;width:number;height:number;scale:number;eraserSize?:number;activeTool:ActiveTool;drawings:DrawingStroke[];
   onAddStroke:(shape:Omit<DrawingStroke,'id'|'createdAt'>)=>string|void;
-  onUpdateStroke?:(id:string,updates:Partial<DrawingStroke>,skipHistory?:boolean)=>void;onDeleteStroke:(id:string)=>void;onClearSelection?:()=>void};
+  onUpdateStroke?:(id:string,updates:Partial<DrawingStroke>,skipHistory?:boolean)=>void;onDeleteStroke:(id:string)=>void;onClearSelection?:()=>void;
+  selectedIds?:string[];onSelect?:(id:string,shift:boolean)=>void};
 export function QuickShapeVisual({shape,width,height,scale}:{shape:DrawingStroke;width:number;height:number;scale:number}) {
   const g=quickGeometry(shape,width,height,scale);
   return <g fill="none" stroke={shape.color} strokeWidth={g.lineWidth} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none">
@@ -19,13 +20,14 @@ export function QuickShapesLayer(props:Props) {
   const state=useQuickShapes();return state?<QuickShapePage {...props} state={state}/>:null;
 }
 type Interaction={mode:'create'|'move'|'handle'|'erase';pointer:number;start:DrawingPoint;last:DrawingPoint;shape?:DrawingStroke;handle?:number;temporary?:boolean;dirty:boolean};
-function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,activeTool,drawings,onAddStroke,onUpdateStroke,onDeleteStroke,onClearSelection,state}:Props & {state:NonNullable<ReturnType<typeof useQuickShapes>>}) {
+function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,activeTool,drawings,onAddStroke,onUpdateStroke,onDeleteStroke,onClearSelection,selectedIds,onSelect,state}:Props & {state:NonNullable<ReturnType<typeof useQuickShapes>>}) {
   const svg=useRef<SVGSVGElement>(null),interaction=useRef<Interaction|null>(null);
   const [draft,updateDraft]=useState<DrawingStroke|null>(null);
   const draftRef=useRef<DrawingStroke|null>(null);
   const setDraft=(value:DrawingStroke|null)=>{draftRef.current=value;updateDraft(value);};
   const items=useMemo(()=>[...drawings.filter(s=>s.quickShape && s.pageNumber===pageNumber),
-    ...state.temporary.filter(s=>s.fileId===fileId && s.pageNumber===pageNumber)], [drawings,state.temporary,fileId,pageNumber]);
+    ...state.temporary.filter(s=>s.fileId===fileId && s.pageNumber===pageNumber),
+    ...state.previewShapes.filter(s=>s.fileId===fileId && s.pageNumber===pageNumber)], [drawings,state.temporary,state.previewShapes,fileId,pageNumber]);
   const selectedId=state.selection?.fileId===fileId && state.selection.pageNumber===pageNumber?state.selection.id:null;
   const selected=items.find(s=>s.id===selectedId);
   const erasing=activeTool==='eraser' || activeTool==='quick_eraser';
@@ -38,9 +40,9 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
   // not be overwritten by a settings effect when the drawings array changes.
   useEffect(()=>{
     if(settingsRevision.current===state.revision)return;settingsRevision.current=state.revision;
-    if(selected)update(selected.id,{color:state.settings.color,size:state.settings.size,dashStyle:state.settings.dashStyle});
+    if(selected && !selectedIds)update(selected.id,{color:state.settings.color,size:state.settings.size,dashStyle:state.settings.dashStyle});
   },[state.revision]);
-  useEffect(()=>{if(selectedId && !selected)state.setSelection(null);},[selectedId,selected]);
+  useEffect(()=>{if(selectedId && state.selection?.kind==='quick' && !selected)state.setSelection(null);},[selectedId,selected]);
   useEffect(()=>{
     const key=(event:KeyboardEvent)=>{
       if((event.target as Element)?.closest?.('input,textarea,[contenteditable="true"]'))return;
@@ -75,10 +77,11 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
   const start=(event:React.PointerEvent,shape?:DrawingStroke,handle?:number)=>{
     if(interaction.current || event.button!==0 || !interactive || svg.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomGesture==='true')return;
     if(!shape && !active)return;
-    capture(event);onClearSelection?.();window.getSelection()?.removeAllRanges();const p=point(event);
+    capture(event);if(!shape)onClearSelection?.();window.getSelection()?.removeAllRanges();const p=point(event);
     if(erasing) {interaction.current={mode:'erase',pointer:event.pointerId,start:p,last:p,dirty:false};erase(p);return;}
     if(shape) {
       state.select(shape,fileId);
+      onSelect?.(shape.id,event.shiftKey);
       interaction.current={mode:handle===undefined?'move':'handle',pointer:event.pointerId,start:p,last:p,shape,handle,temporary:temporary(shape.id),dirty:false};
       setDraft(shape);return;
     }
@@ -115,8 +118,8 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
           ? Math.abs(end.x-start.x)*width/100>=2 && Math.abs(end.y-start.y)*height/100>=2
           : Math.hypot((end.x-start.x)*width/100,(end.y-start.y)*height/100)>=4;
         if(valid) {
-          if(own.temporary){state.store.add(draft,fileId);state.select(draft,fileId);}
-          else {const {id,createdAt,...payload}=draft;const savedId=onAddStroke(payload);if(savedId)state.select({...draft,id:savedId},fileId);}
+          if(own.temporary){state.store.add(draft,fileId);state.select(draft,fileId);onSelect?.(draft.id,false);}
+          else {const {id,createdAt,...payload}=draft;const savedId=onAddStroke(payload);if(savedId){state.select({...draft,id:savedId},fileId);onSelect?.(savedId,false);}}
         }
       } else if(own.temporary)state.store.update(draft.id,{points:draft.points});
       else onUpdateStroke?.(draft.id,{points:draft.points});
@@ -131,8 +134,8 @@ function QuickShapePage({fileId,pageNumber,width,height,scale,eraserSize=20,acti
     onPointerDown={e=>start(e)} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)}>
     {active && <rect data-quick-shape-canvas width="100%" height="100%" fill="transparent" pointerEvents="all"/>}
     {display.map(shape=>{
-      const g=quickGeometry(shape,width,height,scale),chosen=shape.id===selectedId && interaction.current?.mode!=='create';
-      return <g key={shape.id} data-quick-shape-hit={shape.id}>
+      const g=quickGeometry(shape,width,height,scale),chosen=shape.id===selectedId && interaction.current?.mode!=='create' && (!selectedIds || selectedIds.length<2);
+      return <g key={shape.id} data-quick-shape-hit={shape.id} data-annotation-id={shape.id}>
         <QuickShapeVisual shape={shape} width={width} height={height} scale={scale}/>
         <path d={g.path} fill="none" stroke="transparent" strokeWidth={Math.max(18,g.lineWidth+12)}
           style={{pointerEvents:interactive?'stroke':'none',cursor:erasing?'crosshair':'move',touchAction:'none'}} onPointerDown={e=>start(e,shape)}/>

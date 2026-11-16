@@ -3309,7 +3309,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
         return (
           <div
             key={item.id}
-            id={`freetext-${item.id}`}
+            id={`freetext-${item.id}`} data-annotation-id={item.id}
             onPointerDown={(e) => startDragPointer(e, item)}
             onPointerMove={handlePointerMove}
             onPointerUp={endPointerGesture}
@@ -3357,7 +3357,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
             </div>
 
             {/* Selection Lark-style Border & Handles Layer */}
-            {isSelected && (
+            {isSelected && (!selectedIds || selectedIds.length<2) && (
               <div
                 className="absolute -left-0 -right-0 rounded-none pointer-events-none z-20 border border-[#f5c41a]"
                 style={{
