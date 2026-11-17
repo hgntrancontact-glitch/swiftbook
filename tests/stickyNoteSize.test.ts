@@ -42,13 +42,20 @@ test('note −/+ scales one whole paper, survives zoom/save/reload and keeps man
   try {
     await act(async()=>root.render(React.createElement(App)));
     const before=actual();near(before.width,190.4);near(before.height,156.4);
+    assert.equal(paper().querySelector('[aria-label="Phóng lớn giấy note"]'),null);
+    await click('Hiện chỉnh kích thước giấy note');near(actual().width,before.width);
     const plus=paper().querySelector('[aria-label="Phóng lớn giấy note"]')!;
-    assert.ok(plus.nextElementSibling!.textContent!.includes('P.1'));
+    assert.equal(plus.nextElementSibling!.getAttribute('aria-expanded'),'true');
+    assert.ok(plus.parentElement!.nextElementSibling!.textContent!.includes('P.1'));
+    assert.ok(!plus.className.includes('bg-neutral'));
     await click('Phóng lớn giấy note');near(actual().width,before.width*1.1);near(actual().scale,before.scale*1.1);
+    await click('Ẩn chỉnh kích thước giấy note');near(actual().width,before.width*1.1);
+    await click('Hiện chỉnh kích thước giấy note');
     assert.equal(saved[0].sizeMultiplier,1.1);assert.equal(saved[1].sizeMultiplier,undefined);near(actual('two').width,before.width);
     await act(async()=>setZoom(2));near(actual().width,before.width*1.1*2);near(actual().scale,before.scale*1.1*2);
     saved=JSON.parse(JSON.stringify(saved));await act(async()=>root.render(React.createElement(App,{key:'reload'})));
     near(actual().width,before.width*1.1);assert.equal(paper().querySelector('textarea')!.value,'First\nSecond');
+    await click('Hiện chỉnh kích thước giấy note');
     for(let i=0;i<6;i++)await click('Thu nhỏ giấy note');
     assert.equal(saved[0].sizeMultiplier,.5);assert.equal((paper().querySelector('[aria-label="Thu nhỏ giấy note"]') as HTMLButtonElement).disabled,true);
     const start=actual();const handle=paper().children[3];

@@ -54,6 +54,8 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(icon().style.width,'22px');assert.ok(icon().className.includes('rounded-full'));assert.ok(icon().className.includes('bg-[#f5c41a]'));
     assert.ok(badge().contains(icon()));assert.ok(badge().contains(doc.querySelector('[data-highlight-note-side]')));
     assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-arrow-down'));
+    assert.ok(doc.querySelector('[data-highlight-note-side]')!.className.includes('text-black'));
+    assert.equal(doc.querySelector('[data-highlight-note-side] svg')!.getAttribute('stroke-width'),'4');
     await act(async()=>{doc.getElementById('hl-h-rect-0')!.dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});
     assert.equal(popup().style.visibility,'hidden');
     await act(async()=>{icon().dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});await flush();
@@ -63,6 +65,15 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
       popup().dispatchEvent(new dom.window.MouseEvent('mousemove',{bubbles:true}));
     });
     assert.equal(popup().style.visibility,'visible');
+    const click=async(label:string)=>act(async()=>{doc.querySelector(`[aria-label="${label}"]`)!.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));});
+    const width=popup().style.width,rects=JSON.stringify(model.note.rects),iconSize=icon().style.width;
+    assert.equal(doc.querySelector('[aria-label="Phóng lớn popup ghi chú"]'),null);
+    await click('Hiện chỉnh kích thước popup ghi chú');await flush();
+    assert.equal(popup().style.width,width);
+    await click('Phóng lớn popup ghi chú');await flush();
+    assert.equal(model.note.notePopupScale,1.1);assert.ok(parseFloat(popup().style.width)>parseFloat(width));
+    assert.equal(icon().style.width,iconSize);assert.equal(JSON.stringify(model.note.rects),rects);
+    await click('Ẩn chỉnh kích thước popup ghi chú');await flush();assert.equal(model.note.notePopupScale,1.1);
     pageTop=-250;await act(async()=>viewport.dispatchEvent(new dom.window.Event('scroll')));await flush();
     assert.equal(icon().dataset.popupDirection,'above');assert.equal(model.note.noteSide,'above');
     await act(async()=>doc.querySelector('[data-highlight-note-side]')!.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));await flush();
@@ -72,6 +83,10 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-arrow-up'));
     await act(async()=>model.select(true));await flush(); // moving the interactive overlay between base/elevated portals must not reset the side
     assert.equal(icon().dataset.popupDirection,'below');
+    const toolbar=doc.querySelector<HTMLElement>('.highlight-popup-toolbar')!,toolbarZoom=Number(toolbar.style.zoom);
+    await click('Hiện chỉnh kích thước toolbar Highlight');await click('Phóng lớn toolbar Highlight');await flush();
+    assert.equal(model.note.toolbarScale,1.1);assert.ok(Math.abs(Number(toolbar.style.zoom)-toolbarZoom*1.1)<1e-9);
+    assert.equal(JSON.stringify(model.note.rects),rects);
     assert.equal(doc.querySelector('[data-annotation-id="h"]')!.className.includes('ring-blue'),false);
     pageTop=200;await act(async()=>viewport.dispatchEvent(new dom.window.Event('scroll')));await flush();
     assert.equal(icon().dataset.popupDirection,'below');

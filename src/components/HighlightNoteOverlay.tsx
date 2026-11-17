@@ -10,6 +10,7 @@ interface Props {
   anchorId: string;
   bottomAnchorId: string;
   side?: 'above'|'below';
+  popupScale?: number;
   onSideChange: (side:'above'|'below')=>void;
   scopeId: string;
   owner: string;
@@ -29,7 +30,7 @@ const POPUP_WIDTH = 236;
 const POPUP_GAP = 6;
 
 // Page-local overlays scroll natively; dimensions follow document zoom.
-export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideChange, scopeId, owner, highlightId, mode, showPopup, onEnter, onLeave, onEdit, children }: Props) {
+export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScale=1, onSideChange, scopeId, owner, highlightId, mode, showPopup, onEnter, onLeave, onEdit, children }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<HTMLButtonElement>(null);
   const badgeRef = useRef<HTMLDivElement>(null);
@@ -106,7 +107,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
       }
       // Scale the entire card once. Its base width and maximum body height
       // are document-space values, not a viewport-dependent size negotiation.
-      const popupFactor=factor*HIGHLIGHT_NOTE_SIZE;
+      const popupFactor=factor*HIGHLIGHT_NOTE_SIZE*popupScale;
       const cardWidth=POPUP_WIDTH*popupFactor;
       popup.style.width=sized(cardWidth);
       popup.style.maxHeight=sized(420*popupFactor);
@@ -140,7 +141,6 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
       const arrow=arrowRef.current;
       if(arrow) {
         arrow.style.width=sized(16*factor);arrow.style.height=sized(iconSize);
-        arrow.style.borderWidth=sized(factor);
         arrow.style.visibility='visible';
       }
       Object.assign(popup.style,aligned(geometry.popup));
@@ -198,7 +198,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
       mutation.disconnect();
       window.removeEventListener('resize', schedule);
     };
-  }, [anchorId, bottomAnchorId, scopeId, mode, showPopup,portalTarget]);
+  }, [anchorId, bottomAnchorId, scopeId, mode, showPopup,portalTarget,popupScale]);
 
   // React commits the final page dimensions before paint. Rebase HTML zoom in
   // that same commit rather than leaving one frame with the old live ratio.
@@ -223,7 +223,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
         <MessageSquare size={ICON_GLYPH_SIZE} style={{ width: ICON_GLYPH_SIZE, height: ICON_GLYPH_SIZE, flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
       </button>
       <button ref={arrowRef} type="button" data-highlight-note-side={highlightId}
-        className="flex shrink-0 items-center justify-center rounded-full text-[#f5c41a] border border-[#f5c41a]/40 bg-[#f5c41a]/10 hover:bg-[#f5c41a]/20 cursor-pointer"
+        className="flex shrink-0 items-center justify-center text-black border-0 bg-transparent cursor-pointer"
         style={{visibility:'hidden',boxSizing:'border-box'}} title={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
         aria-label={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
         onMouseDown={e=>e.stopPropagation()}
@@ -235,7 +235,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
           positionRef.current?.();
           onSideChange(next);
         }}>
-        {chosenSide==='above'?<ArrowDown size="100%"/>:<ArrowUp size="100%"/>}
+        {chosenSide==='above'?<ArrowDown size="100%" strokeWidth={4}/>:<ArrowUp size="100%" strokeWidth={4}/>}
       </button>
       </div>
       {<>

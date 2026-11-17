@@ -197,9 +197,9 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const style = getComputedStyle(container), rect = container.getBoundingClientRect(), content = wrapper.getBoundingClientRect();
     const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
     const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
-    const sx = cursorZoom ? zoomPanShift(content.left,content.width,rect.left+left,container.clientWidth-left-right) : settle ? settledPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, centerFitting, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined)
+    const sx = !settle && !cursorZoom && dx===0 ? 0 : cursorZoom ? zoomPanShift(content.left,content.width,rect.left+left,container.clientWidth-left-right) : settle ? settledPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, centerFitting, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined)
       : boundedPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, dx, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined);
-    const sy = cursorZoom ? zoomPanShift(content.top,content.height,rect.top+top,container.clientHeight-top-bottom) : settle ? settledPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, centerFitting, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined)
+    const sy = !settle && !cursorZoom && dy===0 ? 0 : cursorZoom ? zoomPanShift(content.top,content.height,rect.top+top,container.clientHeight-top-bottom) : settle ? settledPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, centerFitting, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined)
       : boundedPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, dy, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined);
     const oldX = container.scrollLeft, oldY = container.scrollTop;
     container.scrollLeft -= sx;
@@ -436,7 +436,12 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         if(!intent) return;
         if(intent.owner==='workspace' && docCountRef.current>2) {
           container.dispatchEvent(new CustomEvent('pdf-workspace-swipe',{bubbles:true,detail:{delta:intent.dx}}));
-        } else (intent.owner==='workspace'?container:intent.owner).dispatchEvent(new CustomEvent('pdf-pan-input',{detail:{x:intent.dx,y:intent.dy}}));
+        } else {
+          // Lock vertical reading for the whole momentum sequence. Tiny x
+          // ticks must not recenter a nearly fitting page left/right.
+          const x=intent.axis==='y'?0:intent.dx;
+          (intent.owner==='workspace'?container:intent.owner).dispatchEvent(new CustomEvent('pdf-pan-input',{detail:{x,y:intent.dy}}));
+        }
         return;
       }
       event.preventDefault();

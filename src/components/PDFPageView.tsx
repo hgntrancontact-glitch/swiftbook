@@ -27,7 +27,7 @@ import { FreeTextLayer } from './FreeTextLayer';
 import { DrawingCanvas } from './DrawingCanvas';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
-import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, rasterSourceDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
+import { getPageRaster, rememberPageRaster, clearPageRasters, rasterDensity, getRasterCacheUsage } from '../utils/pdfRasterCache';
 
 interface PDFPageViewProps {
   fileId: string;
@@ -200,6 +200,9 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdf
           crop=rasterSampleRect(full,size,sampleTile,liveScale);
         }
       }
+      const nativeFull=!zooming && fallback && sameRasterScale(Number(fallback.dataset.renderedScale),liveScale) &&
+        Math.abs(Number(fallback.dataset.rasterDensity)-tile.density)<.0001;
+      if(nativeFull) {cancelCurrent();hide();return;}
       const needsFinal=!failed && needsFinalDetailRender(detailSource,liveScale,visible,tile.density,zooming);
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
@@ -220,7 +223,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdf
       if(rendering) {
         refreshAfterRender=true;
         // An in-flight gesture preview cannot delay the final sharp result.
-        if(runningTarget && (!zooming?(!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale)):
+        if(runningTarget && (!zooming?(!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale) || !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)):
           !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density))) cancelCurrent();
         return;
       }
@@ -238,7 +241,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdf
           handle=requestPdfRenderSlot(page.closest('[data-workspace-doc]')?.getAttribute('data-active')==='true'?-1:0,cancelCurrent);
           release=await handle.promise;if(!release || stale()) return;
           const queued=input();
-          if(!queued.tile || (final?(queued.zooming || !sameRasterScale(liveScale,queued.liveScale)):
+          if(!queued.tile || (final?(queued.zooming || !sameRasterScale(liveScale,queued.liveScale) || !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density)):
             !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density))) {
             refreshAfterRender=true;return;
           }
@@ -247,7 +250,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdf
           await task.promise;
           if(stale()) return;
           const latest=input();
-          if(final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale))) {refreshAfterRender=true;return;}
+          if(final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale) || !latest.tile || !scaledDetailCovers(target,liveScale,latest.liveScale,latest.visible,latest.tile.density))) {refreshAfterRender=true;return;}
           // Keep previews and final native crops separate so a sampled preview
           // cannot satisfy the final-resolution requirement after release.
           if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
@@ -370,7 +373,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
   const desiredScaleRef = useRef(rasterScale);
   const activeRenderRef = useRef(false);
   const renderCompletionRef = useRef<Promise<void>>(Promise.resolve());
-  const rasterRequestRef = useRef<{ pdfDoc: any; page: number; scale: number; cancelled: boolean; done: boolean; cancel: () => void } | null>(null);
+  const rasterRequestRef = useRef<{ pdfDoc: any; page: number; scale: number; epoch: string|undefined; cancelled: boolean; done: boolean; cancel: () => void } | null>(null);
   const mountedRef = useRef(true);
   desiredScaleRef.current = scale;
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -388,7 +391,9 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     const { canvas, density, scale: target } = completedRaster;
     if (!canPresentRaster(completedRaster,{doc:pdfDoc,page:pageNumber,scale:desiredScaleRef.current,
       epoch:pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch},pinchActiveRef.current)) {
-      canvas.width=canvas.height=1;setCompletedRaster(null);return;
+      canvas.width=canvas.height=1;setCompletedRaster(null);
+      if(!pinchActiveRef.current && documentVisibleRef.current) setRenderCount(count=>count+1);
+      return;
     }
     if(!canReplaceRaster(density,frontDensityRef.current,completedRaster.final)) {
       canvas.width=canvas.height=1;setCompletedRaster(null);
@@ -453,7 +458,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     const visibility = () => {
       documentVisibleRef.current = container.dataset.renderVisible !== 'false';
       if (documentVisibleRef.current) {
-        if (!activeRenderRef.current) setRenderCount((count) => count + 1);
+        setRenderCount((count) => count + 1);
       } else { rasterRequestRef.current?.cancel(); renderSlotHandleRef.current?.cancel(); renderTaskRef.current?.cancel(); }
     };
     const detailFallback=()=>setRenderCount(count=>count+1);
@@ -587,10 +592,10 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
       rasterCacheHits++;
       return;
     }
-    const running = rasterRequestRef.current;
-    if (running && !running.done && !running.cancelled && running.pdfDoc === pdfDoc && running.page === pageNumber && sameRasterScale(running.scale,rasterScale)) return;
-    running?.cancel();
     const epoch=pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch;
+    const running = rasterRequestRef.current;
+    if (running && !running.done && !running.cancelled && running.pdfDoc === pdfDoc && running.page === pageNumber && running.epoch===epoch && sameRasterScale(running.scale,rasterScale)) return;
+    running?.cancel();
     let cancelled = false;
     let task: any = null;
     let back:HTMLCanvasElement|null=null;
@@ -599,7 +604,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
     let queuedAt = 0;
     let startedAt = 0;
     let outcome = 'cancelled';
-    const request = { pdfDoc, page: pageNumber, scale: rasterScale, cancelled: false, done: false,
+    const request = { pdfDoc, page: pageNumber, scale: rasterScale, epoch, cancelled: false, done: false,
       cancel: () => { cancelled = true; request.cancelled = true; handle?.cancel(); task?.cancel(); } };
     rasterRequestRef.current = request;
     const finishRequest = () => {
@@ -635,10 +640,10 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         pageDimensionCache.set(`${docId}_${pageNumber}`, size);
         if (!pageDimensionCache.has(`${docId}_default`)) pageDimensionCache.set(`${docId}_default`, size);
         const targetDensity = rasterDensity(size, rasterScale);
-        // Visible pages prepare bounded source headroom once. Live crops can
-        // sample it at the current device resolution during a pinch, instead
-        // of replaying this PDF render only after the gesture has stopped.
-        const density = renderPriorityRef.current >= 10 ? Math.min(targetDensity,1200/Math.max(size.width,size.height)) : rasterSourceDensity(size,rasterScale);
+        // First paint uses the actual device resolution. Preparing a 2×
+        // source here multiplied image decoding/compositing before any content
+        // could appear; live detail crops already own gesture headroom.
+        const density = renderPriorityRef.current >= 10 ? Math.min(targetDensity,1200/Math.max(size.width,size.height)) : targetDensity;
         const viewport = page.getViewport({ scale: density });
         back = document.createElement('canvas');
         back.width = Math.max(1, Math.round(viewport.width));
@@ -652,7 +657,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         await task.promise;
         if (obsolete()) return;
         rememberPagePreview(`${docId}_${pageNumber}`, pdfDoc, back);
-        rememberPageRaster(`${docId}_${pageNumber}`,pdfDoc,back,density,size,false);
+        rememberPageRaster(`${docId}_${pageNumber}`,pdfDoc,back,density,size,density>=targetDensity-.0001);
         outcome = 'committed';
         setCompletedRaster({ canvas: back, density, scale: rasterScale, doc: pdfDoc, page: pageNumber, epoch, final:density>=targetDensity-.0001 });
       } catch (error: any) {
@@ -675,7 +680,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         if (renderSlotHandleRef.current === handle) renderSlotHandleRef.current = null;
         if (renderSlotReleaseRef.current === release) renderSlotReleaseRef.current = null;
         release?.();
-        const retry = rasterRequestRef.current === request && cancelled && mountedRef.current && !pinchActiveRef.current
+        const retry = rasterRequestRef.current === request && (cancelled || epoch!==pageContainerRef.current?.closest<HTMLElement>('.pdf-viewport-container')?.dataset.zoomEpoch) && mountedRef.current && !pinchActiveRef.current
           && documentVisibleRef.current && renderPriorityRef.current < 10 && sameRasterScale(desiredScaleRef.current,rasterScale);
         finishRequest();
         if (retry) setRenderCount(count => count+1);

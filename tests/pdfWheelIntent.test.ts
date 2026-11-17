@@ -54,6 +54,18 @@ test('real pinch commits preserve intent: click ends pan C, the next zoom restor
   try {
     await act(async()=>root.render(React.createElement(App)));await flush();
     const view=dom.window.document.querySelector<HTMLElement>('.pdf-viewport-container')!;
+    // Reading vertically must neither consume trackpad x noise nor recenter
+    // the untouched horizontal axis when the paper nearly fits the viewport.
+    const wrapper=view.querySelector<HTMLElement>('[data-scale]')!;
+    const beforeX=wrapper.style.translate.split(' ')[0];
+    const moves:{x:number;y:number}[]=[];
+    view.addEventListener('pdf-pan-input',event=>moves.push((event as CustomEvent).detail));
+    await act(async()=>view.dispatchEvent(new dom.window.WheelEvent('wheel',{bubbles:true,cancelable:true,deltaX:3,deltaY:50})));
+    await flush();assert.equal(moves.at(-1)!.x,0);assert.equal(wrapper.style.translate.split(' ')[0],beforeX || '0px');
+    // A fresh intentional horizontal gesture is still a PDF pan after zoom.
+    router.setHorizontalOwner(view);
+    await act(async()=>view.dispatchEvent(new dom.window.WheelEvent('wheel',{bubbles:true,cancelable:true,deltaX:40,deltaY:0})));
+    await flush();assert.equal(moves.at(-1)!.x,40);
     const horizontal=()=>router.read(30,0,time+=1000,()=>view)!.owner;
     const pinch=async(delta:number)=>{await act(async()=>view.dispatchEvent(new dom.window.WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:delta,clientX:250,clientY:250})));await flush();};
     await pinch(-20);assert.equal(horizontal(),view);

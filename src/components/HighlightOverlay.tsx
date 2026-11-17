@@ -1,3 +1,5 @@
+import {PanelSizeControls} from './PanelSizeControls';
+import {noteSizeMultiplier} from '../utils/stickyNoteGeometry';
 import { HighlightNoteText } from './HighlightNoteText';
 import { highlightClip, highlightCorners, highlightDisplayRects } from '../utils/highlightGeometry';
 import { HIGHLIGHT_TOOLBAR_SIZE } from '../utils/annotationUi';
@@ -233,6 +235,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                 anchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${anchors.above}`}
                 bottomAnchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${anchors.below}`}
                 side={hl.noteSide}
+                popupScale={noteSizeMultiplier(hl.notePopupScale)}
                 onSideChange={side=>onUpdateHighlight?.(hl.id,{noteSide:side},true)}
                 scopeId={elevatedContainerId || `elevated-annotation-container-${pageNumber}`}
                 owner={previewOwner} highlightId={hl.id} mode={previewMode}
@@ -281,6 +284,10 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                       Nhấp đúp chuột vào highlight để sửa
                     </div>
                     </div>
+                    <div className="flex justify-end mt-1 shrink-0">
+                      <PanelSizeControls value={noteSizeMultiplier(hl.notePopupScale)} label="popup ghi chú"
+                        onChange={notePopupScale=>onUpdateHighlight?.(hl.id,{notePopupScale},true)}/>
+                    </div>
                     </div>
                   </div>
                 )}
@@ -299,7 +306,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             align="left"
             preferredAbove={false}
             scaleWithPage
-            uiScale={HIGHLIGHT_TOOLBAR_SIZE}
+            uiScale={HIGHLIGHT_TOOLBAR_SIZE*noteSizeMultiplier(hl.toolbarScale)}
             className="highlight-popup-toolbar bg-white rounded-xl shadow-2xl border border-neutral-200 p-3 text-neutral-800 pointer-events-auto font-['Inter',sans-serif]"
             style={{ width: 300 }}
             onClick={(e) => e.stopPropagation()}
@@ -405,6 +412,10 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                 )}
               </div>
             )}
+            <div className="flex justify-end mt-2">
+              <PanelSizeControls value={noteSizeMultiplier(hl.toolbarScale)} label="toolbar Highlight"
+                onChange={toolbarScale=>onUpdateHighlight?.(hl.id,{toolbarScale},true)}/>
+            </div>
           </AnnotationToolbar>
         )}
       </React.Fragment>

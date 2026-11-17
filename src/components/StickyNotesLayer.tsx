@@ -1,3 +1,4 @@
+import {PanelSizeControls} from './PanelSizeControls';
 import {STICKY_NOTE_DESIGN as PAPER,noteSwatchColor} from '../utils/stickyNoteDesign';
 import { createStickyNote } from '../utils/stickyNoteCreation';
 import {stickyNoteGeometry,noteSizeMultiplier,MIN_NOTE_SIZE,MAX_NOTE_SIZE} from '../utils/stickyNoteGeometry';
@@ -750,16 +751,9 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
           </div>
 
           <div data-note-size-controls className="flex items-center shrink-0" style={{gap:4}}>
-            {([-1,1] as const).map(direction=><button key={direction} type="button"
-              aria-label={direction<0?'Thu nhỏ giấy note':'Phóng lớn giấy note'}
-              title={direction<0?'Thu nhỏ giấy note':'Phóng lớn giấy note'}
-              disabled={direction<0?currentMultiplier<=MIN_NOTE_SIZE:!canGrow}
-              className="flex items-center justify-center rounded-full bg-neutral-200 text-black hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-default cursor-pointer"
-              style={{width:14,height:14,fontSize:12,lineHeight:1}}
-              onMouseDown={event=>event.stopPropagation()}
-              onClick={event=>{event.stopPropagation();onUpdateNote(note.id,{sizeMultiplier:nextMultiplier(direction)});}}>
-              {direction<0?'−':'+'}
-            </button>)}
+            <PanelSizeControls value={currentMultiplier} label="giấy note"
+              canShrink={currentMultiplier>MIN_NOTE_SIZE} canGrow={canGrow}
+              onChange={sizeMultiplier=>onUpdateNote(note.id,{sizeMultiplier})}/>
           <span
             className="text-black font-normal"
             style={{ fontSize: `${PAPER.pageFont}px` }}

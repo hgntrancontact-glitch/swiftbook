@@ -165,7 +165,28 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
         return next.size === previous.size && [...next].every(page => previous.has(page)) ? previous : next;
       });
     };
-    scrollParent?.addEventListener('pdf-zoom-end', mountNearbyPages);
+    const finishZoom = () => {
+      // IO entries belong to the preceding layout until its next delivery.
+      // Reconcile with final geometry before unmounting any live page.
+      if(scrollParent) {
+        const bounds=scrollParent.getBoundingClientRect();
+        nearbyPageNumbers.clear();
+        const pages=[...pageElementsRef.current.entries()];
+        let low=0,high=pages.length;
+        while(low<high) {
+          const middle=(low+high)>>1;
+          if(pages[middle][1].getBoundingClientRect().bottom<bounds.top-1200) low=middle+1;
+          else high=middle;
+        }
+        for(let index=low;index<pages.length;index++) {
+          const [number,element]=pages[index];
+          if(element.getBoundingClientRect().top>bounds.bottom+1200) break;
+          nearbyPageNumbers.add(number);
+        }
+      }
+      mountNearbyPages();
+    };
+    scrollParent?.addEventListener('pdf-zoom-end', finishZoom);
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const pageNumber = Number((entry.target as HTMLElement).dataset.continuousPage);
@@ -226,7 +247,7 @@ const ContinuousViewComponent: React.FC<ContinuousViewProps> = ({
     return () => {
       targetScroll.removeEventListener('scroll', handleScroll);
       observer.disconnect();
-      scrollParent?.removeEventListener('pdf-zoom-end', mountNearbyPages);
+      scrollParent?.removeEventListener('pdf-zoom-end', finishZoom);
       scrollParent?.removeEventListener('pdf-zoom-start', startZoom);
       scrollParent?.removeEventListener('wheel', userScroll);
       scrollParent?.removeEventListener('pointerdown', userScroll);

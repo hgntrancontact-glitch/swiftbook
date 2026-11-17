@@ -22,6 +22,9 @@ export interface HighlightAnnotation {
   note?: string;
   /** Chosen once for the note; scrolling must never flip its anchor. */
   noteSide?: 'above' | 'below';
+  /** User-adjusted UI sizes; independent of selection geometry and PDF zoom. */
+  notePopupScale?: number;
+  toolbarScale?: number;
   createdAt: number;
 }
 
