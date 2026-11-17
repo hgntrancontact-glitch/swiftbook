@@ -20,6 +20,8 @@ export interface HighlightAnnotation {
   color: HighlightColor;
   rects: NormalizedRect[];
   note?: string;
+  /** Chosen once for the note; scrolling must never flip its anchor. */
+  noteSide?: 'above' | 'below';
   createdAt: number;
 }
 

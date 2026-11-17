@@ -1,6 +1,6 @@
 import {QuickShapesLayer} from './QuickShapesLayer';
 import { presentDetailSample } from '../utils/pdfDetailSurface';
-import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers } from '../utils/pdfRasterSampling';
+import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers, reuseDetailSurface, nativeDetailPresentation, type PreparedDetail } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
@@ -136,7 +136,7 @@ function requestPdfRenderSlot(priority:number, preempt?:()=>void) {
 }
 
 // The effect owns these two surfaces; React never resizes/swaps them mid-pinch.
-function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any;pageNumber:number;size:{width:number;height:number};near:boolean;cacheKey:string}) {
+export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any;pageNumber:number;size:{width:number;height:number};near:boolean;cacheKey:string}) {
   const canvasRefs=useRef<[HTMLCanvasElement|null,HTMLCanvasElement|null]>([null,null]);
   useEffect(()=> {
     const canvases=canvasRefs.current;
@@ -146,10 +146,11 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
     const surfaces=[canvases[0],canvases[1]];
     let front=-1,frame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
     let lastSource:CanvasImageSource|null=null;
+    let presented:PreparedDetail|null=null;
     let runningTarget:{scale:number;final:boolean}|null=null;
     let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean}|null=null;
     let cancelCurrent=()=>{};
-    const hide=()=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';};
+    const hide=()=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';presented=null;};
     if(!near) {hide();return;}
     const input=()=> {
       const r=page.getBoundingClientRect(),v=view.getBoundingClientRect();
@@ -168,24 +169,36 @@ function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey }: {pdfDoc:any
       if(disposed) return;
       const started=performance.now(),{liveScale,visible,tile,zooming}=input();
       if(view.dataset.renderVisible==='false' || !tile) {cancelCurrent();hide();return;}
+      if(reuseDetailSurface(presented,liveScale,visible,tile.density,zooming)) return;
       const cached=getPageRaster(cacheKey,pdfDoc);
       const fallback=[...page.querySelectorAll<HTMLCanvasElement>('canvas[data-raster-density]')].find(canvas=>getComputedStyle(canvas).visibility!=='hidden' && canvas.width>1);
       let sampleTile=tile;
       let source:CanvasImageSource|null=null,crop:{x:number;y:number;width:number;height:number}|null=null;
       if(detailSource && scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,tile.density)) {
         source=detailSource.canvas;
-        const sample=preparedDetailSample(detailSource.canvas,detailSource,tile,liveScale);
+        const sample=zooming?{tile:nativeDetailPresentation(detailSource,liveScale),crop:{x:0,y:0,width:detailSource.canvas.width,height:detailSource.canvas.height}}:
+          preparedDetailSample(detailSource.canvas,detailSource,tile,liveScale);
         sampleTile=sample.tile;crop=sample.crop;
       } else {
         const full=cached && sourceCoversDensity(cached.bitmap,size,tile.density)?cached.bitmap:
           fallback && sourceCoversDensity(fallback,size,tile.density)?fallback:null;
-        if(full) {source=full;crop=rasterSampleRect(full,size,tile,liveScale);}
+        if(full) {
+          source=full;
+          // Retain available density headroom in the visible crop. This avoids
+          // repeated downsample/reallocation during the next pinch frames.
+          if(zooming) {
+            const headroom=oversampleDetail(tile);
+            if(sourceCoversDensity(full,size,headroom.density)) sampleTile=headroom;
+          }
+          crop=rasterSampleRect(full,size,sampleTile,liveScale);
+        }
       }
       const needsFinal=needsFinalDetailRender(detailSource,liveScale,visible,tile.density,zooming);
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
         if(key!==signature || lastSource!==source) {
           front=presentDetailSample(surfaces,front,source,crop,sampleTile,liveScale);
+          presented={tile:sampleTile,scale:liveScale,final:!zooming};
           key=signature;lastSource=source;
           detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'sample',zooming});
           if(detailSamples.length>200) detailSamples.shift();

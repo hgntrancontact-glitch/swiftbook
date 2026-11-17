@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {pageNoteGeometry} from '../src/utils/pageNoteGeometry';
+import {pageNoteGeometry,noteLineAnchors,initialNoteSide} from '../src/utils/pageNoteGeometry';
 
 const rect={x:12,y:30,width:74,height:2,rise:-.4};
+test('note endpoints follow first/last visual lines, including unordered fragments and a shorter last line',()=>{
+  const rows=[{x:10,y:40,width:25,height:2},{x:10,y:20,width:40,height:2},{x:50,y:20.1,width:35,height:2},{x:10,y:30,width:80,height:2}];
+  assert.deepEqual(noteLineAnchors(rows),{above:2,below:0});
+  const anchors=noteLineAnchors(rows);
+  assert.equal(pageNoteGeometry({...rows[anchors.above],rise:0},1,true,80,200).icon.x,85);
+  assert.equal(pageNoteGeometry({...rows[anchors.below],rise:0},1,false,80,200).icon.x,35);
+  assert.equal(initialNoteSide(300,400,100,900,150),'above');
+  assert.equal(initialNoteSide(110,300,100,900,150),'below');
+});
 test('popup, icon and hover bridge keep identical screen coordinates when a pinch is committed',()=>{
   for(const above of [true,false]) for(const target of [.4,.75,1.41,2.26,5]) {
     const live=pageNoteGeometry(rect,1,above,100*.84,224*.84,-10);

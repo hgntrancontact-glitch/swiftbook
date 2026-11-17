@@ -1,4 +1,5 @@
 import {STICKY_NOTE_DESIGN as PAPER,noteSwatchColor} from './stickyNoteDesign';
+import {stickyNoteGeometry} from './stickyNoteGeometry';
 import {drawQuickShape} from './quickShapes';
 import { highlightCorners, highlightDisplayRects } from './highlightGeometry';
 import { canvasViewportTransform } from './pageCoordinates';
@@ -950,8 +951,8 @@ export function renderStickyNoteOnCanvas(
   const isMinimized = typeof note.isMinimized === 'boolean' ? note.isMinimized : false;
 
   // Exact coordinates matching percentages
-  const nx = (note.x / 100) * width;
-  const ny = (note.y / 100) * height;
+  let nx = (note.x / 100) * width;
+  let ny = (note.y / 100) * height;
 
   // -------------------------------------------------------------
   // STATE 1: MINIMIZED STICKY NOTE (Circular Badge with MessageSquare Icon)
@@ -992,24 +993,10 @@ export function renderStickyNoteOnCanvas(
   // -------------------------------------------------------------
   // STATE 2: EXPANDED STICKY NOTE (Pristine Post-it Note Paper Card with 3 Layers)
   // -------------------------------------------------------------
-  let cardW = PAPER.width * ratio;
-  let cardH = PAPER.height * ratio;
-
-  if (typeof note.width === 'number' && note.width > 0) {
-    if (note.width <= 100) {
-      cardW = (note.width / 100) * width;
-    } else {
-      cardW = note.width * ratio;
-    }
-  }
-
-  if (typeof note.height === 'number' && note.height > 0) {
-    if (note.height <= 100) {
-      cardH = (note.height / 100) * height;
-    } else {
-      cardH = note.height * ratio;
-    }
-  }
+  const fitted=stickyNoteGeometry(note,width,height,ratio);
+  const cardW=fitted.width,cardH=fitted.height;
+  ratio=fitted.scale;
+  nx=fitted.x/100*width;ny=fitted.y/100*height;
 
   const r = PAPER.radius * ratio;
 

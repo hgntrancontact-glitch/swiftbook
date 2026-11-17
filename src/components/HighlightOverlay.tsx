@@ -3,6 +3,7 @@ import { highlightClip, highlightCorners, highlightDisplayRects } from '../utils
 import { HIGHLIGHT_TOOLBAR_SIZE } from '../utils/annotationUi';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import { HighlightNoteOverlay } from './HighlightNoteOverlay';
+import { noteLineAnchors } from '../utils/pageNoteGeometry';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { HighlightAnnotation, HIGHLIGHT_COLORS, HighlightColor, NormalizedRect } from '../types';
@@ -66,6 +67,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
   pageNumber,
   highlights,
   onDeleteHighlight,
+  onUpdateHighlight,
   onUpdateHighlightNote,
   onUpdateHighlightColor,
   selectedIds,
@@ -179,7 +181,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
 
   const renderHighlightInteractive = (hl: HighlightAnnotation, isElevated: boolean) => {
     const colorConfig = HIGHLIGHT_COLORS[hl.color] || HIGHLIGHT_COLORS.yellow;
-    const isSelected = selectedIds?.includes(hl.id);
+    const anchors=noteLineAnchors(hl.rects);
 
     return (
       <React.Fragment key={`${isElevated ? 'elevated-' : 'base-'}${hl.id}`}>
@@ -189,9 +191,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             id={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${idx}`}
             data-annotation-id={hl.id} data-highlight-rise={rect.rise || 0}
             data-highlight-height={rect.height}
-            className={`absolute pointer-events-auto cursor-pointer select-none ${
-              isSelected && (!selectedIds || selectedIds.length<2) ? 'ring-2 ring-blue-500' : ''
-            }`}
+            className="absolute pointer-events-auto cursor-pointer select-none"
             style={{
               left: `${rect.x}%`,
               top: `${rect.y}%`,
@@ -230,7 +230,10 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
             {/* Visual indicator icon if there's an attached note */}
             {idx === 0 && hl.note && (
               <HighlightNoteOverlay
-                anchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-0`}
+                anchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${anchors.above}`}
+                bottomAnchorId={`${isElevated ? 'elevated-' : ''}hl-${hl.id}-rect-${anchors.below}`}
+                side={hl.noteSide}
+                onSideChange={side=>onUpdateHighlight?.(hl.id,{noteSide:side},true)}
                 scopeId={elevatedContainerId || `elevated-annotation-container-${pageNumber}`}
                 owner={previewOwner} highlightId={hl.id} mode={previewMode}
                 showPopup={hoveredNoteHlId === hl.id && activeHighlightId !== hl.id}

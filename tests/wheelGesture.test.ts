@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {WheelGesture,wheelOwner} from '../src/utils/wheelGesture';
+import {WheelGesture,wheelOwner,WorkspaceWheelRouter} from '../src/utils/wheelGesture';
 
 test('diagonal vertical reading ignores horizontal drift throughout momentum',()=>{
   const gesture=new WheelGesture();
@@ -30,4 +30,16 @@ test('pinch boundary resets the old axis instead of trapping a subsequent horizo
   assert.equal(gesture.read(0,30,0).axis,'y');
   gesture.reset();
   assert.equal(gesture.read(30,0,20).axis,'x');
+});
+
+test('a workspace gesture keeps its original PDF across pointer crossings and preserves both pan axes',()=>{
+  const router=new WorkspaceWheelRouter<string>();
+  assert.equal(router.read(1,2,0,()=> 'pdf-1'),null);
+  assert.deepEqual(router.read(3,15,10,()=> 'pdf-2'),{owner:'pdf-1',axis:'y',dx:4,dy:17});
+  assert.deepEqual(router.read(12,30,40,()=> 'workspace'),{owner:'pdf-1',axis:'y',dx:12,dy:30});
+  assert.deepEqual(router.read(40,1,80,()=> 'pdf-2'),{owner:'pdf-1',axis:'y',dx:40,dy:1});
+  assert.equal(router.read(35,1,300,()=> 'workspace')!.owner,'workspace');
+  assert.equal(router.read(10,30,330,()=> 'pdf-2')!.owner,'workspace');
+  router.reset();
+  assert.equal(router.read(10,0,340,()=> 'pdf-2')!.owner,'pdf-2');
 });

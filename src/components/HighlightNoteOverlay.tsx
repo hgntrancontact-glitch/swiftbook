@@ -1,13 +1,16 @@
 import { snapUiPixel } from '../utils/annotationSharpness';
-import { pageNoteGeometry, type PagePoint } from '../utils/pageNoteGeometry';
+import { initialNoteSide, pageNoteGeometry, type PagePoint } from '../utils/pageNoteGeometry';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { HIGHLIGHT_NOTE_SIZE, HIGHLIGHT_NOTE_ICON_SIZE, HIGHLIGHT_NOTE_GLYPH_SIZE } from '../utils/annotationUi';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageSquare } from 'lucide-react';
+import { ArrowDown, ArrowUp, MessageSquare } from 'lucide-react';
 
 interface Props {
   anchorId: string;
+  bottomAnchorId: string;
+  side?: 'above'|'below';
+  onSideChange: (side:'above'|'below')=>void;
   scopeId: string;
   owner: string;
   highlightId: string;
@@ -26,9 +29,13 @@ const POPUP_WIDTH = 236;
 const POPUP_GAP = 6;
 
 // Page-local overlays scroll natively; dimensions follow document zoom.
-export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mode, showPopup, onEnter, onLeave, onEdit, children }: Props) {
+export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideChange, scopeId, owner, highlightId, mode, showPopup, onEnter, onLeave, onEdit, children }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<HTMLButtonElement>(null);
+  const arrowRef = useRef<HTMLButtonElement>(null);
+  const sideRef=useRef({side,onSideChange});
+  sideRef.current={side,onSideChange};
+  const [chosenSide,setChosenSide]=useState(side || 'above');
   const popupRef = useRef<HTMLDivElement>(null);
   const popupHeightRef = useRef<number | null>(null);
   const positionRef = useRef<(() => void) | null>(null);
@@ -44,15 +51,16 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
   useLayoutEffect(() => {
     const scope = document.getElementById(scopeId)?.closest('[data-page-container="true"]') || document;
     const anchor = scope.querySelector<HTMLElement>(`#${CSS.escape(anchorId)}`);
+    const bottomAnchor=scope.querySelector<HTMLElement>(`#${CSS.escape(bottomAnchorId)}`) || anchor;
     const icon = iconRef.current;
     if (!anchor || !icon || !portalTarget) return;
-    if (!showPopup) placementRef.current=null;
     let frame=0;
     const position = () => {
       if(frame) cancelAnimationFrame(frame);frame=0;
       const wrapper=anchor.closest<HTMLElement>('[data-user-zoom]');
       const factor=Number(wrapper?.dataset.userZoom || 1);
-      const r=anchor.getBoundingClientRect();
+      const firstRect=anchor.getBoundingClientRect();
+      const lastRect=bottomAnchor!.getBoundingClientRect();
       const slot=portalTarget.getBoundingClientRect();
       const layoutWidth=parseFloat(portalTarget.style.getPropertyValue('--pdf-page-width')) || slot.width;
       const live=slot.width/Math.max(1,layoutWidth);
@@ -75,10 +83,20 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       const screenLeft = 8, screenRight = window.innerWidth - 8;
       const screenTop = Math.max(8, (document.getElementById('app-header')?.getBoundingClientRect().bottom || 0) + 4);
       const screenBottom = window.innerHeight - 8;
-      const iconTop = Math.max(screenTop, (viewport?.top || 0) + 4);
-      const iconBottom = Math.min(screenBottom, (viewport?.bottom || window.innerHeight) - 4);
-      const iconLeft = Math.max(screenLeft, (viewport?.left || 0) + 4);
-      const iconRight = Math.min(screenRight, (viewport?.right || window.innerWidth) - 4);
+      const iconTop = Math.max(screenTop, (viewport?.top || 0) + 4,slot.top+4);
+      const iconBottom = Math.min(screenBottom, (viewport?.bottom || window.innerHeight) - 4,slot.bottom-4);
+      const iconLeft = Math.max(screenLeft, (viewport?.left || 0) + 4,slot.left+4);
+      const iconRight = Math.min(screenRight, (viewport?.right || window.innerWidth) - 4,slot.right-4);
+      // Retained/virtual pages can mount far outside the view. Choose a side
+      // only when the note first reaches its real, measured visible page.
+      if(!placementRef.current && !sideRef.current.side &&
+        (slot.width<=0 || slot.height<=0 || lastRect.bottom<iconTop || firstRect.top>iconBottom)) {
+        icon.style.visibility='hidden';
+        if(arrowRef.current) arrowRef.current.style.visibility='hidden';
+        popup.style.visibility='hidden';
+        if(bridgeRef.current) bridgeRef.current.style.visibility='hidden';
+        return;
+      }
       // Scale the entire card once. Its base width and maximum body height
       // are document-space values, not a viewport-dependent size negotiation.
       const popupFactor=factor*HIGHLIGHT_NOTE_SIZE;
@@ -95,23 +113,29 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       if(showPopup || popupHeightRef.current===null) popupHeightRef.current=card?.offsetHeight || popup.getBoundingClientRect().height/(popupFactor*live);
       const height=popupHeightRef.current*popupFactor;
       const gap=POPUP_GAP*factor;
-      let direction=placementRef.current?.direction || directionRef.current;
+      let direction=sideRef.current.side || placementRef.current?.direction || directionRef.current;
       if(!placementRef.current) {
-        const above=r.top-(iconSize+gap+height)*live-iconTop;
-        const below=iconBottom-r.bottom-(iconSize+gap+height)*live;
-        direction=above>=0 || above>=below ? 'above':'below';
-      }
-      if(showPopup && !placementRef.current) {
+        direction=sideRef.current.side || initialNoteSide(firstRect.top,lastRect.bottom,iconTop,iconBottom,(iconSize+gap+height)*live);
+        const r=direction==='above'?firstRect:lastRect;
         const requested=r.right+(iconSize/2-cardWidth)*live;
         const initialX=cardWidth*live<=iconRight-iconLeft?Math.max(iconLeft,Math.min(iconRight-cardWidth*live,requested)):requested;
         placementRef.current={direction,offsetX:(initialX-requested)/(factor*live)};
+        if(!sideRef.current.side) sideRef.current.onSideChange(direction);
       }
       directionRef.current=direction;
-      const geometry=pageNoteGeometry({x:parseFloat(anchor.style.left)||0,y:parseFloat(anchor.style.top)||0,
-        width:parseFloat(anchor.style.width)||0,height:parseFloat(anchor.style.height)||0,rise:Number(anchor.dataset.highlightRise || 0)},
+      setChosenSide(previous=>previous===direction?previous:direction);
+      const end=direction==='above'?anchor:bottomAnchor!;
+      const geometry=pageNoteGeometry({x:parseFloat(end.style.left)||0,y:parseFloat(end.style.top)||0,
+        width:parseFloat(end.style.width)||0,height:parseFloat(end.style.height)||0,rise:Number(end.dataset.highlightRise || 0)},
         factor,direction==='above',height,cardWidth,placementRef.current?.offsetX || 0);
       Object.assign(icon.style,aligned(geometry.icon));
       icon.style.visibility='visible';icon.dataset.popupDirection=direction;
+      const arrow=arrowRef.current;
+      if(arrow) {
+        Object.assign(arrow.style,aligned({...geometry.icon,dx:geometry.icon.dx+iconSize+2*factor}));
+        arrow.style.width=sized(14*factor);arrow.style.height=sized(iconSize);
+        arrow.style.visibility='visible';
+      }
       Object.assign(popup.style,aligned(geometry.popup));
       popup.style.visibility=showPopup?'visible':'hidden';popup.dataset.popupDirection=direction;
       const bridge=bridgeRef.current;
@@ -137,6 +161,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     const schedule=()=> {if(!frame) frame=requestAnimationFrame(()=>{frame=0;position();});};
     viewport?.addEventListener('scroll',schedule,{passive:true});
     const resize = new ResizeObserver(schedule);
+    resize.observe(portalTarget);
 
     const body=popupRef.current?.querySelector('[data-highlight-note-body]');
     if(body) resize.observe(body);
@@ -148,6 +173,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
     if (wrapper) mutation.observe(wrapper, { attributes: true, attributeFilter: ['data-user-zoom'] });
 
     mutation.observe(anchor, { attributes: true, attributeFilter: ['style'] });
+    if(bottomAnchor!==anchor) mutation.observe(bottomAnchor!, { attributes: true, attributeFilter: ['style'] });
     if (popupRef.current) mutation.observe(popupRef.current, { childList: true, characterData: true, subtree: true });
     window.addEventListener('resize', schedule);
     position();
@@ -163,7 +189,7 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
       mutation.disconnect();
       window.removeEventListener('resize', schedule);
     };
-  }, [anchorId, scopeId, mode, showPopup,portalTarget]);
+  }, [anchorId, bottomAnchorId, scopeId, mode, showPopup,portalTarget]);
 
   // React commits the final page dimensions before paint. Rebase HTML zoom in
   // that same commit rather than leaving one frame with the old live ratio.
@@ -183,6 +209,21 @@ export function HighlightNoteOverlay({ anchorId, scopeId, owner, highlightId, mo
         onDoubleClick={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}
         onContextMenu={e => { e.stopPropagation(); e.preventDefault(); onEdit(); }}>
         <MessageSquare size={ICON_GLYPH_SIZE} style={{ width: ICON_GLYPH_SIZE, height: ICON_GLYPH_SIZE, flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
+      </button>
+      <button ref={arrowRef} type="button" data-highlight-note-side={highlightId}
+        className="absolute flex items-center justify-center text-[#f5c41a] pointer-events-auto cursor-pointer z-[90000]"
+        style={{visibility:'hidden'}} title={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
+        aria-label={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
+        onMouseDown={e=>e.stopPropagation()}
+        onClick={e=>{
+          e.stopPropagation();
+          const next=directionRef.current==='above'?'below':'above';
+          sideRef.current.side=next;
+          placementRef.current=null;
+          positionRef.current?.();
+          onSideChange(next);
+        }}>
+        {chosenSide==='above'?<ArrowDown size="100%"/>:<ArrowUp size="100%"/>}
       </button>
       {<>
         <div ref={bridgeRef} className="absolute z-[89999]" style={{ visibility: 'hidden', pointerEvents: mode === 'auto' ? 'auto' : 'none' }} />

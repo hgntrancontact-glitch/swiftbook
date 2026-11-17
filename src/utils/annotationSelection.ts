@@ -36,7 +36,13 @@ export function transformAnnotations(snapshot:HistorySnapshot,ids:string[],pages
     const anchored=item as BoxAnnotation|TextNoteAnnotation|FreeTextAnnotation;
     const position=point(anchored.x,anchored.y);
     if(kind==='boxes') {const box=item as BoxAnnotation;return {...box,...position,width:box.width*s,height:box.height*s,borderWidth:box.borderWidth*s};}
-    if(kind==='textNotes') {const note=item as TextNoteAnnotation;return {...note,...position,...(s!==1?{width:(note.width || STICKY_NOTE_DESIGN.width)*s,height:(note.height || STICKY_NOTE_DESIGN.height)*s}:{})};}
+    if(kind==='textNotes') {
+      const note=item as TextNoteAnnotation,r=measured[note.id];
+      // Restored paper can be fitted back inside a smaller portrait page.
+      // Move from that displayed position, not an old out-of-page coordinate.
+      const displayed=r?point((r.left-page.left)/page.width*100,(r.top-page.top)/page.height*100):position;
+      return {...note,...displayed,...(s!==1?{width:(note.width || STICKY_NOTE_DESIGN.width)*s,height:(note.height || STICKY_NOTE_DESIGN.height)*s}:{})};
+    }
     const text=item as FreeTextAnnotation;
     return {...text,...position,...(s!==1?{fontSize:text.fontSize*s,width:(text.width || (measured[text.id]?.width || 0)/page.width*100)*s || undefined,
       text:text.text.replace(/(font-size:\s*)([\d.]+)(px)/gi,(_,a,n,b)=>a+Number(n)*s+b).replace(/(data-size=["'])([\d.]+)/g,(_,a,n)=>a+Number(n)*s)}:{})};

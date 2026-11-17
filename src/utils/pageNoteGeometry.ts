@@ -1,4 +1,21 @@
 import {HIGHLIGHT_NOTE_ICON_SIZE} from './annotationUi';
+import type {NormalizedRect} from '../types';
+
+/** Anchor to the last ink fragment of the first/last visual line. PDF text
+ * streams need not be in reading order, and the last line can be shorter. */
+export function noteLineAnchors(rects:NormalizedRect[]):{above:number;below:number} {
+  if(!rects.length) return {above:0,below:0};
+  const order=rects.map((rect,index)=>({rect,index})).sort((a,b)=>a.rect.y-b.rect.y || a.rect.x-b.rect.x);
+  const first=order[0].rect,last=order[order.length-1].rect;
+  const end=(line:NormalizedRect)=>order.filter(({rect})=>Math.abs(rect.y-line.y)<=Math.min(rect.height,line.height)*.4)
+    .reduce((a,b)=>b.rect.x+b.rect.width>a.rect.x+a.rect.width?b:a).index;
+  return {above:end(first),below:end(last)};
+}
+
+export function initialNoteSide(firstTop:number,lastBottom:number,top:number,bottom:number,extent:number):'above'|'below' {
+  const above=firstTop-top-extent,below=bottom-lastBottom-extent;
+  return above>=0 || above>=below?'above':'below';
+}
 export type PagePoint = {x:number;y:number;dx:number;dy:number};
 /** Percentages locate the PDF ink; pixel offsets describe UI at committed zoom.
  * CSS applies the live gesture only once, without screen-to-page round trips. */

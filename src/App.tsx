@@ -3,7 +3,7 @@ import {AnnotationSelectionController} from './components/AnnotationSelectionCon
 import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
 import {isQuickShapeTool,isDrawingHighlighter} from './utils/quickShapes';
-import { WheelGesture } from './utils/wheelGesture';
+import { WorkspaceWheelRouter, WHEEL_IDLE_MS } from './utils/wheelGesture';
 import { openingPage, reopenDocument } from './utils/documentOpening';
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import {
@@ -160,6 +160,7 @@ function SwiftbookApp() {
   // Multi-PDF Workspace Container Ref & Smooth Bi-directional Horizontal Wheel
   const multiPdfContainerRef = useRef<HTMLDivElement>(null);
   const workspacePairIndexRef = useRef(0);
+  const workspaceWheel=useRef(new WorkspaceWheelRouter<HTMLElement|'workspace'>()).current;
 
   const scrollWorkspaceToDoc = useWorkspaceDocumentFocus(multiPdfContainerRef,workspacePairIndexRef,visibleDocs.map(doc=>doc.id));
 
@@ -193,7 +194,6 @@ function SwiftbookApp() {
       }
     };
 
-    const workspaceGesture=new WheelGesture();
     const swipe = (delta:number) => {
       if(maxPairIndex===0 || !delta) return;
       // Let the explicit gesture finish before snapping to a document pair;
@@ -202,7 +202,7 @@ function SwiftbookApp() {
       accumulatedDelta+=delta;
       if(rafId===null) rafId=requestAnimationFrame(flushScroll);
       if(settleTimer) clearTimeout(settleTimer);
-      settleTimer=setTimeout(settleToNearestPair,140);
+      settleTimer=setTimeout(settleToNearestPair,WHEEL_IDLE_MS+20);
     };
     const fromPdf = (event:Event) => swipe((event as CustomEvent<{delta:number}>).detail.delta);
     const handleWorkspaceWheel = (e: WheelEvent) => {
@@ -210,14 +210,16 @@ function SwiftbookApp() {
       const target=e.target instanceof Element?e.target:null;
       if(target?.closest('.pdf-viewport-container')) return; // the PDF owns routing
       const unit=e.deltaMode===1?16:e.deltaMode===2?container.clientWidth:1;
-      const intent=workspaceGesture.read((e.deltaX || (e.shiftKey?e.deltaY:0))*unit,e.shiftKey?0:e.deltaY*unit,performance.now());
+      const intent=workspaceWheel.read((e.deltaX || (e.shiftKey?e.deltaY:0))*unit,e.shiftKey?0:e.deltaY*unit,performance.now(),()=> 'workspace');
       e.preventDefault(); // never let a small native deltaX bypass intent locking
-      if(intent.axis==='x') swipe(intent.delta);
+      if(!intent) return;
+      if(intent.owner!=='workspace') intent.owner.dispatchEvent(new CustomEvent('pdf-pan-input',{detail:{x:intent.dx,y:intent.dy}}));
+      else if(intent.axis==='x') swipe(intent.dx);
     };
 
     const handleWorkspaceScroll = () => {
       if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(settleToNearestPair, 140);
+      settleTimer = setTimeout(settleToNearestPair, WHEEL_IDLE_MS+20);
     };
 
     const resizeObserver = new ResizeObserver(() => {
@@ -1668,6 +1670,7 @@ function SwiftbookApp() {
                   doc={doc}
                   isActive={doc.id === activeDocId}
                   totalVisibleDocs={visibleDocs.length}
+                  wheelRouter={workspaceWheel}
                   activeTool={activeTool}
                   penColor={penColor}
                   penSize={activePenSize}

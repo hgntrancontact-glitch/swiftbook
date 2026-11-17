@@ -38,6 +38,19 @@ export function clipDetailTile(tile:DetailTile,prepared:DetailTile,preparedScale
 }
 
 export type PreparedDetail={tile:DetailTile;scale:number;final:boolean};
+/** A displayed crop already has page-local geometry. Reuse those pixels until
+ * coverage or density actually runs out, rather than allocating/resampling a
+ * viewport-sized canvas for every fractional pinch tick. */
+export function reuseDetailSurface(prepared:PreparedDetail|null,scale:number,visible:{left:number;top:number;right:number;bottom:number},density:number,zooming:boolean):boolean {
+  return zooming && !!prepared && scaledDetailCovers(prepared.tile,prepared.scale,scale,visible,density);
+}
+
+/** Present native pixels 1:1 while zooming; their CSS extent follows PDF points. */
+export function nativeDetailPresentation(prepared:PreparedDetail,scale:number):DetailTile {
+  const ratio=scale/prepared.scale;
+  return {...prepared.tile,x:prepared.tile.x*ratio,y:prepared.tile.y*ratio,
+    width:prepared.tile.width*ratio,height:prepared.tile.height*ratio};
+}
 /** A high-density preview is not a final raster: text has already been sampled
  * at another scale. At rest require PDF operators rendered at the final scale. */
 export function needsFinalDetailRender(prepared:PreparedDetail|null,scale:number,visible:{left:number;top:number;right:number;bottom:number},density:number,zooming:boolean):boolean {

@@ -1,6 +1,6 @@
 import { pageLabelZoom } from '../utils/annotationSharpness';
 import { flushSync } from 'react-dom';
-import { WheelGesture, wheelOwner } from '../utils/wheelGesture';
+import { WorkspaceWheelRouter, wheelOwner } from '../utils/wheelGesture';
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import {
   WorkspaceDoc,
@@ -25,6 +25,7 @@ interface PDFWorkspaceColumnProps {
   doc: WorkspaceDoc;
   isActive: boolean;
   totalVisibleDocs: number;
+  wheelRouter:WorkspaceWheelRouter<HTMLElement|'workspace'>;
   activeTool: ActiveTool;
   penColor: string;
   penSize: number;
@@ -71,6 +72,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
   doc,
   isActive,
   totalVisibleDocs,
+  wheelRouter,
   activeTool,
   penColor,
   penSize,
@@ -205,7 +207,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     panRef.current.x += container.scrollLeft-oldX+sx;
     panRef.current.y += container.scrollTop-oldY+sy;
     wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
-    container.dispatchEvent(new Event('pdf-viewport-pan'));
+    if(!cursorZoom) container.dispatchEvent(new Event('pdf-viewport-pan'));
   };
   const captureAnchor = (clientX: number, clientY: number): Anchor | null => {
     const container = containerRef.current;
@@ -404,8 +406,6 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         flushSync(()=>actionsRef.current.onZoomChange(doc.id,targetScale,false));
       }
     };
-    const wheelGesture = new WheelGesture();
-    let wheelOwnerRef:'pdf'|'workspace'|null=null,lastWheelAt=-Infinity;
     let panFrame:number|null=null,panX=0,panY=0;
     const flushPan=()=> {
       panFrame=null;
@@ -428,26 +428,22 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         if (!dx && !dy) return;
         event.preventDefault();
         event.stopPropagation();
-        const now=performance.now();
-        if(now-lastWheelAt>180) wheelOwnerRef=null;
-        lastWheelAt=now;
-        const intent=wheelGesture.read(dx,dy,now);
-        if(!intent.axis) return;
-        if(wheelOwnerRef===null) {
+        const intent=wheelRouter.read(dx,dy,performance.now(),axis=>{
           const viewStyle=getComputedStyle(container);
           const width=container.clientWidth-parseFloat(viewStyle.paddingLeft)-parseFloat(viewStyle.paddingRight);
-          wheelOwnerRef=wheelOwner(intent.axis,scaleRef.current,wrapperRef.current?.getBoundingClientRect().width || 0,width,docCountRef.current);
-        }
-        if(wheelOwnerRef==='workspace') {
-          container.dispatchEvent(new CustomEvent('pdf-workspace-swipe',{bubbles:true,detail:{delta:intent.delta}}));
-        } else queuePan(intent.axis==='x'?intent.delta:0,intent.axis==='y'?intent.delta:0);
+          return wheelOwner(axis,scaleRef.current,wrapperRef.current?.getBoundingClientRect().width || 0,width,docCountRef.current)==='workspace'?'workspace':container;
+        });
+        if(!intent) return;
+        if(intent.owner==='workspace') {
+          container.dispatchEvent(new CustomEvent('pdf-workspace-swipe',{bubbles:true,detail:{delta:intent.dx}}));
+        } else intent.owner.dispatchEvent(new CustomEvent('pdf-pan-input',{detail:{x:intent.dx,y:intent.dy}}));
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       if (!gestureActiveRef.current) {
         if(panFrame!==null) {cancelAnimationFrame(panFrame);flushPan();}
-        wheelGesture.reset();wheelOwnerRef=null;lastWheelAt=-Infinity;
+        wheelRouter.reset();
         gestureEpochRef.current++;
         container.dataset.zoomEpoch=String(gestureEpochRef.current);
         startScale = committedScaleRef.current;
@@ -467,11 +463,14 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       timer = setTimeout(finish, 120);
     };
     container.addEventListener('wheel', wheel, { passive: false });
+    const panInput=(event:Event)=>{const {x,y}=(event as CustomEvent<{x:number;y:number}>).detail;queuePan(x,y);};
+    container.addEventListener('pdf-pan-input',panInput);
     container.addEventListener('gestureend', finish);
     return () => {
       cancel();
       if(panFrame!==null) cancelAnimationFrame(panFrame);
       container.removeEventListener('wheel', wheel);
+      container.removeEventListener('pdf-pan-input',panInput);
       container.removeEventListener('gestureend', finish);
     };
   }, [doc.id, doc.viewMode, doc.viewportRevision]);

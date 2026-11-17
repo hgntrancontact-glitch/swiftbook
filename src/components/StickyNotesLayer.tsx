@@ -1,5 +1,6 @@
 import {STICKY_NOTE_DESIGN as PAPER,noteSwatchColor} from '../utils/stickyNoteDesign';
 import { createStickyNote } from '../utils/stickyNoteCreation';
+import {stickyNoteGeometry} from '../utils/stickyNoteGeometry';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { TextNoteAnnotation, NOTE_PAPER_COLORS, NoteColorTheme, getNoteColorTheme } from '../types';
 import { MessageSquare, Trash2, Move, Minimize2, StickyNote } from 'lucide-react';
@@ -123,7 +124,9 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
 
     const page=containerRef.current.closest<HTMLElement>('[data-page-container="true"]');
     const userZoom=Number(page?.closest<HTMLElement>('[data-user-zoom]')?.dataset.userZoom || 1);
-    onAddNote(createStickyNote(pageNumber,x,y,scale,userZoom));
+    const created=createStickyNote(pageNumber,x,y,scale,userZoom);
+    const fitted=stickyNoteGeometry(created,rect.width,rect.height,scale/created.referenceScale!);
+    onAddNote({...created,x:fitted.x,y:fitted.y});
 
     // Auto switch tool back to Select mode after 1 placement
     onDeactivateStickyTool?.();
@@ -298,11 +301,13 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
     }
 
     hasMovedRef.current = false;
+    const pageRect=getPageEl(note.pageNumber)?.getBoundingClientRect();
+    const paperRect=document.getElementById(`sticky-${note.id}`)?.getBoundingClientRect();
     dragStartRef.current = {
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startX: note.x,
-      startY: note.y,
+      startX: pageRect && paperRect?(paperRect.left-pageRect.left)/pageRect.width*100:note.x,
+      startY: pageRect && paperRect?(paperRect.top-pageRect.top)/pageRect.height*100:note.y,
     };
     elevatePageZIndex(note.pageNumber || pageNumber, fileId);
     setDraggingNoteId(note.id);
@@ -403,6 +408,7 @@ export const StickyNotesLayer: React.FC<StickyNotesLayerProps> = ({
                 startDrag={startDrag}
                 containerRef={containerRef}
                 scale={scale}
+                isDragging={isDragging}
               />
             )}
           </div>
@@ -421,6 +427,7 @@ interface ExpandedStickyNoteProps {
   startDrag: (e: React.MouseEvent, note: TextNoteAnnotation) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
   scale?: number;
+  isDragging?:boolean;
 }
 
 const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
@@ -432,11 +439,13 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   startDrag,
   containerRef,
   scale = 1.0,
+  isDragging=false,
 }) => {
   const noteScale = scale / (note.referenceScale || 1);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const cancelTitleRef = useRef(false);
+  const noteBoxRef = useRef<HTMLDivElement>(null);
   const finishTitleEdit = () => {
     if (!cancelTitleRef.current) {
       const title = titleDraft.trim() || 'Note';
@@ -447,52 +456,42 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   };
   const getDims = () => {
     const cont = containerRef.current;
-    const page = cont?.closest<HTMLElement>('[data-page-container="true"]');
+    const page = noteBoxRef.current?.closest<HTMLElement>('[data-page-container="true"]') || cont?.closest<HTMLElement>('[data-page-container="true"]');
     // Read untransformed, fractional page dimensions. offsetWidth/offsetHeight
     // round to integers and make percentage-sized notes wobble at zoom commits.
     const contW = parseFloat(page?.style.width || '') || cont?.offsetWidth || 595 * scale;
     const contH = parseFloat(page?.style.height || '') || cont?.offsetHeight || 842 * scale;
 
-    let wPx = PAPER.width * noteScale;
-    let hPx = PAPER.height * noteScale;
-
-    if (typeof note.width === 'number' && note.width > 0) {
-      if (note.width <= 100) {
-        wPx = (note.width / 100) * contW;
-      } else {
-        wPx = note.width * noteScale;
-      }
-    }
-    if (typeof note.height === 'number' && note.height > 0) {
-      if (note.height <= 100) {
-        hPx = (note.height / 100) * contH;
-      } else {
-        hPx = note.height * noteScale;
-      }
-    }
-
-    wPx = Math.max(160 * noteScale, Math.min(contW * 0.95, wPx));
-    hPx = Math.max(100 * noteScale, Math.min(contH * 0.95, hPx));
-
-    return {
-      wPct: (wPx / contW) * 100,
-      hPct: (hPx / contH) * 100,
-      wPx,
-      hPx,
-    };
+    return stickyNoteGeometry(note,contW,contH,noteScale);
   };
 
   const initialDims = getDims();
   const [size, setSize] = useState({
-    width: initialDims.wPx,
-    height: initialDims.hPx,
+    width: initialDims.width,
+    height: initialDims.height,
+    scale: initialDims.scale,
   });
-  const noteBoxRef = useRef<HTMLDivElement>(null);
+  const resizingRef=useRef(false);
 
   useLayoutEffect(() => {
-    const d = getDims();
-    setSize({ width: d.wPx, height: d.hPx });
+    const update=()=>{
+      const d = getDims();
+      setSize(previous=>previous.width===d.width && previous.height===d.height && previous.scale===d.scale?previous:{width:d.width,height:d.height,scale:d.scale});
+    };
+    update();
+    const page=noteBoxRef.current?.closest<HTMLElement>('[data-page-container="true"]');
+    if(!page) return;
+    const observer=new ResizeObserver(update);
+    observer.observe(page);
+    return ()=>observer.disconnect();
   }, [note.width, note.height, note.referenceScale, scale]);
+  useLayoutEffect(()=>{
+    const parent=noteBoxRef.current?.parentElement;
+    if(!parent || isDragging || resizingRef.current) return;
+    // Keep restored notes on their own page without rewriting saved coordinates.
+    parent.style.left=`clamp(0px, ${note.x}%, calc(100% - ${size.width}px))`;
+    parent.style.top=`clamp(0px, ${note.y}%, calc(100% - ${size.height}px))`;
+  },[note.x,note.y,size.width,size.height,isDragging]);
 
   const handleResizeStart = (
     e: React.MouseEvent,
@@ -501,6 +500,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     e.stopPropagation();
     e.preventDefault();
     if (!containerRef.current) return;
+    resizingRef.current=true;
 
     elevatePageZIndex(pageNumber);
 
@@ -508,8 +508,9 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     const startY = e.clientY;
     const startW = size.width;
     const startH = size.height;
-    const startNoteX = note.x;
-    const startNoteY = note.y;
+    const fitted=getDims();
+    const startNoteX = fitted.x;
+    const startNoteY = fitted.y;
     const rect = containerRef.current.getBoundingClientRect();
     const parentStickyEl = document.getElementById(`sticky-${note.id}`);
 
@@ -526,15 +527,15 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       let newH = startH;
 
       if (dir.includes('e')) {
-        newW = Math.max(160 * noteScale, Math.min(rect.width * 0.95, startW + dx));
+        newW = Math.min(rect.width * 0.95, Math.max(160 * size.scale, startW + dx));
       } else if (dir.includes('w')) {
-        newW = Math.max(160 * noteScale, Math.min(rect.width * 0.95, startW - dx));
+        newW = Math.min(rect.width * 0.95, Math.max(160 * size.scale, startW - dx));
       }
 
       if (dir.includes('s')) {
-        newH = Math.max(100 * noteScale, Math.min(rect.height * 0.95, startH + dy));
+        newH = Math.min(rect.height * 0.95, Math.max(100 * size.scale, startH + dy));
       } else if (dir.includes('n')) {
-        newH = Math.max(100 * noteScale, Math.min(rect.height * 0.95, startH - dy));
+        newH = Math.min(rect.height * 0.95, Math.max(100 * size.scale, startH - dy));
       }
 
       let newNoteX = startNoteX;
@@ -552,7 +553,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       latestNoteX = newNoteX;
       latestNoteY = newNoteY;
 
-      setSize({ width: newW, height: newH });
+      setSize({ width: newW, height: newH, scale:size.scale });
       if (parentStickyEl && (dir.includes('n') || dir.includes('w'))) {
         parentStickyEl.style.left = `${newNoteX}%`;
         parentStickyEl.style.top = `${newNoteY}%`;
@@ -560,6 +561,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     };
 
     const onMouseUp = () => {
+      resizingRef.current=false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
 
@@ -595,9 +597,9 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       style={{
         // One native layout scale for the entire paper, including all controls.
         // Stored dimensions remain in page space; no per-child scaling accumulates.
-        zoom: noteScale,
-        width: `${size.width / noteScale}px`,
-        height: `${size.height / noteScale}px`,
+        zoom: size.scale,
+        width: `${size.width / size.scale}px`,
+        height: `${size.height / size.scale}px`,
         borderRadius: `${cornerR}px`,
       }}
       onClick={(e) => {
