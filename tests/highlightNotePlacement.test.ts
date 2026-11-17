@@ -62,16 +62,16 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(doc.querySelector('[data-highlight-note-side] path')!.getAttribute('stroke-width'),'1.5');
     const arrow=doc.querySelector<HTMLElement>('[data-highlight-note-side]')!;
     assert.equal(badge().style.gap,'0px');assert.equal(arrow.style.alignItems,'flex-end');
-    assert.equal(arrow.style.top,'-1px');
+    assert.equal(arrow.style.top,'-2px');
     assert.equal(parseFloat(arrow.style.top)+parseFloat(arrow.style.height)-parseFloat(arrow.style.paddingBottom),
-      parseFloat(icon().style.height)-parseFloat(icon().style.borderWidth)-1);
+      parseFloat(icon().style.height)-parseFloat(icon().style.borderWidth)-2);
     const downPath=arrow.querySelector('path')!;
     assert.ok(downPath.getAttribute('d')!.includes('V23.25')); // 23.25 + round cap radius .75 reaches the SVG's bottom, exactly 24
     assert.equal(downPath.getAttribute('stroke-linecap'),'round');
     const svgHeight=parseFloat(arrow.querySelector('svg')!.style.height);
     const shaftStart=Number(downPath.getAttribute('d')!.match(/^M6 ([\d.]+)/)![1]);
     const paintedTailTop=parseFloat(arrow.style.top)+parseFloat(arrow.style.height)-parseFloat(arrow.style.paddingBottom)-svgHeight+(shaftStart-.75)*svgHeight/24;
-    assert.ok(Math.abs(paintedTailTop-(parseFloat(icon().style.height)/2-1))<.1); // the entire arrow is one pixel above its previous centre/bottom alignment
+    assert.ok(Math.abs(paintedTailTop-(parseFloat(icon().style.height)/2-2))<.1); // the down arrow is two pixels above its original alignment
     assert.ok(Math.abs(parseFloat(arrow.querySelector('svg')!.style.height)-23*2/3)<1e-9);
     await act(async()=>{doc.getElementById('hl-h-rect-0')!.dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});
     assert.equal(popup().style.visibility,'hidden');
@@ -106,6 +106,7 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(parseFloat(badge().style.top),415);
     assert.ok(doc.querySelector('[data-highlight-note-side] [data-note-arrow=up]'));
     assert.equal(doc.querySelector<HTMLElement>('[data-highlight-note-side]')!.style.alignItems,'flex-start');
+    assert.equal(doc.querySelector<HTMLElement>('[data-highlight-note-side]')!.style.top,'0px'); // up arrow moved down 1px from its previous -1px offset
     assert.equal(parseFloat(doc.querySelector<HTMLElement>('[data-highlight-note-side]')!.style.paddingTop),parseFloat(icon().style.borderWidth));
     await act(async()=>model.select(true));await flush(); // moving the interactive overlay between base/elevated portals must not reset the side
     assert.equal(icon().dataset.popupDirection,'below');
