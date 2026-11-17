@@ -17,6 +17,10 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
   Object.defineProperty(dom.window.HTMLElement.prototype,'offsetHeight',{get(){return 100;}});
   let pageTop=-1200;
   dom.window.HTMLElement.prototype.getBoundingClientRect=function(){
+    if(this.hasAttribute('data-highlight-note-preview')) {
+      const scale=Number(this.style.getPropertyValue('--highlight-ui-scale')) || 1;
+      return {left:0,top:0,right:236*scale,bottom:100*scale,width:236*scale,height:100*scale,x:0,y:0,toJSON(){}};
+    }
     const isRect=this.id.includes('-rect-');
     const left=100+(isRect?parseFloat(this.style.left)*8:0),top=pageTop+(isRect?parseFloat(this.style.top)*10:0);
     const width=isRect?parseFloat(this.style.width)*8:800,height=isRect?parseFloat(this.style.height)*10:1000;
@@ -53,9 +57,9 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.ok(!badge().className.includes('bg-'));assert.ok(!badge().className.includes('border-'));
     assert.equal(icon().style.width,'22px');assert.ok(icon().className.includes('rounded-full'));assert.ok(icon().className.includes('bg-[#f5c41a]'));
     assert.ok(badge().contains(icon()));assert.ok(badge().contains(doc.querySelector('[data-highlight-note-side]')));
-    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-arrow-down'));
+    assert.ok(doc.querySelector('[data-highlight-note-side] [data-note-arrow=down]'));
     assert.ok(doc.querySelector('[data-highlight-note-side]')!.className.includes('text-black'));
-    assert.equal(doc.querySelector('[data-highlight-note-side] svg')!.getAttribute('stroke-width'),'4');
+    assert.equal(doc.querySelector('[data-highlight-note-side] path')!.getAttribute('stroke-width'),'1.25');
     await act(async()=>{doc.getElementById('hl-h-rect-0')!.dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});
     assert.equal(popup().style.visibility,'hidden');
     await act(async()=>{icon().dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});await flush();
@@ -71,6 +75,13 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     await click('Hiện chỉnh kích thước popup ghi chú');await flush();
     assert.equal(popup().style.width,width);
     await click('Phóng lớn popup ghi chú');await flush();
+    const card=doc.querySelector<HTMLElement>('[data-highlight-note-preview]')!;
+    assert.equal(card.style.zoom,'1');assert.equal(card.style.transform,'');
+    assert.ok(Number(card.style.getPropertyValue('--highlight-ui-scale'))>1);
+    await click('Thu nhỏ popup ghi chú');await click('Thu nhỏ popup ghi chú');await flush();
+    assert.equal(model.note.notePopupScale,.9);assert.equal(card.style.zoom,'1');
+    assert.ok(Number(card.style.getPropertyValue('--highlight-ui-scale'))<1);
+    await click('Phóng lớn popup ghi chú');await click('Phóng lớn popup ghi chú');await flush();
     assert.equal(model.note.notePopupScale,1.1);assert.ok(parseFloat(popup().style.width)>parseFloat(width));
     assert.equal(icon().style.width,iconSize);assert.equal(JSON.stringify(model.note.rects),rects);
     await click('Ẩn chỉnh kích thước popup ghi chú');await flush();assert.equal(model.note.notePopupScale,1.1);
@@ -80,7 +91,7 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(model.note.noteSide,'below');assert.equal(icon().dataset.popupDirection,'below');
     assert.equal(parseFloat(badge().style.left),309); // shorter last line, not the first line or union's right edge
     assert.equal(parseFloat(badge().style.top),415);
-    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-arrow-up'));
+    assert.ok(doc.querySelector('[data-highlight-note-side] [data-note-arrow=up]'));
     await act(async()=>model.select(true));await flush(); // moving the interactive overlay between base/elevated portals must not reset the side
     assert.equal(icon().dataset.popupDirection,'below');
     const toolbar=doc.querySelector<HTMLElement>('.highlight-popup-toolbar')!,toolbarZoom=Number(toolbar.style.zoom);

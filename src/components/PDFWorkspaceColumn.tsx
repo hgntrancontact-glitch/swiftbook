@@ -184,6 +184,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
 
   const clearLiveZoom = (zoom = scaleRef.current) => {
     wrapperRef.current?.style.removeProperty('--pdf-live-zoom');
+    wrapperRef.current?.style.removeProperty('--pdf-live-transform');
     wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(zoom)));
   };
   const clearPan = () => {
@@ -354,6 +355,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       }
       const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
+      wrapperRef.current?.style.setProperty('--pdf-live-transform', `scale(${targetScale/startScale})`);
       wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(targetScale)));
       if (anchor) restoreAnchor(anchor);
       panViewport(0,0,true,true,true);
@@ -381,6 +383,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const rebase = (scale: number) => {
       startScale = scale;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
+      wrapperRef.current?.style.setProperty('--pdf-live-transform', `scale(${targetScale/startScale})`);
       wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(targetScale)));
       const anchor = visualAnchorRef.current;
       if (anchor) restoreAnchor(anchor);

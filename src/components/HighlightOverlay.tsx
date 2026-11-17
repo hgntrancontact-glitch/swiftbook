@@ -255,36 +255,38 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                   <div 
                     className="highlight-note-preview w-full max-w-[300px] pointer-events-auto text-[12px] font-['Inter',sans-serif] cursor-default"
                     data-highlight-note-preview={hl.id} data-preview-mode={previewMode}
-                    style={{ maxHeight: 'var(--highlight-popup-height)', display: 'flex', flexDirection: 'column', pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
+                    style={{ fontSize:'calc(12px * var(--highlight-ui-scale, 1))', maxHeight: 'var(--highlight-popup-height)', display: 'flex', flexDirection: 'column', pointerEvents: previewMode === 'transparent' ? 'none' : 'auto' }}
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => e.stopPropagation()}
                   >
                     <div className={`rounded-xl p-2.5 border flex flex-col min-h-0 ${previewMode === 'transparent' ? 'text-neutral-950 border-neutral-700/30 shadow-md' : 'bg-neutral-900 text-white border-neutral-700/60 shadow-2xl'}`}
-                      style={previewMode === 'transparent' ? { backgroundColor: 'rgba(255,255,255,0.16)' } : undefined}>
+                      style={{padding:'calc(10px * var(--highlight-ui-scale, 1))',borderWidth:'calc(1px * var(--highlight-ui-scale, 1))',borderRadius:'calc(12px * var(--highlight-ui-scale, 1))',...(previewMode === 'transparent' ? { backgroundColor: 'rgba(255,255,255,0.16)' } : {})}}>
 
-                    <div data-highlight-note-header className="flex items-center gap-1.5 shrink-0 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto">
-                      <MessageSquare size={11} className="fill-[#f5c41a]" />
+                    <div data-highlight-note-header className="flex items-center gap-1.5 shrink-0 font-bold text-[#f5c41a] text-[11px] mb-1 pb-1 border-b border-neutral-800 pointer-events-auto"
+                      style={{fontSize:'calc(11px * var(--highlight-ui-scale, 1))',gap:'calc(6px * var(--highlight-ui-scale, 1))',marginBottom:'calc(4px * var(--highlight-ui-scale, 1))',paddingBottom:'calc(4px * var(--highlight-ui-scale, 1))',borderBottomWidth:'calc(1px * var(--highlight-ui-scale, 1))'}}>
+                      <MessageSquare size={11} className="fill-[#f5c41a]" style={{width:"1em",height:"1em"}} />
                       <span className={previewMode === 'transparent' ? 'text-neutral-950' : ''}>Ghi chú</span>
                       <button type="button" className="ml-auto p-0.5 rounded hover:bg-neutral-500/20 pointer-events-auto"
-                        data-highlight-note-mode="true"
+                        style={{padding:'calc(2px * var(--highlight-ui-scale, 1))'}} data-highlight-note-mode="true"
                         title={previewMode === 'auto' ? 'Ghim hiển thị — giữ ghi chú khi rê chuột ra ngoài' : previewMode === 'pinned' ? 'Ghim trong suốt — nhìn nội dung PDF phía dưới' : 'Tự thu gọn — thu gọn khi rê chuột ra ngoài'}
                         aria-label={previewMode === 'auto' ? 'Ghim hiển thị' : previewMode === 'pinned' ? 'Ghim trong suốt' : 'Tự thu gọn'}
                         onClick={e => {
                           e.stopPropagation();
                           setPreviewMode(mode => mode === 'auto' ? 'pinned' : mode === 'pinned' ? 'transparent' : 'auto');
                         }}>
-                        {previewMode === 'auto' ? <PinOff size={12} /> : previewMode === 'pinned' ? <Pin size={12} /> : <Eye size={12} />}
+                        {previewMode === 'auto' ? <PinOff size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} /> : previewMode === 'pinned' ? <Pin size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} /> : <Eye size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} />}
                       </button>
                       <button type="button" title="Đóng ghi chú" aria-label="Đóng ghi chú" className="p-0.5 rounded hover:bg-neutral-500/20"
-                        onClick={e => { e.stopPropagation(); closeNotePreview(); }}><X size={12} /></button>
+                        style={{padding:'calc(2px * var(--highlight-ui-scale, 1))'}}
+                        onClick={e => { e.stopPropagation(); closeNotePreview(); }}><X size={12} style={{width:'calc(12px * var(--highlight-ui-scale, 1))',height:'calc(12px * var(--highlight-ui-scale, 1))'}} /></button>
                     </div>
                     <div data-highlight-note-body className="overflow-y-auto min-h-0">
-                    <HighlightNoteText text={hl.note} className={previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} />
-                    <div className="text-[10.5px] text-neutral-400 mt-1.5 text-right italic">
+                    <HighlightNoteText text={hl.note} style={{fontSize:'inherit'}} className={previewMode === 'transparent' ? 'text-neutral-950' : 'text-neutral-200'} />
+                    <div className="text-[10.5px] text-neutral-400 mt-1.5 text-right italic" style={{fontSize:'calc(10.5px * var(--highlight-ui-scale, 1))',marginTop:'calc(6px * var(--highlight-ui-scale, 1))'}}>
                       Nhấp đúp chuột vào highlight để sửa
                     </div>
                     </div>
-                    <div className="flex justify-end mt-1 shrink-0">
+                    <div className="flex justify-end mt-1 shrink-0" style={{marginTop:'calc(4px * var(--highlight-ui-scale, 1))'}}>
                       <PanelSizeControls value={noteSizeMultiplier(hl.notePopupScale)} label="popup ghi chú"
                         onChange={notePopupScale=>onUpdateHighlight?.(hl.id,{notePopupScale},true)}/>
                     </div>

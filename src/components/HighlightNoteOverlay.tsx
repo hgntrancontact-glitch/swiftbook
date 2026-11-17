@@ -4,7 +4,7 @@ import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { HIGHLIGHT_NOTE_SIZE, HIGHLIGHT_NOTE_ICON_SIZE, HIGHLIGHT_NOTE_GLYPH_SIZE } from '../utils/annotationUi';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowUp, MessageSquare } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 
 interface Props {
   anchorId: string;
@@ -111,14 +111,18 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
       const cardWidth=POPUP_WIDTH*popupFactor;
       popup.style.width=sized(cardWidth);
       popup.style.maxHeight=sized(420*popupFactor);
-      popup.style.setProperty('--highlight-popup-height','420px');
+      popup.style.setProperty('--highlight-popup-height',sized(420*popupFactor));
       popup.style.borderRadius=sized(12*popupFactor);
       popup.style.overflow='hidden';
       const card=popup.firstElementChild as HTMLElement|null;
       if(card && (showPopup || popupHeightRef.current===null)) {
-        card.style.zoom=String(popupFactor*live);card.style.width=`${POPUP_WIDTH}px`;
+        // Layout text at its actual size. Fractional CSS zoom below 1 can
+        // retain a compositor bitmap instead of repainting small glyphs.
+        card.style.zoom='1';card.style.maxWidth='none';card.style.width=sized(cardWidth);
+        card.style.setProperty('--highlight-ui-scale',String(popupFactor*live));
+        card.style.setProperty('--panel-ui-scale',String(popupFactor*live));
       }
-      if(popupHeightRef.current===null) popupHeightRef.current=card?.offsetHeight || popup.getBoundingClientRect().height/(popupFactor*live);
+      if(popupHeightRef.current===null) popupHeightRef.current=(card?.getBoundingClientRect().height || popup.getBoundingClientRect().height)/(popupFactor*live);
       const height=popupHeightRef.current*popupFactor;
       const gap=POPUP_GAP*factor;
       let direction=sideRef.current.side || placementRef.current?.direction || directionRef.current;
@@ -235,7 +239,11 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
           positionRef.current?.();
           onSideChange(next);
         }}>
-        {chosenSide==='above'?<ArrowDown size="100%" strokeWidth={4}/>:<ArrowUp size="100%" strokeWidth={4}/>}
+        <svg width="100%" height="100%" viewBox="0 0 16 36" fill="none" aria-hidden="true"
+          data-note-arrow={chosenSide==='above'?'down':'up'} style={{overflow:'visible'}}>
+          <path d={chosenSide==='above'?'M8 2 V34 M2 28 L8 34 L14 28':'M8 34 V2 M2 8 L8 2 L14 8'}
+            stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
       </button>
       </div>
       {<>

@@ -2,6 +2,24 @@ import type {DetailTile} from './pdfDetailTile';
 
 type Crop = {x:number;y:number;width:number;height:number};
 
+/** Inspect only a tiny thumbnail, and only before first paint. A PDF may yield
+ * while its background is still white; that is not a useful progress frame. */
+export function hasPaintedContent(source:HTMLCanvasElement,probe:HTMLCanvasElement):boolean {
+  if(probe.width!==32)probe.width=32;
+  if(probe.height!==32)probe.height=32;
+  const context=probe.getContext('2d',{willReadFrequently:true});
+  if(!context)return false;
+  try {
+    context.fillStyle='#fff';context.fillRect(0,0,32,32);
+    context.drawImage(source,0,0,32,32);
+    const pixels=context.getImageData(0,0,32,32).data;
+    for(let index=0;index<pixels.length;index+=4) {
+      if(pixels[index]<250 || pixels[index+1]<250 || pixels[index+2]<250)return true;
+    }
+  } catch {}
+  return false;
+}
+
 /** Write only the hidden buffer, then switch surfaces in the same JS frame.
  * Geometry is stored in PDF points; inherited layout/live zoom keeps the exact
  * same screen rectangle when React commits the final zoom. */
