@@ -2,7 +2,7 @@ import {takePageDetail,retainPageDetail,clearPageDetails,detailCacheRevision} fr
 import {QuickShapesLayer} from './QuickShapesLayer';
 import {detailRasterOwnership} from '../utils/pdfRasterOwnership';
 import { presentDetailSample,hasPaintedContent } from '../utils/pdfDetailSurface';
-import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, sourceCoversDensity, oversampleDetail, scaledDetailCovers, reuseDetailSurface, nativeDetailPresentation, type PreparedDetail } from '../utils/pdfRasterSampling';
+import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, detailPixelAligned, sourceCoversDensity, oversampleDetail, scaledDetailCovers, reuseDetailSurface, nativeDetailPresentation, type PreparedDetail } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
@@ -151,14 +151,15 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     const surfaces=[canvases[0],canvases[1]];
     let front=-1,frame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
     let lastSource:CanvasImageSource|null=null;
+    let settlePixelGrid=true;
     let presented:PreparedDetail|null=null;
-    let runningTarget:{scale:number;final:boolean;tile:DetailTile;epoch:string|undefined}|null=null;
+    let runningTarget:{scale:number;final:boolean;tile:DetailTile;epoch:string|undefined;layoutKey:string}|null=null;
     const owner={};let failed=false,owned=false;
     const releaseOwnership=(notify=false)=>{
       const wasOwned=owned;owned=false;detailRasterOwnership.release(page,owner);
       if(notify && wasOwned)page.dispatchEvent(new Event('pdf-detail-fallback'));
     };
-    let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean}|null=null;
+    let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean;layoutKey?:string}|null=null;
     let cancelCurrent=()=>{};
     const hide=(notify=false)=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';presented=null;releaseOwnership(notify);};
     if(!near) {hide();return;}
@@ -174,12 +175,13 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         right:Math.min(size.width*liveScale,v.right-r.left,window.innerWidth-r.left),bottom:Math.min(size.height*liveScale,v.bottom-r.top,window.innerHeight-r.top)};
       const crop=pdfDetailTile(size,visible,liveScale,window.devicePixelRatio||1);
       const tile=crop && !zooming ? alignDetailTile(crop,r.left,r.top,liveScale) : crop;
-      return {liveScale,visible,tile,zooming};
+      return {liveScale,visible,tile,zooming,pageRect:r,
+        layoutKey:`${v.width}:${v.height}:${window.devicePixelRatio || 1}`};
     };
     const measure=()=> {
       if(frame) cancelAnimationFrame(frame);frame=0;
       if(disposed) return;
-      const started=performance.now(),{liveScale,visible,tile,zooming}=input();
+      const started=performance.now(),{liveScale,visible,tile,zooming,pageRect,layoutKey}=input();
       if(view.dataset.renderVisible==='false' || !tile) {cancelCurrent();hide(true);return;}
       if(reuseDetailSurface(presented,liveScale,visible,tile.density,zooming)) {
         if(rendering && runningTarget && !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)) cancelCurrent();
@@ -210,9 +212,14 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         }
       }
       const nativeFull=!zooming && fallback && sameRasterScale(Number(fallback.dataset.renderedScale),liveScale) &&
-        Math.abs(Number(fallback.dataset.rasterDensity)-tile.density)<.0001;
-      if(nativeFull) {cancelCurrent();hide();readyRef.current?.();return;}
-      const needsFinal=!failed && needsFinalDetailRender(detailSource,liveScale,visible,tile.density,zooming);
+        Math.abs(Number(fallback.dataset.rasterDensity)-tile.density)<.0001 &&
+        Math.abs(fallback.width-pageRect.width*tile.density/liveScale)<1e-6 &&
+        Math.abs(fallback.height-pageRect.height*tile.density/liveScale)<1e-6 &&
+        detailPixelAligned({...tile,x:0,y:0},pageRect.left,pageRect.top,liveScale);
+      if(nativeFull) {cancelCurrent();hide();settlePixelGrid=false;readyRef.current?.();return;}
+      const needsFinal=!failed && (needsFinalDetailRender(detailSource,liveScale,visible,tile.density,zooming) ||
+        (!zooming && (detailSource?.layoutKey!==layoutKey ||
+          (settlePixelGrid && detailSource && !detailPixelAligned(detailSource.tile,pageRect.left,pageRect.top,liveScale)))));
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
         if(key!==signature || lastSource!==source) {
@@ -226,19 +233,19 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'sample',zooming});
           if(detailSamples.length>200) detailSamples.shift();
         }
-        if(!needsFinal) return;
+        if(!needsFinal) {if(!zooming)settlePixelGrid=false;return;}
       }
       if(failed) return;
       if(rendering) {
         refreshAfterRender=true;
         // An in-flight gesture preview cannot delay the final sharp result.
-        if(runningTarget && (runningTarget.epoch!==view.dataset.zoomEpoch || (!zooming?(!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale) || !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)):
+        if(runningTarget && (runningTarget.epoch!==view.dataset.zoomEpoch || (!zooming && (runningTarget.layoutKey!==layoutKey || !detailPixelAligned(runningTarget.tile,pageRect.left,pageRect.top,liveScale))) || (!zooming?(!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale) || !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)):
           !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)))) cancelCurrent();
         return;
       }
       const final=!zooming;
       const target=final?tile:oversampleDetail(tile),epoch=view.dataset.zoomEpoch,own=++generation;
-      rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch};
+      rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch,layoutKey};
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null,progressFrame=0,continuations=0;
       cancelCurrent=()=>{cancelled=true;cancelAnimationFrame(progressFrame);progressFrame=0;handle?.cancel();task?.cancel();};
       void (async()=> {
@@ -255,7 +262,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           handle=requestPdfRenderSlot(page.closest('[data-workspace-doc]')?.getAttribute('data-active')==='true'?-1:0,cancelCurrent);
           release=await handle.promise;if(!release || stale()) return;
           const queued=input();
-          if(!queued.tile || (final?(queued.zooming || !sameRasterScale(liveScale,queued.liveScale) || !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density)):
+          if(!queued.tile || (final?(queued.zooming || queued.layoutKey!==layoutKey || !detailPixelAligned(target,queued.pageRect.left,queued.pageRect.top,liveScale) || !sameRasterScale(liveScale,queued.liveScale) || !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density)):
             !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density))) {
             refreshAfterRender=true;return;
           }
@@ -285,11 +292,12 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           await task.promise;
           if(stale()) return;
           const latest=input();
-          if(final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale) || !latest.tile || !scaledDetailCovers(target,liveScale,latest.liveScale,latest.visible,latest.tile.density))) {refreshAfterRender=true;return;}
+          if(final && (latest.zooming || latest.layoutKey!==layoutKey || !detailPixelAligned(target,latest.pageRect.left,latest.pageRect.top,liveScale) || !sameRasterScale(liveScale,latest.liveScale) || !latest.tile || !scaledDetailCovers(target,liveScale,latest.liveScale,latest.visible,latest.tile.density))) {refreshAfterRender=true;return;}
           // Keep previews and final native crops separate so a sampled preview
           // cannot satisfy the final-resolution requirement after release.
           if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
-          detailSource={canvas,tile:target,scale:liveScale,final};retained=true;
+          detailSource={canvas,tile:target,scale:liveScale,final,layoutKey};retained=true;
+          if(final)settlePixelGrid=false;
           refreshAfterRender=true;
           detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'native',zooming:view.dataset.zoomGesture==='true'});
           if(detailSamples.length>200) detailSamples.shift();
@@ -316,7 +324,19 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     view.addEventListener('pdf-viewport-visibility',measure);view.addEventListener('pdf-zoom-frame',measure);
     view.addEventListener('pdf-raster-ready',schedule);
     view.addEventListener('pdf-zoom-start',start);view.addEventListener('pdf-zoom-end',measure);
-    const resize=new ResizeObserver(schedule);resize.observe(view);resize.observe(page);
+    const resized=()=>{settlePixelGrid=true;schedule();};
+    const resize=new ResizeObserver(resized);resize.observe(view);resize.observe(page);
+    window.addEventListener('resize',resized);
+    // Moving Chrome between displays or changing browser zoom can change DPR
+    // without changing this element's CSS dimensions.
+    let resolution:MediaQueryList|undefined;
+    const resolutionChanged=()=>{resized();watchResolution();};
+    const watchResolution=()=>{
+      resolution?.removeEventListener('change',resolutionChanged);
+      resolution=window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      resolution?.addEventListener('change',resolutionChanged);
+    };
+    watchResolution();
     // Restore before paint, including a mode change at another scale. Keep the
     // old pixels until this viewport's exact native result is ready.
     if(detailSource) {
@@ -328,6 +348,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     }
     measure();
     return()=>{disposed=true;generation++;cancelCurrent();cancelAnimationFrame(frame);resize.disconnect();releaseOwnership();
+      window.removeEventListener('resize',resized);resolution?.removeEventListener('change',resolutionChanged);
       if(detailSource) retainPageDetail(cacheKey,pdfDoc,detailSource,cacheRevision);
       for(const canvas of surfaces) {canvas.style.display='none';canvas.width=canvas.height=1;}
       view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-viewport-pan',schedule);

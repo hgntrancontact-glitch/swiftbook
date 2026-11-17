@@ -37,7 +37,14 @@ export function clipDetailTile(tile:DetailTile,prepared:DetailTile,preparedScale
   return {...tile,x,y,width,height,pixelsWide:Math.max(1,Math.round(width*tile.density/scale)),pixelsHigh:Math.max(1,Math.round(height*tile.density/scale))};
 }
 
-export type PreparedDetail={tile:DetailTile;scale:number;final:boolean};
+export type PreparedDetail={tile:DetailTile;scale:number;final:boolean;layoutKey?:string};
+
+/** A resize can move the same-scale page by half a device pixel. Coverage and
+ * density alone cannot tell whether a retained native raster is still sharp. */
+export function detailPixelAligned(tile:DetailTile,pageLeft:number,pageTop:number,scale:number):boolean {
+  const pixels=tile.density/scale;
+  return [pageLeft+tile.x,pageTop+tile.y].every(value=>Math.abs(value*pixels-Math.round(value*pixels))<1e-6);
+}
 /** A displayed crop already has page-local geometry. Reuse those pixels until
  * coverage or density actually runs out, rather than allocating/resampling a
  * viewport-sized canvas for every fractional pinch tick. */

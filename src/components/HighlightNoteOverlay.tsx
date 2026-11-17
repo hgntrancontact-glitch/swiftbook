@@ -147,6 +147,8 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
       if(arrow) {
         arrow.style.width=sized(ARROW_WIDTH*factor);arrow.style.height=sized(iconSize);
         arrow.style.alignItems=direction==='above'?'flex-end':'flex-start';
+        // Align the painted arrow tip with the yellow face, inside the white rim.
+        arrow.style.paddingTop=arrow.style.paddingBottom=sized(2*factor);
         const shape=arrow.querySelector('svg');
         if(shape) {
           shape.style.width=sized(iconSize/3);
@@ -248,7 +250,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
         }}>
         <svg width="100%" height="100%" viewBox="0 0 12 24" fill="none" aria-hidden="true"
           data-note-arrow={chosenSide==='above'?'down':'up'} style={{overflow:'visible'}}>
-          <path d={chosenSide==='above'?'M6 1 V23 M1 18 L6 23 L11 18':'M6 23 V1 M1 6 L6 1 L11 6'}
+          <path d={chosenSide==='above'?'M6 .75 V23.25 M.75 18 L6 23.25 L11.25 18':'M6 23.25 V.75 M.75 6 L6 .75 L11.25 6'}
             stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>

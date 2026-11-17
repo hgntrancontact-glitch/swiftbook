@@ -62,6 +62,11 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(doc.querySelector('[data-highlight-note-side] path')!.getAttribute('stroke-width'),'1.5');
     const arrow=doc.querySelector<HTMLElement>('[data-highlight-note-side]')!;
     assert.equal(badge().style.gap,'0px');assert.equal(arrow.style.alignItems,'flex-end');
+    assert.equal(parseFloat(arrow.style.height)-parseFloat(arrow.style.paddingBottom),
+      parseFloat(icon().style.height)-parseFloat(icon().style.borderWidth));
+    const downPath=arrow.querySelector('path')!;
+    assert.ok(downPath.getAttribute('d')!.includes('V23.25')); // 23.25 + round cap radius .75 reaches the SVG's bottom, exactly 24
+    assert.equal(downPath.getAttribute('stroke-linecap'),'round');
     assert.ok(Math.abs(parseFloat(arrow.querySelector('svg')!.style.height)-23*2/3)<1e-9);
     await act(async()=>{doc.getElementById('hl-h-rect-0')!.dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});
     assert.equal(popup().style.visibility,'hidden');
@@ -96,6 +101,7 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(parseFloat(badge().style.top),415);
     assert.ok(doc.querySelector('[data-highlight-note-side] [data-note-arrow=up]'));
     assert.equal(doc.querySelector<HTMLElement>('[data-highlight-note-side]')!.style.alignItems,'flex-start');
+    assert.equal(parseFloat(doc.querySelector<HTMLElement>('[data-highlight-note-side]')!.style.paddingTop),parseFloat(icon().style.borderWidth));
     await act(async()=>model.select(true));await flush(); // moving the interactive overlay between base/elevated portals must not reset the side
     assert.equal(icon().dataset.popupDirection,'below');
     const toolbar=doc.querySelector<HTMLElement>('.highlight-popup-toolbar')!,toolbarZoom=Number(toolbar.style.zoom);

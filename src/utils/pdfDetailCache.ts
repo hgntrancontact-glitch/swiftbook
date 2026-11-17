@@ -1,6 +1,6 @@
 import type {DetailTile} from './pdfDetailTile';
 
-export type RetainedDetail={canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean};
+export type RetainedDetail={canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean;layoutKey?:string};
 const entries=new Map<string,{doc:unknown;detail:RetainedDetail}>();
 const budget=12_000_000;
 const revisions=new Map<string,number>();
