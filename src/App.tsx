@@ -4,6 +4,7 @@ import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
 import {isQuickShapeTool,isDrawingHighlighter} from './utils/quickShapes';
 import { WorkspaceWheelRouter, WHEEL_IDLE_MS } from './utils/wheelGesture';
+import {useWorkspaceWheelNavigation} from './hooks/useWorkspaceWheelNavigation';
 import { openingPage, reopenDocument } from './utils/documentOpening';
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import {
@@ -161,6 +162,7 @@ function SwiftbookApp() {
   const multiPdfContainerRef = useRef<HTMLDivElement>(null);
   const workspacePairIndexRef = useRef(0);
   const workspaceWheel=useRef(new WorkspaceWheelRouter<HTMLElement|'workspace'>()).current;
+  useWorkspaceWheelNavigation(multiPdfContainerRef,workspaceWheel);
 
   const scrollWorkspaceToDoc = useWorkspaceDocumentFocus(multiPdfContainerRef,workspacePairIndexRef,visibleDocs.map(doc=>doc.id));
 
@@ -1023,6 +1025,8 @@ function SwiftbookApp() {
   }, []);
 
   const handleZoomChange = useCallback((docId: string, scale: number, resetFitMode?: boolean) => {
+    const viewport=document.querySelector<HTMLElement>(`[data-workspace-doc="${CSS.escape(docId)}"] .pdf-viewport-container`);
+    if(viewport) workspaceWheel.setHorizontalOwner(viewport);
     const nextScale = resetFitMode ? 1.0 : Math.min(50, Math.max(0.2, scale));
     updateDoc(docId, (d) => ({
       ...d,
@@ -1031,7 +1035,7 @@ function SwiftbookApp() {
       fitMode: Boolean(resetFitMode),
       viewportRevision: resetFitMode ? (d.viewportRevision || 0) + 1 : d.viewportRevision,
     }));
-  }, [updateDoc]);
+  }, [updateDoc,workspaceWheel]);
 
   useLayoutEffect(() => {
     if (activeTool === 'highlighter' || activeTool === 'smart_highlighter') {

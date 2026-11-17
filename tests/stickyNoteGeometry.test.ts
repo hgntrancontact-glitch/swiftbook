@@ -19,8 +19,9 @@ test('small portrait/spread pages cap note paper and its controls before minimum
   }
 });
 
-test('restored pixel and percentage note sizes share the same page bounds while ordinary defaults stay 224 by 184',()=>{
-  assert.deepEqual(stickyNoteGeometry({x:20,y:30},595,842,1),{width:224,height:184,scale:1,x:20,y:30});
+test('portrait defaults shrink the whole paper while restored pixel/percentage sizes remain page bounded',()=>{
+  const portrait=stickyNoteGeometry({x:20,y:30},595,842,1);
+  assert.ok(Math.abs(portrait.width-179.2)<1e-9);assert.ok(Math.abs(portrait.height-147.2)<1e-9);assert.equal(portrait.scale,.8);
   for(const stored of [60,95,400,1200]) {
     const g=stickyNoteGeometry({x:80,y:80,width:stored,height:stored},180,260,2);
     assert.ok(g.width<=171 && g.height<=247);
@@ -53,9 +54,20 @@ test('mounted paper recalculates after the actual PDF page size arrives without 
     assert.ok(dom.window.document.getElementById('sticky-note')!.style.left.startsWith('clamp('));
     page.style.width='595px';page.style.height='842px';
     await act(async()=>observers.forEach(update=>update()));
-    assert.equal(paper.style.width,'224px');assert.equal(paper.style.height,'184px');assert.equal(paper.style.zoom,'1');
+    assert.equal(paper.style.width,'224px');assert.equal(paper.style.height,'184px');assert.equal(paper.style.zoom,'0.8');
   } finally {
     await act(async()=>root.unmount());dom.window.close();
     for(const [key,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete (globalThis as any)[key];}
+  }
+});
+
+test('landscape and square note defaults, custom sizes and controls retain their previous dimensions at every zoom',()=>{
+  for(const [w,h] of [[1320,750],[842,595],[800,800]]) for(const zoom of [.2,.5,1,2,5]) {
+    const basic=stickyNoteGeometry({x:20,y:30},w*zoom,h*zoom,zoom);
+    assert.ok(Math.abs(basic.width-224*zoom)<1e-9);assert.ok(Math.abs(basic.height-184*zoom)<1e-9);assert.equal(basic.scale,zoom);
+    const pixel=stickyNoteGeometry({x:20,y:30,width:300,height:200},w*zoom,h*zoom,zoom);
+    assert.ok(Math.abs(pixel.width-300*zoom)<1e-9);assert.ok(Math.abs(pixel.height-200*zoom)<1e-9);assert.equal(pixel.scale,zoom);
+    const percent=stickyNoteGeometry({x:20,y:30,width:40,height:40},w*zoom,h*zoom,zoom);
+    assert.ok(Math.abs(percent.width-w*zoom*.4)<1e-9);assert.ok(Math.abs(percent.height-h*zoom*.4)<1e-9);assert.equal(percent.scale,zoom);
   }
 });

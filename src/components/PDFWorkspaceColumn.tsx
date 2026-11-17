@@ -434,16 +434,16 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
           return wheelOwner(axis,scaleRef.current,wrapperRef.current?.getBoundingClientRect().width || 0,width,docCountRef.current)==='workspace'?'workspace':container;
         });
         if(!intent) return;
-        if(intent.owner==='workspace') {
+        if(intent.owner==='workspace' && docCountRef.current>2) {
           container.dispatchEvent(new CustomEvent('pdf-workspace-swipe',{bubbles:true,detail:{delta:intent.dx}}));
-        } else intent.owner.dispatchEvent(new CustomEvent('pdf-pan-input',{detail:{x:intent.dx,y:intent.dy}}));
+        } else (intent.owner==='workspace'?container:intent.owner).dispatchEvent(new CustomEvent('pdf-pan-input',{detail:{x:intent.dx,y:intent.dy}}));
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       if (!gestureActiveRef.current) {
         if(panFrame!==null) {cancelAnimationFrame(panFrame);flushPan();}
-        wheelRouter.reset();
+        wheelRouter.setHorizontalOwner(container);
         gestureEpochRef.current++;
         container.dataset.zoomEpoch=String(gestureEpochRef.current);
         startScale = committedScaleRef.current;
@@ -466,12 +466,20 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     const panInput=(event:Event)=>{const {x,y}=(event as CustomEvent<{x:number;y:number}>).detail;queuePan(x,y);};
     container.addEventListener('pdf-pan-input',panInput);
     container.addEventListener('gestureend', finish);
+    const stopInteraction=()=>{
+      finish();
+      if(panFrame!==null) cancelAnimationFrame(panFrame);
+      panFrame=null;panX=panY=0;
+    };
+    container.addEventListener('pdf-interaction-stop',stopInteraction);
     return () => {
       cancel();
       if(panFrame!==null) cancelAnimationFrame(panFrame);
       container.removeEventListener('wheel', wheel);
       container.removeEventListener('pdf-pan-input',panInput);
       container.removeEventListener('gestureend', finish);
+      container.removeEventListener('pdf-interaction-stop',stopInteraction);
+      if(!container.isConnected) wheelRouter.forgetOwner(container);
     };
   }, [doc.id, doc.viewMode, doc.viewportRevision]);
 

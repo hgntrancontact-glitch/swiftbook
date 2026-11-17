@@ -13,10 +13,10 @@ function renderNote(fitScale:number,creationZoom:number,viewZoom:number) {
   return html.match(/data-note-paper=[^>]+style="([^"]+)"/)![1];
 }
 
-test('creating paper at any zoom returns the same 224 by 184 default at viewer 100%, including fitted PDFs',()=>{
+test('creating portrait paper at any zoom retains its reduced footprint at viewer 100%, including fitted PDFs',()=>{
   for(const fit of [.7,1,1.9,2.42]) for(const creationZoom of [.5,1,1.5,2,4]) {
     const style=renderNote(fit,creationZoom,1);
-    assert.ok(Math.abs(Number(style.match(/zoom:([^;]+)/)![1])-1)<1e-9);
+    assert.ok(Math.abs(Number(style.match(/zoom:([^;]+)/)![1])-.8)<1e-9);
     assert.ok(Math.abs(parseFloat(style.match(/width:([^;]+)/)![1])-224)<1e-9);
     assert.ok(Math.abs(parseFloat(style.match(/height:([^;]+)/)![1])-184)<1e-9);
   }
@@ -25,7 +25,7 @@ test('creating paper at any zoom returns the same 224 by 184 default at viewer 1
 test('paper created at any zoom scales with subsequent viewer zoom and retains its page position',()=>{
   for(const creationZoom of [.5,1,2]) for(const viewZoom of [.5,1,2]) {
     const style=renderNote(1.9,creationZoom,viewZoom);
-    assert.ok(Math.abs(Number(style.match(/zoom:([^;]+)/)![1])-viewZoom)<1e-9);
+    assert.ok(Math.abs(Number(style.match(/zoom:([^;]+)/)![1])-viewZoom*.8)<1e-9);
     assert.ok(Math.abs(parseFloat(style.match(/width:([^;]+)/)![1])-224)<1e-9);
     assert.ok(Math.abs(parseFloat(style.match(/height:([^;]+)/)![1])-184)<1e-9);
   }

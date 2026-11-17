@@ -42,12 +42,16 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     await act(async()=>root.render(React.createElement(App)));await flush();
     const doc=dom.window.document,viewport=doc.querySelector('.pdf-viewport-container')!;
     const icon=()=>doc.querySelector<HTMLElement>('[data-highlight-note-icon]')!;
+    const badge=()=>doc.querySelector<HTMLElement>('[data-highlight-note-badge]')!;
     const popup=()=>doc.querySelector<HTMLElement>('[data-highlight-note-popup-frame]')!;
     assert.equal(model.note.noteSide,undefined); // offscreen retained pages cannot choose a side before being read
     assert.equal(icon().style.visibility,'hidden');
     pageTop=100;await act(async()=>viewport.dispatchEvent(new dom.window.Event('scroll')));await flush();
     assert.equal(model.note.noteSide,'above');assert.equal(icon().dataset.popupDirection,'above');
-    assert.equal(parseFloat(icon().style.left),629);
+    assert.equal(parseFloat(badge().style.left),629);
+    assert.equal(badge().style.width,'36px');assert.equal(badge().style.height,'22px');
+    assert.ok(badge().contains(icon()));assert.ok(badge().contains(doc.querySelector('[data-highlight-note-side]')));
+    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-chevron-down'));
     await act(async()=>{doc.getElementById('hl-h-rect-0')!.dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});
     assert.equal(popup().style.visibility,'hidden');
     await act(async()=>{icon().dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});await flush();
@@ -61,8 +65,9 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(icon().dataset.popupDirection,'above');assert.equal(model.note.noteSide,'above');
     await act(async()=>doc.querySelector('[data-highlight-note-side]')!.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));await flush();
     assert.equal(model.note.noteSide,'below');assert.equal(icon().dataset.popupDirection,'below');
-    assert.equal(parseFloat(icon().style.left),309); // shorter last line, not the first line or union's right edge
-    assert.equal(parseFloat(icon().style.top),415);
+    assert.equal(parseFloat(badge().style.left),309); // shorter last line, not the first line or union's right edge
+    assert.equal(parseFloat(badge().style.top),415);
+    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-chevron-up'));
     await act(async()=>model.select(true));await flush(); // moving the interactive overlay between base/elevated portals must not reset the side
     assert.equal(icon().dataset.popupDirection,'below');
     assert.equal(doc.querySelector('[data-annotation-id="h"]')!.className.includes('ring-blue'),false);

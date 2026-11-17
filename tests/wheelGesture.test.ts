@@ -43,3 +43,25 @@ test('a workspace gesture keeps its original PDF across pointer crossings and pr
   router.reset();
   assert.equal(router.read(10,0,340,()=> 'pdf-2')!.owner,'pdf-2');
 });
+
+test('explicit zoom/click ownership survives idle gaps, overrides numeric zoom inference and leaves vertical scrolling in its PDF',()=>{
+  const router=new WorkspaceWheelRouter<string>();
+  for(const zoom of [.4,1,3]) {
+    router.setHorizontalOwner('C');
+    assert.equal(router.read(30,1,0,axis=>wheelOwner(axis,zoom,500,1000,4)==='workspace'?'workspace':'C')!.owner,'C');
+    assert.equal(router.read(30,0,3000,()=> 'workspace')!.owner,'C');
+    router.setHorizontalOwner('workspace');
+    assert.equal(router.read(-35,0,3020,()=> 'C')!.owner,'workspace');
+    assert.equal(router.read(-35,0,6020,()=> 'C')!.owner,'workspace');
+    assert.equal(router.read(0,30,9000,()=> 'C')!.owner,'C');
+  }
+});
+
+test('closing a PDF releases its persistent pan owner without clearing another document or an explicit navigation choice',()=>{
+  const router=new WorkspaceWheelRouter<string>();
+  router.setHorizontalOwner('C');router.forgetOwner('B');
+  assert.equal(router.read(30,0,0,()=> 'D')!.owner,'C');
+  router.forgetOwner('C');assert.equal(router.read(30,0,10,()=> 'D')!.owner,'D');
+  router.setHorizontalOwner('workspace');router.forgetOwner('C');
+  assert.equal(router.read(30,0,20,()=> 'D')!.owner,'workspace');
+});
