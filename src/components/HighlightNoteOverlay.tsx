@@ -146,9 +146,8 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
       const arrow=arrowRef.current;
       if(arrow) {
         arrow.style.width=sized(ARROW_WIDTH*factor);arrow.style.height=sized(iconSize);
-        arrow.style.alignItems=direction==='above'?'flex-end':'flex-start';
-        // Nudge each direction toward the icon's centre without resizing it.
-        arrow.style.position='relative';arrow.style.top=sized((direction==='above'?-2:0)*factor);
+        // Both paths have their visible ink centred in the SVG viewBox.
+        arrow.style.alignItems='center';
         arrow.style.paddingTop=arrow.style.paddingBottom=sized(2*factor);
         const shape=arrow.querySelector('svg');
         if(shape) {
@@ -251,7 +250,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
         }}>
         <svg width="100%" height="100%" viewBox="0 0 12 24" fill="none" aria-hidden="true"
           data-note-arrow={chosenSide==='above'?'down':'up'} style={{overflow:'visible'}}>
-          <path d={chosenSide==='above'?'M6 10 V23.25 M.75 18 L6 23.25 L11.25 18':'M6 14 V.75 M.75 6 L6 .75 L11.25 6'}
+          <path d={chosenSide==='above'?'M6 5.375 V18.625 M.75 13.375 L6 18.625 L11.25 13.375':'M6 18.625 V5.375 M.75 10.625 L6 5.375 L11.25 10.625'}
             stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
