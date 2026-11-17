@@ -147,7 +147,8 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
       if(arrow) {
         arrow.style.width=sized(ARROW_WIDTH*factor);arrow.style.height=sized(iconSize);
         arrow.style.alignItems=direction==='above'?'flex-end':'flex-start';
-        // Align the painted arrow tip with the yellow face, inside the white rim.
+        // Lift the entire arrow by one reference pixel without resizing it.
+        arrow.style.position='relative';arrow.style.top=sized(-factor);
         arrow.style.paddingTop=arrow.style.paddingBottom=sized(2*factor);
         const shape=arrow.querySelector('svg');
         if(shape) {
