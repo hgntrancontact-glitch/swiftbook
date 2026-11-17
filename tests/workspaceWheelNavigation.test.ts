@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import React,{act,useRef} from 'react';
+import React,{act,useRef,useEffect} from 'react';
 import {JSDOM} from 'jsdom';
 import {WorkspaceWheelRouter} from '../src/utils/wheelGesture';
 import {useWorkspaceWheelNavigation} from '../src/hooks/useWorkspaceWheelNavigation';
@@ -11,9 +11,14 @@ test('left click exits PDF C pan mode; drags, editors, tool buttons, cancelled p
   const globals={window:dom.window,document:dom.window.document,Element:dom.window.Element,Event:dom.window.Event,IS_REACT_ACT_ENVIRONMENT:true};
   for(const [key,value] of Object.entries(globals)){descriptors.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{value,writable:true,configurable:true});}
   const router=new WorkspaceWheelRouter<HTMLElement|'workspace'>();
+  function AnnotationCapture(){useEffect(()=>{
+    const intercept=(event:Event)=>{if((event.target as Element)?.id==='annotation-C')event.stopImmediatePropagation();};
+    window.addEventListener('pointerdown',intercept,true);window.addEventListener('pointerup',intercept,true);
+    return()=>{window.removeEventListener('pointerdown',intercept,true);window.removeEventListener('pointerup',intercept,true);};
+  },[]);return React.createElement('div',{id:'annotation-C'},'Selected annotation');}
   function App(){const ref=useRef<HTMLDivElement>(null);useWorkspaceWheelNavigation(ref,router);
     return React.createElement('div',{ref,id:'workspace'},...['A','B','C','D'].map(id=>React.createElement('div',{key:id,id,className:'pdf-viewport-container'},
-      React.createElement('div',{id:`canvas-${id}`},'Paper'),React.createElement('button',{id:`tool-${id}`},'Tool'),React.createElement('textarea',{id:`editor-${id}`}))));}
+      React.createElement('div',{id:`canvas-${id}`},'Paper'),id==='C'?React.createElement(AnnotationCapture):null,React.createElement('button',{id:`tool-${id}`},'Tool'),React.createElement('textarea',{id:`editor-${id}`}))));}
   const {createRoot}=await import('react-dom/client'),root=createRoot(dom.window.document.getElementById('root')!);
   const pointer=async(target:Element,type:string,x:number,y:number,button=0)=>{
     const event=new dom.window.MouseEvent(type,{bubbles:true,clientX:x,clientY:y,button});
@@ -30,6 +35,12 @@ test('left click exits PDF C pan mode; drags, editors, tool buttons, cancelled p
     await pointer(canvas,'pointerdown',100,100);await pointer(canvas,'pointerup',100,100);
     assert.equal(stops,1);assert.equal(horizontal(),'workspace');assert.equal(horizontal(),'workspace');
     router.setHorizontalOwner(c);assert.equal(horizontal(),c);
+    const annotation=doc.getElementById('annotation-C')!;
+    await pointer(annotation,'pointerdown',100,100);await pointer(annotation,'pointerup',100,100);
+    assert.equal(horizontal(),'workspace'); // annotation selection cannot hide a click from the navigation observer
+    router.setHorizontalOwner(c);
+    await pointer(canvas,'pointerdown',100,100);router.setHorizontalOwner(c);await pointer(canvas,'pointerup',100,100);
+    assert.equal(horizontal(),c); // a genuinely newer zoom intent wins over an older pending click
     for(const target of [doc.getElementById('tool-C')!,doc.getElementById('editor-C')!]) {
       await pointer(target,'pointerdown',100,100);await pointer(target,'pointerup',100,100);assert.equal(horizontal(),c);
     }

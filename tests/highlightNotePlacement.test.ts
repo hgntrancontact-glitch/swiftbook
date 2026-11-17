@@ -49,9 +49,11 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     pageTop=100;await act(async()=>viewport.dispatchEvent(new dom.window.Event('scroll')));await flush();
     assert.equal(model.note.noteSide,'above');assert.equal(icon().dataset.popupDirection,'above');
     assert.equal(parseFloat(badge().style.left),629);
-    assert.equal(badge().style.width,'36px');assert.equal(badge().style.height,'22px');
+    assert.equal(badge().style.width,'42px');assert.equal(badge().style.height,'22px');
+    assert.ok(!badge().className.includes('bg-'));assert.ok(!badge().className.includes('border-'));
+    assert.equal(icon().style.width,'22px');assert.ok(icon().className.includes('rounded-full'));assert.ok(icon().className.includes('bg-[#f5c41a]'));
     assert.ok(badge().contains(icon()));assert.ok(badge().contains(doc.querySelector('[data-highlight-note-side]')));
-    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-chevron-down'));
+    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-arrow-down'));
     await act(async()=>{doc.getElementById('hl-h-rect-0')!.dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});
     assert.equal(popup().style.visibility,'hidden');
     await act(async()=>{icon().dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true}));});await flush();
@@ -67,7 +69,7 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     assert.equal(model.note.noteSide,'below');assert.equal(icon().dataset.popupDirection,'below');
     assert.equal(parseFloat(badge().style.left),309); // shorter last line, not the first line or union's right edge
     assert.equal(parseFloat(badge().style.top),415);
-    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-chevron-up'));
+    assert.ok(doc.querySelector('[data-highlight-note-side] .lucide-arrow-up'));
     await act(async()=>model.select(true));await flush(); // moving the interactive overlay between base/elevated portals must not reset the side
     assert.equal(icon().dataset.popupDirection,'below');
     assert.equal(doc.querySelector('[data-annotation-id="h"]')!.className.includes('ring-blue'),false);

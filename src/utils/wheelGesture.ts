@@ -29,9 +29,11 @@ export class WheelGesture {
  * Once assigned, even inertia crossing a neighbouring PDF keeps its owner.
  * PDFs retain both pan axes; dominant-axis detection is only for routing. */
 export class WorkspaceWheelRouter<T> {
+  private intentRevision=0;
+  get revision() {return this.intentRevision;}
   private horizontalOwner:T|undefined;
   /** Explicit user intent survives inertia and the idle gap between gestures. */
-  setHorizontalOwner(owner:T) {this.horizontalOwner=owner;this.reset();}
+  setHorizontalOwner(owner:T) {this.horizontalOwner=owner;this.intentRevision++;this.reset();}
   forgetOwner(owner:T) {
     const forced=this.horizontalOwner===owner;
     if(forced)this.horizontalOwner=undefined;

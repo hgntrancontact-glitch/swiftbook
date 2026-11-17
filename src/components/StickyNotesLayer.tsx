@@ -1,6 +1,6 @@
 import {STICKY_NOTE_DESIGN as PAPER,noteSwatchColor} from '../utils/stickyNoteDesign';
 import { createStickyNote } from '../utils/stickyNoteCreation';
-import {stickyNoteGeometry} from '../utils/stickyNoteGeometry';
+import {stickyNoteGeometry,noteSizeMultiplier,MIN_NOTE_SIZE,MAX_NOTE_SIZE} from '../utils/stickyNoteGeometry';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { TextNoteAnnotation, NOTE_PAPER_COLORS, NoteColorTheme, getNoteColorTheme } from '../types';
 import { MessageSquare, Trash2, Move, Minimize2, StickyNote } from 'lucide-react';
@@ -454,7 +454,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     cancelTitleRef.current = false;
     setEditingTitle(false);
   };
-  const getDims = () => {
+  const getDims = (sizeMultiplier=note.sizeMultiplier) => {
     const cont = containerRef.current;
     const page = noteBoxRef.current?.closest<HTMLElement>('[data-page-container="true"]') || cont?.closest<HTMLElement>('[data-page-container="true"]');
     // Read untransformed, fractional page dimensions. offsetWidth/offsetHeight
@@ -462,7 +462,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     const contW = parseFloat(page?.style.width || '') || cont?.offsetWidth || 595 * scale;
     const contH = parseFloat(page?.style.height || '') || cont?.offsetHeight || 842 * scale;
 
-    return stickyNoteGeometry(note,contW,contH,noteScale);
+    return stickyNoteGeometry({...note,sizeMultiplier},contW,contH,noteScale);
   };
 
   const initialDims = getDims();
@@ -470,13 +470,14 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     width: initialDims.width,
     height: initialDims.height,
     scale: initialDims.scale,
+    multiplier:initialDims.multiplier,
   });
   const resizingRef=useRef(false);
 
   useLayoutEffect(() => {
     const update=()=>{
       const d = getDims();
-      setSize(previous=>previous.width===d.width && previous.height===d.height && previous.scale===d.scale?previous:{width:d.width,height:d.height,scale:d.scale});
+      setSize(previous=>previous.width===d.width && previous.height===d.height && previous.scale===d.scale && previous.multiplier===d.multiplier?previous:{width:d.width,height:d.height,scale:d.scale,multiplier:d.multiplier});
     };
     update();
     const page=noteBoxRef.current?.closest<HTMLElement>('[data-page-container="true"]');
@@ -484,7 +485,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
     const observer=new ResizeObserver(update);
     observer.observe(page);
     return ()=>observer.disconnect();
-  }, [note.width, note.height, note.referenceScale, scale]);
+  }, [note.width, note.height, note.referenceScale, note.sizeMultiplier, note.dimensionUnit, scale]);
   useLayoutEffect(()=>{
     const parent=noteBoxRef.current?.parentElement;
     if(!parent || isDragging || resizingRef.current) return;
@@ -553,7 +554,7 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       latestNoteX = newNoteX;
       latestNoteY = newNoteY;
 
-      setSize({ width: newW, height: newH, scale:size.scale });
+      setSize({ width: newW, height: newH, scale:size.scale, multiplier:size.multiplier });
       if (parentStickyEl && (dir.includes('n') || dir.includes('w'))) {
         parentStickyEl.style.left = `${newNoteX}%`;
         parentStickyEl.style.top = `${newNoteY}%`;
@@ -565,12 +566,13 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
 
-      const finalWidthPct = Number(((latestW / rect.width) * 100).toFixed(2));
-      const finalHeightPct = Number(((latestH / rect.height) * 100).toFixed(2));
+      const finalWidthPct = Number(((latestW / size.multiplier / rect.width) * 100).toFixed(2));
+      const finalHeightPct = Number(((latestH / size.multiplier / rect.height) * 100).toFixed(2));
 
       onUpdateNote(note.id, {
         width: finalWidthPct,
         height: finalHeightPct,
+        dimensionUnit:'percent',sizeMultiplier:size.multiplier,
         ...(dir.includes('n') || dir.includes('w')
           ? { x: latestNoteX, y: latestNoteY }
           : {}),
@@ -589,6 +591,10 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
   const bodyFontSize = PAPER.bodyFont;
   const bodyLineH = PAPER.lineHeight;
   const iconSize = PAPER.icon;
+  const currentMultiplier=noteSizeMultiplier(note.sizeMultiplier);
+  const nextMultiplier=(direction:number)=>Math.max(MIN_NOTE_SIZE,Math.min(MAX_NOTE_SIZE,Math.round((currentMultiplier+direction*.1)*10)/10));
+  const larger=getDims(nextMultiplier(1));
+  const canGrow=nextMultiplier(1)>currentMultiplier && (larger.width>size.width+.01 || larger.height>size.height+.01);
 
   return (
     <div
@@ -743,12 +749,24 @@ const ExpandedStickyNote: React.FC<ExpandedStickyNoteProps> = ({
             ))}
           </div>
 
+          <div data-note-size-controls className="flex items-center shrink-0" style={{gap:4}}>
+            {([-1,1] as const).map(direction=><button key={direction} type="button"
+              aria-label={direction<0?'Thu nhỏ giấy note':'Phóng lớn giấy note'}
+              title={direction<0?'Thu nhỏ giấy note':'Phóng lớn giấy note'}
+              disabled={direction<0?currentMultiplier<=MIN_NOTE_SIZE:!canGrow}
+              className="flex items-center justify-center rounded-full bg-neutral-200 text-black hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-default cursor-pointer"
+              style={{width:14,height:14,fontSize:12,lineHeight:1}}
+              onMouseDown={event=>event.stopPropagation()}
+              onClick={event=>{event.stopPropagation();onUpdateNote(note.id,{sizeMultiplier:nextMultiplier(direction)});}}>
+              {direction<0?'−':'+'}
+            </button>)}
           <span
             className="text-black font-normal"
             style={{ fontSize: `${PAPER.pageFont}px` }}
           >
             P.{pageNumber}
           </span>
+          </div>
         </div>
       </div>
     </div>

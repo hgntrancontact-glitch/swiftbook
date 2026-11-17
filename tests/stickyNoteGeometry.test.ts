@@ -61,13 +61,14 @@ test('mounted paper recalculates after the actual PDF page size arrives without 
   }
 });
 
-test('landscape and square note defaults, custom sizes and controls retain their previous dimensions at every zoom',()=>{
+test('landscape paper shrinks by 15%, square paper stays unchanged and portrait defaults remain accepted at every zoom',()=>{
   for(const [w,h] of [[1320,750],[842,595],[800,800]]) for(const zoom of [.2,.5,1,2,5]) {
     const basic=stickyNoteGeometry({x:20,y:30},w*zoom,h*zoom,zoom);
-    assert.ok(Math.abs(basic.width-224*zoom)<1e-9);assert.ok(Math.abs(basic.height-184*zoom)<1e-9);assert.equal(basic.scale,zoom);
+    const factor=w>h?.85:1;
+    assert.ok(Math.abs(basic.width-224*zoom*factor)<1e-9);assert.ok(Math.abs(basic.height-184*zoom*factor)<1e-9);assert.equal(basic.scale,zoom*factor);
     const pixel=stickyNoteGeometry({x:20,y:30,width:300,height:200},w*zoom,h*zoom,zoom);
-    assert.ok(Math.abs(pixel.width-300*zoom)<1e-9);assert.ok(Math.abs(pixel.height-200*zoom)<1e-9);assert.equal(pixel.scale,zoom);
+    assert.ok(Math.abs(pixel.width-300*zoom*factor)<1e-9);assert.ok(Math.abs(pixel.height-200*zoom*factor)<1e-9);assert.equal(pixel.scale,zoom*factor);
     const percent=stickyNoteGeometry({x:20,y:30,width:40,height:40},w*zoom,h*zoom,zoom);
-    assert.ok(Math.abs(percent.width-w*zoom*.4)<1e-9);assert.ok(Math.abs(percent.height-h*zoom*.4)<1e-9);assert.equal(percent.scale,zoom);
+    assert.ok(Math.abs(percent.width-w*zoom*.4)<1e-9);assert.ok(Math.abs(percent.height-h*zoom*.4)<1e-9);assert.equal(percent.scale,zoom*factor);
   }
 });

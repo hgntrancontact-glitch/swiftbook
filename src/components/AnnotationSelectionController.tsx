@@ -13,7 +13,7 @@ type Drag={docId:string;pointer:number;x:number;y:number;lastX:number;lastY:numb
   pages:PageBounds;measured:Record<string,SelectionBounds>;bounds:SelectionBounds;clones?:Record<string,string>;corner?:number;moved:boolean};
 const editable=(target:Element|null)=>!!target?.closest('input,textarea,select,[contenteditable="true"]');
 const surface=(target:Element|null)=>target?.closest('[data-annotation-id]');
-const ui=(target:Element|null)=>target?.closest('[data-quick-shape-ui],.annotation-group-ui,.ft-toolbar,.floating-submenu,.box-floating-toolbar,.highlight-popup-toolbar,.highlight-note-preview,#bottom-toolbar-dock');
+const ui=(target:Element|null)=>target?.closest('[data-quick-shape-ui],[data-note-size-controls],.annotation-group-ui,.ft-toolbar,.floating-submenu,.box-floating-toolbar,.highlight-popup-toolbar,.highlight-note-preview,#bottom-toolbar-dock');
 
 export function AnnotationSelectionController(props:Props) {
   const ctx=useQuickShapes()!;

@@ -1024,9 +1024,10 @@ function SwiftbookApp() {
     });
   }, []);
 
-  const handleZoomChange = useCallback((docId: string, scale: number, resetFitMode?: boolean) => {
+  const handleZoomChange = useCallback((docId: string, scale: number, resetFitMode?: boolean, preserveWheelIntent=false) => {
     const viewport=document.querySelector<HTMLElement>(`[data-workspace-doc="${CSS.escape(docId)}"] .pdf-viewport-container`);
-    if(viewport) workspaceWheel.setHorizontalOwner(viewport);
+    // A pinch commit finishes existing input; it is not a new zoom intent.
+    if(viewport && !preserveWheelIntent) workspaceWheel.setHorizontalOwner(viewport);
     const nextScale = resetFitMode ? 1.0 : Math.min(50, Math.max(0.2, scale));
     updateDoc(docId, (d) => ({
       ...d,

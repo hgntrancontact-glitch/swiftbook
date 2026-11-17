@@ -4,7 +4,7 @@ import { routeAnnotationWheel } from '../utils/annotationWheel';
 import { HIGHLIGHT_NOTE_SIZE, HIGHLIGHT_NOTE_ICON_SIZE, HIGHLIGHT_NOTE_GLYPH_SIZE } from '../utils/annotationUi';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { ArrowDown, ArrowUp, MessageSquare } from 'lucide-react';
 
 interface Props {
   anchorId: string;
@@ -73,13 +73,13 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
       });
       const iconSize=ICON_SIZE*factor;
       if(rootRef.current) rootRef.current.dataset.highlightNoteScale=String(factor*live);
-      icon.style.width=icon.style.minWidth=icon.style.maxWidth=sized(iconSize-4*factor);
-      icon.style.height='100%';
+      icon.style.width=icon.style.height=icon.style.minWidth=icon.style.maxWidth=sized(iconSize);
+      icon.style.borderWidth=sized(2*factor);
+      icon.style.boxShadow=`0 ${sized(2*factor)} ${sized(4*factor)} rgba(0,0,0,.16)`;
       const badge=badgeRef.current;
       if(badge) {
-        badge.style.width=sized(iconSize+14*factor);badge.style.height=sized(iconSize);
-        badge.style.borderWidth=sized(2*factor);
-        badge.style.boxShadow=`0 ${sized(2*factor)} ${sized(4*factor)} rgba(0,0,0,.16)`;
+        badge.style.width=sized(iconSize+20*factor);badge.style.height=sized(iconSize);
+        badge.style.gap=sized(4*factor);
       }
       const glyph=icon.querySelector('svg');
       if(glyph) glyph.style.width=glyph.style.height=sized(ICON_GLYPH_SIZE*factor);
@@ -139,8 +139,8 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
       icon.style.visibility='visible';icon.dataset.popupDirection=direction;
       const arrow=arrowRef.current;
       if(arrow) {
-        arrow.style.width=sized(14*factor);arrow.style.height='100%';
-        arrow.style.borderLeftWidth=sized(factor);
+        arrow.style.width=sized(16*factor);arrow.style.height=sized(iconSize);
+        arrow.style.borderWidth=sized(factor);
         arrow.style.visibility='visible';
       }
       Object.assign(popup.style,aligned(geometry.popup));
@@ -210,11 +210,11 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
       onLeave();
     }}>
       <div ref={badgeRef} data-highlight-note-badge={highlightId}
-        className="absolute flex items-center bg-[#f5c41a] text-neutral-950 rounded-full border-2 border-white overflow-hidden pointer-events-auto z-[90000]"
-        style={{visibility:'hidden',boxSizing:'border-box',width:ICON_SIZE+14,height:ICON_SIZE}}>
+        className="absolute flex items-center pointer-events-auto z-[90000]"
+        style={{visibility:'hidden',width:ICON_SIZE+20,height:ICON_SIZE}}>
       <button ref={iconRef} type="button" data-highlight-note-icon={highlightId}
-        className="flex shrink-0 items-center justify-center hover:bg-black/10 cursor-pointer"
-        style={{visibility: 'hidden', flexShrink: 0, transform: 'none', zoom: 1 }} title="Xem/Sửa ghi chú"
+        className="flex shrink-0 items-center justify-center bg-[#f5c41a] hover:bg-[#e5b512] text-neutral-950 rounded-full border-2 border-white cursor-pointer"
+        style={{visibility: 'hidden', boxSizing:'border-box', flexShrink: 0, transform: 'none', zoom: 1 }} title="Xem/Sửa ghi chú"
         onMouseEnter={onEnter}
         onMouseDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); onEdit(); }}
@@ -223,8 +223,8 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
         <MessageSquare size={ICON_GLYPH_SIZE} style={{ width: ICON_GLYPH_SIZE, height: ICON_GLYPH_SIZE, flexShrink: 0 }} className="fill-neutral-950 stroke-neutral-950" />
       </button>
       <button ref={arrowRef} type="button" data-highlight-note-side={highlightId}
-        className="flex shrink-0 items-center justify-center border-l border-neutral-950/15 hover:bg-black/10 cursor-pointer"
-        style={{visibility:'hidden'}} title={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
+        className="flex shrink-0 items-center justify-center rounded-full text-[#f5c41a] border border-[#f5c41a]/40 bg-[#f5c41a]/10 hover:bg-[#f5c41a]/20 cursor-pointer"
+        style={{visibility:'hidden',boxSizing:'border-box'}} title={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
         aria-label={chosenSide==='above'?'Chuyển ghi chú xuống dưới':'Chuyển ghi chú lên trên'}
         onMouseDown={e=>e.stopPropagation()}
         onClick={e=>{
@@ -235,7 +235,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, onSideCha
           positionRef.current?.();
           onSideChange(next);
         }}>
-        {chosenSide==='above'?<ChevronDown size="100%"/>:<ChevronUp size="100%"/>}
+        {chosenSide==='above'?<ArrowDown size="100%"/>:<ArrowUp size="100%"/>}
       </button>
       </div>
       {<>

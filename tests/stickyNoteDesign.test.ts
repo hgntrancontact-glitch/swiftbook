@@ -50,7 +50,7 @@ test('PDF/image paper export retains the same two black separators, flat colours
     },set:(_,key,value)=>{state[key]=value;return true;}});
     renderStickyNoteOnCanvas(ctx,1000,800,ratio,note('#ffde59'));
     const lines=calls.filter(c=>c.name==='stroke' && c.state.strokeStyle==='#000');
-    assert.equal(lines.length,2);for(const line of lines)assert.equal(line.state.lineWidth,PAPER.separator*ratio);
+    assert.equal(lines.length,2);for(const line of lines)assert.equal(line.state.lineWidth,PAPER.separator*ratio*.85);
     assert.equal(calls.filter(c=>c.name==='stroke' && c.state.strokeStyle!=='#000').length,0);
     const text=calls.filter(c=>c.name==='fillText');assert.ok(text.length>=3);for(const t of text)assert.ok(t.state.font.includes('Noto Sans'));
     const background=calls.find(c=>c.name==='fill')!;assert.equal(background.state.fillStyle,'#ffde59');

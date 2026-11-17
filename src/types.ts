@@ -37,6 +37,10 @@ export interface TextNoteAnnotation {
   color: string; // e.g. '#fef08a', '#bbf7d0', '#fbcfe8', '#bfdbfe', '#ffffff'
   width?: number; // width in px or %
   height?: number;
+  /** Overall paper/UI size, independent of PDF zoom and manual frame dimensions. */
+  sizeMultiplier?: number;
+  /** Explicit unit for newly resized frames; legacy saves infer it from the value. */
+  dimensionUnit?: 'percent';
   isMinimized?: boolean;
   createdAt: number;
 }

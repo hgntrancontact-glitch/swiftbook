@@ -36,7 +36,7 @@ interface PDFWorkspaceColumnProps {
   boxConfig: BoxConfig;
   onActivate: (docId: string) => void;
   onPageChange: (docId: string, page: number) => void;
-  onZoomChange: (docId: string, scale: number, resetFitMode?: boolean) => void;
+  onZoomChange: (docId: string, scale: number, resetFitMode?: boolean, preserveWheelIntent?:boolean) => void;
   onResolveAnnotationScale: (docId: string, scale: number) => void;
   onUpdateBoxConfig: (docId: string, updates: Partial<BoxConfig>) => void;
   onTextSelected: (
@@ -403,7 +403,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         pendingCommitRef.current = true;
         // Complete this one final layout transaction before another wheel can
         // start. Intermediate gesture ticks still bypass React state entirely.
-        flushSync(()=>actionsRef.current.onZoomChange(doc.id,targetScale,false));
+        flushSync(()=>actionsRef.current.onZoomChange(doc.id,targetScale,false,true));
       }
     };
     let panFrame:number|null=null,panX=0,panY=0;
