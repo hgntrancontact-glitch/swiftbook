@@ -28,6 +28,7 @@ const ICON_SIZE = HIGHLIGHT_NOTE_ICON_SIZE;
 const ICON_GLYPH_SIZE = HIGHLIGHT_NOTE_GLYPH_SIZE;
 const POPUP_WIDTH = 236;
 const POPUP_GAP = 6;
+const ARROW_WIDTH = 12;
 
 // Page-local overlays scroll natively; dimensions follow document zoom.
 export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScale=1, onSideChange, scopeId, owner, highlightId, mode, showPopup, onEnter, onLeave, onEdit, children }: Props) {
@@ -79,8 +80,8 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
       icon.style.boxShadow=`0 ${sized(2*factor)} ${sized(4*factor)} rgba(0,0,0,.16)`;
       const badge=badgeRef.current;
       if(badge) {
-        badge.style.width=sized(iconSize+20*factor);badge.style.height=sized(iconSize);
-        badge.style.gap=sized(4*factor);
+        badge.style.width=sized(iconSize+ARROW_WIDTH*factor);badge.style.height=sized(iconSize);
+        badge.style.gap='0px';
       }
       const glyph=icon.querySelector('svg');
       if(glyph) glyph.style.width=glyph.style.height=sized(ICON_GLYPH_SIZE*factor);
@@ -144,7 +145,13 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
       icon.style.visibility='visible';icon.dataset.popupDirection=direction;
       const arrow=arrowRef.current;
       if(arrow) {
-        arrow.style.width=sized(16*factor);arrow.style.height=sized(iconSize);
+        arrow.style.width=sized(ARROW_WIDTH*factor);arrow.style.height=sized(iconSize);
+        arrow.style.alignItems=direction==='above'?'flex-end':'flex-start';
+        const shape=arrow.querySelector('svg');
+        if(shape) {
+          shape.style.width=sized(iconSize/3);
+          shape.style.height=sized(iconSize*2/3);
+        }
         arrow.style.visibility='visible';
       }
       Object.assign(popup.style,aligned(geometry.popup));
@@ -215,7 +222,7 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
     }}>
       <div ref={badgeRef} data-highlight-note-badge={highlightId}
         className="absolute flex items-center pointer-events-auto z-[90000]"
-        style={{visibility:'hidden',width:ICON_SIZE+20,height:ICON_SIZE}}>
+        style={{visibility:'hidden',width:ICON_SIZE+ARROW_WIDTH,height:ICON_SIZE}}>
       <button ref={iconRef} type="button" data-highlight-note-icon={highlightId}
         className="flex shrink-0 items-center justify-center bg-[#f5c41a] hover:bg-[#e5b512] text-neutral-950 rounded-full border-2 border-white cursor-pointer"
         style={{visibility: 'hidden', boxSizing:'border-box', flexShrink: 0, transform: 'none', zoom: 1 }} title="Xem/Sửa ghi chú"
@@ -239,10 +246,10 @@ export function HighlightNoteOverlay({ anchorId, bottomAnchorId, side, popupScal
           positionRef.current?.();
           onSideChange(next);
         }}>
-        <svg width="100%" height="100%" viewBox="0 0 16 36" fill="none" aria-hidden="true"
+        <svg width="100%" height="100%" viewBox="0 0 12 24" fill="none" aria-hidden="true"
           data-note-arrow={chosenSide==='above'?'down':'up'} style={{overflow:'visible'}}>
-          <path d={chosenSide==='above'?'M8 2 V34 M2 28 L8 34 L14 28':'M8 34 V2 M2 8 L8 2 L14 8'}
-            stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d={chosenSide==='above'?'M6 1 V23 M1 18 L6 23 L11 18':'M6 23 V1 M1 6 L6 1 L11 6'}
+            stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
       </div>

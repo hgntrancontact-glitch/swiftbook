@@ -34,7 +34,7 @@ test('local note geometry stays attached to the right ink edge of a sloping scan
 
 test('the hover bridge touches the current icon and popup at every zoom and placement',()=>{
   for(const above of [true,false]) for(const zoom of [.5,1,1.5,2.53,4]) for(const offsetX of [-30,0,30]) {
-    const iconSize=22*zoom,popupHeight=180*zoom,popupWidth=236*.94*zoom;
+    const iconSize=23*zoom,popupHeight=180*zoom,popupWidth=236*.94*zoom;
     const g=pageNoteGeometry(rect,zoom,above,popupHeight,popupWidth,offsetX);
     const areas=[{x:g.icon.dx,y:g.icon.dy,w:iconSize,h:iconSize},
       {x:g.popup.dx,y:g.popup.dy,w:popupWidth,h:popupHeight},
