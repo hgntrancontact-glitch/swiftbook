@@ -152,6 +152,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     const surfaces=[canvases[0],canvases[1]];
     let front=-1,frame=0,panEndFrame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
     let lastSource:CanvasImageSource|null=null;
+    let originalImageOnSurface=false;
     let settlePixelGrid=true;
     let presented:PreparedDetail|null=null;
     let runningTarget:{scale:number;final:boolean;tile:DetailTile;epoch:string|undefined}|null=null;
@@ -163,7 +164,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     let imagePixels:{width:number;height:number}|null=null;
     let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean;layoutKey?:string}|null=null;
     let cancelCurrent=()=>{};
-    const hide=(notify=false)=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';presented=null;releaseOwnership(notify);};
+    const hide=(notify=false)=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';presented=null;originalImageOnSurface=false;releaseOwnership(notify);};
     if(!near) {hide();return;}
     const cacheRevision=detailCacheRevision(cacheKey);
     detailSource=takePageDetail(cacheKey,pdfDoc);
@@ -187,14 +188,19 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const started=performance.now(),{liveScale,visible,tile,zooming,pageRect,layoutKey,requiredDensity}=input();
       if(view.dataset.renderVisible==='false' || !tile) {cancelCurrent();hide(true);return;}
       const original=imagePixels && nativeImageTile(tile,liveScale,size,imagePixels);
-      const needsOriginal=!!original && !(detailSource && sameRasterScale(detailSource.tile.density,original.density) &&
+      const hasOriginal=!!(imagePixels && detailSource && sameRasterScale(detailSource.tile.density,imagePixels.width/size.width) &&
         scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0));
+      const needsOriginal=!!original && !hasOriginal;
+      // A screen-sized resting buffer has already been filtered. Start each
+      // image pinch from the retained original, then reuse those pixels for
+      // subsequent ticks instead of magnifying the reduced display buffer.
+      const needsPinchOriginal=zooming && hasOriginal && !originalImageOnSurface;
       if(!needsOriginal && !zooming && !settlePixelGrid && presented?.final && sameRasterScale(presented.scale,liveScale) &&
         scaledDetailCovers(presented.tile,presented.scale,liveScale,visible,requiredDensity)) {
         if(rendering && runningTarget && !runningTarget.final)cancelCurrent();
         return;
       }
-      if(!needsOriginal && reuseDetailSurface(presented,liveScale,visible,requiredDensity,zooming)) {
+      if(!needsOriginal && !needsPinchOriginal && reuseDetailSurface(presented,liveScale,visible,requiredDensity,zooming)) {
         // Reversing a gesture can restore an already sharp full surface. A
         // pending narrow crop then adds nothing and should not occupy a slot.
         if(rendering && runningTarget && !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,requiredDensity)) cancelCurrent();
@@ -208,7 +214,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       let source:CanvasImageSource|null=null,crop:{x:number;y:number;width:number;height:number}|null=null;
       const full=cached && (!fallback || cached.bitmap.width*cached.bitmap.height>=fallback.width*fallback.height)?cached.bitmap:fallback;
       const fullDensity=full?Math.min(full.width/size.width,full.height/size.height):0;
-      if(detailSource && scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0) && detailSource.tile.density>=fullDensity) {
+      if(detailSource && scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0) && (hasOriginal || detailSource.tile.density>=fullDensity)) {
         source=detailSource.canvas;sourceDensity=detailSource.tile.density;
         const sample=zooming?{tile:nativeDetailPresentation(detailSource,liveScale),crop:{x:0,y:0,width:detailSource.canvas.width,height:detailSource.canvas.height}}:
           settledDetailSample(detailSource.canvas,detailSource,tile,liveScale,pageRect.left,pageRect.top);
@@ -236,9 +242,11 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const needsPreview=zooming && (needsOriginal || sourceDensity<requiredDensity-.002);
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
-        if((key!==signature || lastSource!==source) && !reuseDetailSurface(presented,liveScale,visible,0,zooming)) {
+        if((key!==signature || lastSource!==source || needsPinchOriginal) &&
+          (needsPinchOriginal || !reuseDetailSurface(presented,liveScale,visible,0,zooming))) {
           const previous=front;
           front=presentDetailSample(surfaces,front,source,crop,sampleTile,liveScale);
+          originalImageOnSurface=zooming && hasOriginal && source===detailSource?.canvas;
           // The native source is retained separately. Keeping a second hidden
           // viewport-sized backing buffer only increases GPU/memory pressure.
           if(previous>=0 && previous!==front) surfaces[previous].width=surfaces[previous].height=1;
@@ -343,6 +351,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           const previous=front,sample=latest.zooming?{tile:nativeDetailPresentation(detailSource,latest.liveScale),crop:{x:0,y:0,width:canvas.width,height:canvas.height}}:
             settledDetailSample(canvas,detailSource,latest.tile,latest.liveScale,latest.pageRect.left,latest.pageRect.top),display=sample.tile;
           front=presentDetailSample(surfaces,front,canvas,sample.crop,display,latest.liveScale);
+          originalImageOnSurface=latest.zooming && !!imagePixels && sameRasterScale(target.density,imagePixels.width/size.width);
           if(previous>=0 && previous!==front)surfaces[previous].width=surfaces[previous].height=1;
           presented={tile:display,scale:latest.liveScale,final:!latest.zooming && !needsFinalDetailRender(detailSource,latest.liveScale,latest.visible,latest.requiredDensity,false)};
           if(presented.final)settlePixelGrid=false;
