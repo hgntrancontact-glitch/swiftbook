@@ -34,10 +34,14 @@ export function presentDetailSample(canvases:readonly HTMLCanvasElement[],front:
   // page. Keep that uncovered sliver white rather than an opaque black buffer.
   context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
   context.drawImage(source,crop.x,crop.y,crop.width,crop.height,0,0,canvas.width,canvas.height);
+  positionDetailCanvas(canvas,tile,scale);
+  if(front>=0) canvases[front].style.visibility='hidden';
+  return index;
+}
+
+export function positionDetailCanvas(canvas:HTMLCanvasElement,tile:DetailTile,scale:number) {
   for(const [key,value] of Object.entries({left:tile.x,top:tile.y,width:tile.width,height:tile.height})) {
     canvas.style.setProperty(key,`calc(${value/scale}px * var(--pdf-layout-scale))`);
   }
   canvas.style.display='block';canvas.style.visibility='visible';
-  if(front>=0) canvases[front].style.visibility='hidden';
-  return index;
 }

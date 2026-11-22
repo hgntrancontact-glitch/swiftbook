@@ -56,7 +56,7 @@ test('PDF pinch starts from retained native pixels rather than a reduced resting
     assert.equal(active().width,1190);assert.equal(h.copies.length,2); // preview snapshot, then one native screen sample on remount
     view.dataset.zoomGesture='true';await act(async()=>view.dispatchEvent(new h.dom.window.Event('pdf-zoom-start')));h.setScale(.6);
     await act(async()=>view.dispatchEvent(new h.dom.window.Event('pdf-zoom-frame')));await h.flush();
-    assert.equal(active().width,1785);assert.equal(h.copies.at(-1),source);assert.equal(renders,0);
+    assert.equal(active(),source,'Pinch presents the actual retained raster');assert.equal(h.copies.length,2,'No full-canvas copy on the first zoom frame');assert.equal(renders,0);
   } finally {await h.close();clearDocCanvasCache('native-display');}
 });
 

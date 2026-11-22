@@ -1593,10 +1593,8 @@ function SwiftbookApp() {
             /* Empty State: Upload or Create Book */
             <div className="flex flex-col items-center justify-center w-full h-full">
               <div className="inline-flex flex-col items-center justify-center gap-6 p-12 my-auto bg-white rounded-2xl shadow-xl border border-neutral-200 max-w-lg text-center animate-in fade-in zoom-in-95">
-                <div className="w-20 h-20 flex items-center justify-center mb-1">
-                  <Upload size={40} className="text-black" />
-                </div>
                 <div>
+                  <Upload size={40} className="mx-auto mt-5 mb-5 text-black" />
                   <h2 className="text-2xl font-bold text-neutral-900 mb-2">
                     Tải tệp tin lên
                   </h2>

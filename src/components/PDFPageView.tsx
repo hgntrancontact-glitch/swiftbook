@@ -2,7 +2,7 @@ import {importedImagePixels,nativeImageTile} from '../utils/imagePdfResolution';
 import {takePageDetail,retainPageDetail,takePageDetailPreview,retainPageDetailPreview,clearPageDetails,detailCacheRevision} from '../utils/pdfDetailCache';
 import {QuickShapesLayer} from './QuickShapesLayer';
 import {detailRasterOwnership} from '../utils/pdfRasterOwnership';
-import { presentDetailSample,hasPaintedContent } from '../utils/pdfDetailSurface';
+import { presentDetailSample,positionDetailCanvas,hasPaintedContent } from '../utils/pdfDetailSurface';
 import { rasterSampleRect, settledDetailSample, needsFinalDetailRender, alignDetailTile, detailPixelAligned, detailIntersects, sourceCoversDensity, oversampleDetail, scaledDetailCovers, reuseDetailSurface, nativeDetailPresentation, type PreparedDetail } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
@@ -151,6 +151,7 @@ function requestPdfRenderSlot(priority:number, preempt?:()=>void) {
 
 // The effect owns these two surfaces; React never resizes/swaps them mid-pinch.
 export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onReady, onMeasure }: {pdfDoc:any;pageNumber:number;size:{width:number;height:number};near:boolean;cacheKey:string;onReady?:()=>void;onMeasure?:(size:{width:number;height:number})=>void}) {
+  const nativeHostRef=useRef<HTMLSpanElement>(null);
   const canvasRefs=useRef<[HTMLCanvasElement|null,HTMLCanvasElement|null]>([null,null]);
   const readyRef=useRef(onReady);readyRef.current=onReady;
   const measureRef=useRef(onMeasure);measureRef.current=onMeasure;
@@ -174,7 +175,24 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     let imagePixels:{width:number;height:number}|null=null;
     let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean;layoutKey?:string}|null=null;
     let cancelCurrent=()=>{};
-    const hide=(notify=false)=>{for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';presented=null;nativeSourceOnSurface=false;releaseOwnership(notify);};
+    const nativeHost=nativeHostRef.current!;
+    // During a pinch the completed raster is immutable. Mount it directly:
+    // copying an entire multi-megapixel canvas blocks the first zoom frame.
+    const present=(source:CanvasImageSource,crop:{x:number;y:number;width:number;height:number},tile:DetailTile,scale:number,native:boolean)=>{
+      if(native && source===detailSource?.canvas) {
+        const canvas=detailSource.canvas;
+        canvas.className='absolute pointer-events-none';
+        canvas.dataset.pdfDetailTile='true';
+        positionDetailCanvas(canvas,tile,scale);
+        if(canvas.parentNode!==nativeHost) nativeHost.replaceChildren(canvas);
+        if(front>=0) surfaces[front].style.visibility='hidden';
+        return front;
+      }
+      const next=presentDetailSample(surfaces,front,source,crop,tile,scale);
+      nativeHost.replaceChildren();
+      return next;
+    };
+    const hide=(notify=false)=>{nativeHost.replaceChildren();for(const canvas of surfaces) canvas.style.display='none';front=-1;key='';presented=null;nativeSourceOnSurface=false;releaseOwnership(notify);};
     if(!near) {hide();return;}
     const cacheRevision=detailCacheRevision(cacheKey);
     detailSource=takePageDetail(cacheKey,pdfDoc);
@@ -262,7 +280,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         if((key!==signature || lastSource!==source || needsPinchOriginal) &&
           (needsPinchOriginal || improvesQuality || !reuseDetailSurface(presented,liveScale,visible,0,zooming))) {
           const previous=front;
-          front=presentDetailSample(surfaces,front,source,crop,sampleTile,liveScale);
+          front=present(source,crop,sampleTile,liveScale,zooming);
           nativeSourceOnSurface=zooming && source===detailSource?.canvas;
           // The native source is retained separately. Keeping a second hidden
           // viewport-sized backing buffer only increases GPU/memory pressure.
@@ -346,11 +364,11 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           // of keeping already drawn text hidden until the entire task ends.
           // Existing pages keep their previous complete pixels throughout.
           task.onContinue=(resume:()=>void)=>{
-            if(front<0 && !progressFrame && !stale()) {
+            if(front<0 && !nativeHost.firstChild && !progressFrame && !stale()) {
               progressFrame=requestAnimationFrame(()=>{
                 progressFrame=0;
                 const latest=input();
-                if(stale() || front>=0 || !canvas || latest.zooming || !latest.tile || !sameRasterScale(liveScale,latest.liveScale) ||
+                if(stale() || front>=0 || nativeHost.firstChild || !canvas || latest.zooming || !latest.tile || !sameRasterScale(liveScale,latest.liveScale) ||
                   !scaledDetailCovers(target,liveScale,latest.liveScale,latest.visible,latest.requiredDensity))return;
                 probe ||= document.createElement('canvas');
                 if(!hasPaintedContent(canvas,probe))return;
@@ -377,7 +395,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           // Show it immediately, even if another crop must fill the new edge.
           const previous=front,sample=latest.zooming?{tile:nativeDetailPresentation(detailSource,latest.liveScale),crop:{x:0,y:0,width:canvas.width,height:canvas.height}}:
             settledDetailSample(canvas,detailSource,latest.tile,latest.liveScale,latest.pageRect.left,latest.pageRect.top),display=sample.tile;
-          front=presentDetailSample(surfaces,front,canvas,sample.crop,display,latest.liveScale);
+          front=present(canvas,sample.crop,display,latest.liveScale,latest.zooming);
           nativeSourceOnSurface=latest.zooming;
           if(previous>=0 && previous!==front)surfaces[previous].width=surfaces[previous].height=1;
           presented={tile:display,scale:latest.liveScale,final:!latest.zooming && !needsFinalDetailRender(detailSource,latest.liveScale,latest.visible,latest.requiredDensity,false)};
@@ -457,7 +475,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const {liveScale,visible,tile,zooming,pageRect}=input();
       const sample=!zooming && tile?settledDetailSample(restored.canvas,restored,tile,liveScale,pageRect.left,pageRect.top):
         {tile:nativeDetailPresentation(restored,liveScale),crop:{x:0,y:0,width:restored.canvas.width,height:restored.canvas.height}};
-      front=presentDetailSample(surfaces,front,restored.canvas,sample.crop,sample.tile,liveScale);
+      front=present(restored.canvas,sample.crop,sample.tile,liveScale,zooming);
       nativeSourceOnSurface=zooming && !!detailSource;
       presented={tile:{...sample.tile,density:Math.min(sample.tile.density,restored.tile.density)},scale:liveScale,final:false};
       lastSource=restored.canvas;key=[sample.tile.x,sample.tile.y,sample.tile.width,sample.tile.height,sample.tile.density].join(':');
@@ -467,6 +485,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     return()=>{disposed=true;generation++;cancelCurrent();cancelAnimationFrame(frame);cancelAnimationFrame(panEndFrame);resize.disconnect();releaseOwnership();
       window.removeEventListener('resize',resized);resolution?.removeEventListener('change',resolutionChanged);
       view.removeEventListener('scrollend',resized);
+      nativeHost.replaceChildren();
       if(detailSource) retainPageDetail(cacheKey,pdfDoc,detailSource,cacheRevision);
       else if(previewSource) retainPageDetailPreview(cacheKey,pdfDoc,previewSource,cacheRevision);
       for(const canvas of surfaces) {canvas.style.display='none';canvas.width=canvas.height=1;}
@@ -477,7 +496,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
   },[pdfDoc,pageNumber,size.width,size.height,near,cacheKey]);
   return <>{([0,1] as const).map(index=><canvas key={index} ref={node=>{canvasRefs.current[index]=node;}}
     aria-hidden="true" data-pdf-detail-tile="true" className="absolute pointer-events-none"
-    style={{display:'none'}} />)}</>;
+    style={{display:'none'}} />)}<span ref={nativeHostRef} aria-hidden="true" style={{display:'contents'}} /></>;
 }
 
 const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
