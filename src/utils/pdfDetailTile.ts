@@ -7,7 +7,7 @@ export function pdfDetailTile(page: {width:number;height:number}, visible: {left
   const width=Math.min(page.width*scale,Math.ceil((visible.right+64)/128)*128)-x;
   const height=Math.min(page.height*scale,Math.ceil((visible.bottom+64)/128)*128)-y;
   if(width<=0 || height<=0) return null;
-  const pixelsPerCss=Math.min(Math.max(1,dpr),2.5,Math.sqrt(12_000_000/(width*height)));
+  const pixelsPerCss=Math.min(Math.max(.25,dpr),Math.sqrt(12_000_000/(width*height)));
   return {x,y,width,height,density:scale*pixelsPerCss,pixelsWide:Math.max(1,Math.floor(width*pixelsPerCss)),pixelsHigh:Math.max(1,Math.floor(height*pixelsPerCss))};
 }
 

@@ -19,5 +19,8 @@ test('native crops transfer across mode changes within a pixel budget; eviction 
     assert.equal(three.canvas.width,1);assert.equal(extra.canvas.width,1);
     retainPageDetail('crop-cache_1',doc,one,revision); // unmount after close cannot resurrect the cache
     assert.equal(one.canvas.width,1);assert.equal(takePageDetail('crop-cache_1',doc),null);
+    const headroom={...crop(),final:false};retainPageDetail('crop-cache_6',doc,headroom);
+    assert.equal(takePageDetail('crop-cache_6',doc),headroom); // completed gesture source survives remount without a replay
+    headroom.canvas.width=headroom.canvas.height=1;
   } finally {clearPageDetails('crop-cache');}
 });

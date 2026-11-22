@@ -42,7 +42,7 @@ test('zoom renders the visible native crop once instead of replaying a full-page
     const view=dom.window.document.querySelector<HTMLElement>('.pdf-viewport-container')!;
     view.dataset.zoomGesture='true';view.dataset.zoomEpoch=String(Number(view.dataset.zoomEpoch)+1);
     await act(async()=>view.dispatchEvent(new dom.window.Event('pdf-zoom-start')));
-    visualScale=target;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));
+    await act(async()=>{visualScale=target;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));});
     await act(async()=>setScale(target));
     delete view.dataset.zoomGesture;
     await act(async()=>view.dispatchEvent(new dom.window.Event('pdf-zoom-end')));
@@ -54,7 +54,7 @@ test('zoom renders the visible native crop once instead of replaying a full-page
     assert.ok(rendered.length>0);
     for(const target of [2.2,3.1,.55]) {
       const before=rendered.length;await zoom(target);
-      assert.deepEqual(rendered.slice(before),[target]);
+      assert.deepEqual(rendered.slice(before),target===.55?[]:[target]); // full-page cache resolves zoom-out without another PDF replay
       const page=dom.window.document.querySelector<HTMLElement>('[data-page-container]')!;
       assert.equal(detailRasterOwnership.owns(page,target,page.closest<HTMLElement>('.pdf-viewport-container')!.dataset.zoomEpoch),true);
       const hidden=[...page.querySelectorAll<HTMLCanvasElement>('[data-pdf-detail-tile]')].filter(canvas=>canvas.style.visibility==='hidden');

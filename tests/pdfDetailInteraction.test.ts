@@ -4,7 +4,7 @@ import React,{act} from 'react';
 import {JSDOM} from 'jsdom';
 import {PDFDetailTile} from '../src/components/PDFPageView';
 
-test('continuous pinch reuses a sharp surface instead of copying on every tick, then renders the exact final scale',async()=>{
+test('continuous pinch reuses a sharp surface instead of copying on every tick, then resolves the final device pixels without PDF replay',async()=>{
   const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost'});
   const descriptors=new Map<string,PropertyDescriptor|undefined>(),frames=new Map<number,FrameRequestCallback>();let serial=0,draws=0,scale=1;
   const globals={window:dom.window,document:dom.window.document,Node:dom.window.Node,Element:dom.window.Element,HTMLElement:dom.window.HTMLElement,
@@ -37,10 +37,13 @@ test('continuous pinch reuses a sharp surface instead of copying on every tick, 
     dom.window.document.querySelector<HTMLElement>('[data-page-container]')!.style.setProperty('--pdf-layout-scale',String(scale));
     delete view.dataset.zoomGesture;
     view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
-    assert.deepEqual(rendered,[scale]);
+    assert.deepEqual(rendered,[]); // the original full-page raster already has enough density
     assert.ok(draws>before);
     const active=[...dom.window.document.querySelectorAll<HTMLElement>('[data-pdf-detail-tile]')].filter(el=>el.style.visibility==='visible');
     assert.equal(active.length,1);
+    const canvas=active[0] as HTMLCanvasElement;
+    const cssWidth=parseFloat(canvas.style.width.slice(5))*scale;
+    assert.ok(Math.abs(canvas.width/cssWidth-1)<1e-9); // exact DPR=1 output, not CSS-downscaled headroom
   } finally {
     await act(async()=>root.unmount());dom.window.close();
     for(const [key,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete (globalThis as any)[key];}

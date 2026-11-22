@@ -43,3 +43,11 @@ test('fractional CSS crops map exactly to integer backing pixels without a text-
   for(const x of [tile.x,tile.x+tile.width,1000.123]) assert.ok(Math.abs(screenX(x)-x)<1e-9);
   for(const y of [tile.y,tile.y+tile.height,300.123]) assert.ok(Math.abs(screenY(y)-y)<1e-9);
 });
+
+test('browser zoom and dense displays use their actual pixel grid within the same memory limit',()=>{
+  for(const dpr of [.8,1.25,2,3]) {
+    const tile=pdfDetailTile({width:595,height:842},{left:0,top:0,right:400,bottom:600},.7,dpr)!;
+    assert.ok(Math.abs(tile.density/.7-dpr)<1e-9);
+    assert.ok(tile.pixelsWide*tile.pixelsHigh<=12_000_000);
+  }
+});

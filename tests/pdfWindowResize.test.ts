@@ -37,11 +37,13 @@ test('a smaller browser window repaints the final PDF at its new pixel origin an
       React.createElement(PDFDetailTile,{pdfDoc,pageNumber:17,size:{width:595,height:842},near:true,cacheKey:'window-resize_17'})))));await flush();native();
     const before=renders.length;width=1050;left=48.375;
     await act(async()=>{observers.forEach(fn=>fn());dom.window.dispatchEvent(new dom.window.Event('resize'));});await flush();
-    assert.ok(renders.length>before);native(); // same PDF zoom, new half-device-pixel phase
+    assert.equal(renders.length,before);native(); // realign original pixels without replaying PDF operators
     scale=.7;left=101.3125;top=26.3125;
     dom.window.document.querySelector<HTMLElement>('[data-page-container]')!.style.setProperty('--pdf-layout-scale',String(scale));
     await act(async()=>observers.forEach(fn=>fn()));await flush();native();
     dpr=1.25;await act(async()=>dom.window.dispatchEvent(new dom.window.Event('resize')));await flush();native();
+    dpr=.8;await act(async()=>dom.window.dispatchEvent(new dom.window.Event('resize')));await flush();native();
+    assert.equal(renders.length,before); // zoom-out and smaller windows reuse sufficient source density
     const settled=renders.length;top-=.125;
     await act(async()=>dom.window.document.querySelector('.pdf-viewport-container')!.dispatchEvent(new dom.window.Event('scroll')));await flush();
     assert.equal(renders.length,settled);

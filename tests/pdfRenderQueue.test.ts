@@ -10,7 +10,7 @@ test('visible work preempts prefetch but cancellation never releases a live GPU 
   frames.shift()!();const releaseBackground=(await background.promise)!;
   const visible=queue.request(0);
   const neighbour=queue.request(11);
-  assert.equal(preempted,1);
+  assert.equal(preempted,0); // a free slot must not discard useful page decoding
   frames.shift()!();const releaseVisible=(await visible.promise)!;
   assert.equal(queue.active,2);
   background.cancel();assert.equal(queue.active,2);

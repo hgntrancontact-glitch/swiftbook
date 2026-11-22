@@ -22,7 +22,9 @@ export function retainPageDetail(key:string,doc:unknown,detail:RetainedDetail,re
   const old=entries.get(key);
   if(old)free(old.detail);
   entries.delete(key);
-  if(!detail.final || detail.canvas.width*detail.canvas.height>budget){free(detail);return;}
+  // Every entry is an original, completed PDF render, including gesture
+  // headroom. A display sample/progress frame must never enter this cache.
+  if(detail.canvas.width*detail.canvas.height>budget){free(detail);return;}
   entries.set(key,{doc,detail});
   let pixels=[...entries.values()].reduce((sum,item)=>sum+item.detail.canvas.width*item.detail.canvas.height,0);
   for(const [key,item] of entries) {

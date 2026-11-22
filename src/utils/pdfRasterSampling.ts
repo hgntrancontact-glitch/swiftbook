@@ -66,10 +66,11 @@ export function nativeDetailPresentation(prepared:PreparedDetail,scale:number):D
   return {...prepared.tile,x:prepared.tile.x*ratio,y:prepared.tile.y*ratio,
     width:prepared.tile.width*ratio,height:prepared.tile.height*ratio};
 }
-/** A high-density preview is not a final raster: text has already been sampled
- * at another scale. At rest require PDF operators rendered at the final scale. */
+/** Only completed, original PDF rasters belong here (never a progress frame or
+ * a previously sampled display buffer). Enough source pixels can resolve the
+ * final viewport directly, without replaying the PDF after every gesture. */
 export function needsFinalDetailRender(prepared:PreparedDetail|null,scale:number,visible:{left:number;top:number;right:number;bottom:number},density:number,zooming:boolean):boolean {
-  return !zooming && !(prepared?.final && sameRasterScale(prepared.scale,scale) &&
+  return !zooming && !(prepared &&
     scaledDetailCovers(prepared.tile,prepared.scale,scale,visible,density));
 }
 
@@ -92,4 +93,15 @@ export function preparedDetailSample(source:{width:number;height:number},prepare
   }
   const clipped=clipDetailTile(tile,prepared.tile,prepared.scale,scale);
   return {tile:clipped,crop:detailSampleRect(source,prepared.tile,prepared.scale,clipped,scale)};
+}
+
+/** Resolve once from the original raster onto the current device pixel grid.
+ * Retaining that original avoids cumulative blur across zoom-out/zoom-in. */
+export function settledDetailSample(source:{width:number;height:number},prepared:PreparedDetail,tile:DetailTile,scale:number,pageLeft:number,pageTop:number) {
+  if(sameRasterScale(prepared.scale,scale) && sameRasterScale(prepared.tile.density,tile.density) &&
+    detailPixelAligned(prepared.tile,pageLeft,pageTop,scale)) {
+    return {tile:prepared.tile,crop:{x:0,y:0,width:source.width,height:source.height}};
+  }
+  const aligned=alignDetailTile(clipDetailTile(tile,prepared.tile,prepared.scale,scale),pageLeft,pageTop,scale);
+  return {tile:aligned,crop:detailSampleRect(source,prepared.tile,prepared.scale,aligned,scale)};
 }

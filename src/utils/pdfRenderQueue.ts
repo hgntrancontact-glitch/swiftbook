@@ -16,8 +16,11 @@ export class PdfRenderQueue {
     this.defer(()=>{this.scheduled=false;this.pump();});
   }
   private preemptBackground() {
-    if(!this.pending.some(job=>job.priority<10)) return;
+    let required=this.pending.filter(job=>job.priority<10).length-Math.max(0,this.limit-this.active);
+    required-=[...this.running].filter(job=>job.preempting).length;
+    if(required<=0)return;
     for(const job of this.running) if(job.priority>=10 && job.preempt && !job.preempting) {
+      if(required--<=0)break;
       job.preempting=true;job.preempt();
     }
   }
