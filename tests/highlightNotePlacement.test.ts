@@ -83,6 +83,15 @@ test('note icon stays on its stored first/last endpoint during scrolling, switch
     });
     assert.equal(popup().style.visibility,'visible');
     const click=async(label:string)=>act(async()=>{doc.querySelector(`[aria-label="${label}"]`)!.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));});
+    assert.ok(doc.querySelector('[data-highlight-note-mode] .lucide-pin'));
+    assert.equal(doc.querySelector('[data-highlight-note-mode] .lucide-pin-off'),null);
+    await click('Ghim hiển thị');await flush();
+    assert.ok(doc.querySelector('[data-highlight-note-mode] .lucide-pin-off'));
+    await act(async()=>doc.body.dispatchEvent(new dom.window.MouseEvent('mousemove',{bubbles:true})));
+    assert.equal(popup().style.visibility,'visible');
+    await click('Đóng ghi chú');
+    await act(async()=>icon().dispatchEvent(new dom.window.MouseEvent('mouseover',{bubbles:true})));await flush();
+    assert.ok(doc.querySelector('[data-highlight-note-mode] .lucide-pin'));
     const width=popup().style.width,rects=JSON.stringify(model.note.rects),iconSize=icon().style.width;
     assert.equal(doc.querySelector('[aria-label="Phóng lớn popup ghi chú"]'),null);
     await click('Hiện chỉnh kích thước popup ghi chú');await flush();

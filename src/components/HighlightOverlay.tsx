@@ -274,7 +274,7 @@ export const HighlightOverlay: React.FC<HighlightOverlayProps> = ({
                           e.stopPropagation();
                           setPreviewMode(mode => mode === 'auto' ? 'pinned' : mode === 'pinned' ? 'transparent' : 'auto');
                         }}>
-                        {previewMode === 'auto' ? <PinOff size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} /> : previewMode === 'pinned' ? <Pin size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} /> : <Eye size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} />}
+                        {previewMode === 'auto' ? <Pin size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} /> : previewMode === 'pinned' ? <PinOff size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} /> : <Eye size={12} style={{width:"calc(12px * var(--highlight-ui-scale, 1))",height:"calc(12px * var(--highlight-ui-scale, 1))"}} />}
                       </button>
                       <button type="button" title="Đóng ghi chú" aria-label="Đóng ghi chú" className="p-0.5 rounded hover:bg-neutral-500/20"
                         style={{padding:'calc(2px * var(--highlight-ui-scale, 1))'}}

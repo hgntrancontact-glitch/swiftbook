@@ -2,7 +2,7 @@ import {takePageDetail,retainPageDetail,clearPageDetails,detailCacheRevision} fr
 import {QuickShapesLayer} from './QuickShapesLayer';
 import {detailRasterOwnership} from '../utils/pdfRasterOwnership';
 import { presentDetailSample,hasPaintedContent } from '../utils/pdfDetailSurface';
-import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, detailPixelAligned, sourceCoversDensity, oversampleDetail, scaledDetailCovers, reuseDetailSurface, nativeDetailPresentation, type PreparedDetail } from '../utils/pdfRasterSampling';
+import { rasterSampleRect, preparedDetailSample, needsFinalDetailRender, alignDetailTile, detailPixelAligned, detailIntersects, sourceCoversDensity, oversampleDetail, scaledDetailCovers, reuseDetailSurface, nativeDetailPresentation, type PreparedDetail } from '../utils/pdfRasterSampling';
 import { canPresentRaster, canReplaceRaster, sameRasterScale } from '../utils/rasterPresentation';
 import { PageNumberLabel } from './PageNumberLabel';
 import { PdfRenderQueue } from '../utils/pdfRenderQueue';
@@ -149,11 +149,11 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     const view=page?.closest<HTMLElement>('.pdf-viewport-container');
     if(!page || !view || !canvases[0] || !canvases[1]) return;
     const surfaces=[canvases[0],canvases[1]];
-    let front=-1,frame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
+    let front=-1,frame=0,panEndFrame=0,key='',disposed=false,rendering=false,refreshAfterRender=false,generation=0;
     let lastSource:CanvasImageSource|null=null;
     let settlePixelGrid=true;
     let presented:PreparedDetail|null=null;
-    let runningTarget:{scale:number;final:boolean;tile:DetailTile;epoch:string|undefined;layoutKey:string}|null=null;
+    let runningTarget:{scale:number;final:boolean;tile:DetailTile;epoch:string|undefined}|null=null;
     const owner={};let failed=false,owned=false;
     const releaseOwnership=(notify=false)=>{
       const wasOwned=owned;owned=false;detailRasterOwnership.release(page,owner);
@@ -184,6 +184,8 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const started=performance.now(),{liveScale,visible,tile,zooming,pageRect,layoutKey}=input();
       if(view.dataset.renderVisible==='false' || !tile) {cancelCurrent();hide(true);return;}
       if(reuseDetailSurface(presented,liveScale,visible,tile.density,zooming)) {
+        // Reversing a gesture can restore an already sharp full surface. A
+        // pending narrow crop then adds nothing and should not occupy a slot.
         if(rendering && runningTarget && !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)) cancelCurrent();
         return;
       }
@@ -191,17 +193,17 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const fallback=[...page.querySelectorAll<HTMLCanvasElement>('canvas[data-raster-density]')].find(canvas=>getComputedStyle(canvas).visibility!=='hidden' && canvas.width>1);
       if(!zooming && !failed) {owned=true;detailRasterOwnership.claim(page,owner,liveScale,view.dataset.zoomEpoch);}
       let sampleTile=tile;
+      let sourceDensity=0;
       let source:CanvasImageSource|null=null,crop:{x:number;y:number;width:number;height:number}|null=null;
-      if(detailSource && scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,tile.density)) {
-        source=detailSource.canvas;
+      if(detailSource && scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0)) {
+        source=detailSource.canvas;sourceDensity=detailSource.tile.density;
         const sample=zooming?{tile:nativeDetailPresentation(detailSource,liveScale),crop:{x:0,y:0,width:detailSource.canvas.width,height:detailSource.canvas.height}}:
           preparedDetailSample(detailSource.canvas,detailSource,tile,liveScale);
         sampleTile=sample.tile;crop=sample.crop;
       } else {
-        const full=cached && sourceCoversDensity(cached.bitmap,size,tile.density)?cached.bitmap:
-          fallback && sourceCoversDensity(fallback,size,tile.density)?fallback:null;
+        const full=cached && (!fallback || cached.bitmap.width*cached.bitmap.height>=fallback.width*fallback.height)?cached.bitmap:fallback;
         if(full) {
-          source=full;
+          source=full;sourceDensity=Math.min(full.width/size.width,full.height/size.height);
           // Retain available density headroom in the visible crop. This avoids
           // repeated downsample/reallocation during the next pinch frames.
           if(zooming) {
@@ -218,34 +220,46 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         detailPixelAligned({...tile,x:0,y:0},pageRect.left,pageRect.top,liveScale);
       if(nativeFull) {cancelCurrent();hide();settlePixelGrid=false;readyRef.current?.();return;}
       const needsFinal=!failed && (needsFinalDetailRender(detailSource,liveScale,visible,tile.density,zooming) ||
-        (!zooming && (detailSource?.layoutKey!==layoutKey ||
-          (settlePixelGrid && detailSource && !detailPixelAligned(detailSource.tile,pageRect.left,pageRect.top,liveScale)))));
+        (!zooming && settlePixelGrid && detailSource && (!sameRasterScale(detailSource.tile.density,tile.density) ||
+          !detailPixelAligned(detailSource.tile,pageRect.left,pageRect.top,liveScale))));
+      const needsPreview=zooming && sourceDensity<tile.density-.002;
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
-        if(key!==signature || lastSource!==source) {
+        if((key!==signature || lastSource!==source) && !reuseDetailSurface(presented,liveScale,visible,0,zooming)) {
           const previous=front;
           front=presentDetailSample(surfaces,front,source,crop,sampleTile,liveScale);
           // The native source is retained separately. Keeping a second hidden
           // viewport-sized backing buffer only increases GPU/memory pressure.
           if(previous>=0 && previous!==front) surfaces[previous].width=surfaces[previous].height=1;
-          presented={tile:sampleTile,scale:liveScale,final:!zooming};
+          // Enlarging a fallback buffer does not create more PDF detail.
+          presented={tile:{...sampleTile,density:Math.min(sampleTile.density,sourceDensity)},scale:liveScale,final:!needsFinal && !needsPreview};
           key=signature;lastSource=source;readyRef.current?.();
           detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'sample',zooming});
           if(detailSamples.length>200) detailSamples.shift();
         }
-        if(!needsFinal) {if(!zooming)settlePixelGrid=false;return;}
+        if(!needsFinal && !needsPreview) {
+          if(!zooming) {
+            settlePixelGrid=false;
+            if(rendering && runningTarget && !runningTarget.final)cancelCurrent();
+          }
+          return;
+        }
       }
       if(failed) return;
       if(rendering) {
         refreshAfterRender=true;
-        // An in-flight gesture preview cannot delay the final sharp result.
-        if(runningTarget && (runningTarget.epoch!==view.dataset.zoomEpoch || (!zooming && (runningTarget.layoutKey!==layoutKey || !detailPixelAligned(runningTarget.tile,pageRect.left,pageRect.top,liveScale))) || (!zooming?(!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale) || !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)):
-          !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,tile.density)))) cancelCurrent();
+        // Scroll/resize can change the pixel phase while this PDF is decoding.
+        // Publish useful pixels, then refine at the new origin. Cancelling on
+        // every fractional movement starves heavy pages indefinitely.
+        if(runningTarget && (runningTarget.epoch!==view.dataset.zoomEpoch ||
+          (!zooming && (!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale))) ||
+          !detailIntersects(runningTarget.tile,runningTarget.scale,liveScale,visible))) cancelCurrent();
         return;
       }
       const final=!zooming;
-      const target=final?tile:oversampleDetail(tile),epoch=view.dataset.zoomEpoch,own=++generation;
-      rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch,layoutKey};
+      let target=final?tile:oversampleDetail(tile),targetLayoutKey=layoutKey;
+      const epoch=view.dataset.zoomEpoch,own=++generation;
+      rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch};
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null,progressFrame=0,continuations=0;
       cancelCurrent=()=>{cancelled=true;cancelAnimationFrame(progressFrame);progressFrame=0;handle?.cancel();task?.cancel();};
       void (async()=> {
@@ -262,10 +276,13 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           handle=requestPdfRenderSlot(page.closest('[data-workspace-doc]')?.getAttribute('data-active')==='true'?-1:0,cancelCurrent);
           release=await handle.promise;if(!release || stale()) return;
           const queued=input();
-          if(!queued.tile || (final?(queued.zooming || queued.layoutKey!==layoutKey || !detailPixelAligned(target,queued.pageRect.left,queued.pageRect.top,liveScale) || !sameRasterScale(liveScale,queued.liveScale) || !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density)):
-            !scaledDetailCovers(target,liveScale,queued.liveScale,queued.visible,queued.tile.density))) {
+          if(!queued.tile || (final?(queued.zooming || !sameRasterScale(liveScale,queued.liveScale)):
+            !detailIntersects(target,liveScale,queued.liveScale,queued.visible))) {
             refreshAfterRender=true;return;
           }
+          // Work waiting for a slot has not drawn anything yet. Retarget it in
+          // place instead of cancelling and rejoining the queue after a resize.
+          if(final) {target=queued.tile;targetLayoutKey=queued.layoutKey;runningTarget!.tile=target;}
           canvas=document.createElement('canvas');canvas.width=target.pixelsWide;canvas.height=target.pixelsHigh;
           task=proxy.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport:proxy.getViewport({scale:liveScale}),background:'#fff',transform:detailViewportTransform(target)});
           // A first-time heavy page may execute several PDF chunks before its
@@ -292,12 +309,21 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           await task.promise;
           if(stale()) return;
           const latest=input();
-          if(final && (latest.zooming || latest.layoutKey!==layoutKey || !detailPixelAligned(target,latest.pageRect.left,latest.pageRect.top,liveScale) || !sameRasterScale(liveScale,latest.liveScale) || !latest.tile || !scaledDetailCovers(target,liveScale,latest.liveScale,latest.visible,latest.tile.density))) {refreshAfterRender=true;return;}
+          if(!latest.tile || (!final && !latest.zooming) || !detailIntersects(target,liveScale,latest.liveScale,latest.visible) ||
+            (final && (latest.zooming || !sameRasterScale(liveScale,latest.liveScale)))) {refreshAfterRender=true;return;}
           // Keep previews and final native crops separate so a sampled preview
           // cannot satisfy the final-resolution requirement after release.
           if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
-          detailSource={canvas,tile:target,scale:liveScale,final,layoutKey};retained=true;
-          if(final)settlePixelGrid=false;
+          detailSource={canvas,tile:target,scale:liveScale,final,layoutKey:targetLayoutKey};retained=true;
+          if(final)settlePixelGrid=!sameRasterScale(target.density,latest.tile.density) || !detailPixelAligned(target,latest.pageRect.left,latest.pageRect.top,liveScale);
+          // A crop can still contain useful visible text after a large scroll.
+          // Show it immediately, even if another crop must fill the new edge.
+          const previous=front,display=nativeDetailPresentation(detailSource,latest.liveScale);
+          front=presentDetailSample(surfaces,front,canvas,{x:0,y:0,width:canvas.width,height:canvas.height},display,latest.liveScale);
+          if(previous>=0 && previous!==front)surfaces[previous].width=surfaces[previous].height=1;
+          presented={tile:display,scale:latest.liveScale,final:final && !settlePixelGrid};
+          lastSource=canvas;key=[display.x,display.y,display.width,display.height,display.density].join(':');
+          readyRef.current?.();
           refreshAfterRender=true;
           detailSamples.push({page:pageNumber,scale:liveScale,sampleMs:performance.now()-started,kind:'native',zooming:view.dataset.zoomGesture==='true'});
           if(detailSamples.length>200) detailSamples.shift();
@@ -320,11 +346,28 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     // Reuse prepared sources across gestures; only asynchronous obsolete work
     // is invalidated. Ending a gesture is not a reason to discard sharp pixels.
     const start=()=>{generation++;cancelCurrent();failed=false;releaseOwnership();};
-    view.addEventListener('scroll',schedule,{passive:true});view.addEventListener('pdf-viewport-pan',schedule);
+    view.addEventListener('scroll',schedule,{passive:true});
     view.addEventListener('pdf-viewport-visibility',measure);view.addEventListener('pdf-zoom-frame',measure);
     view.addEventListener('pdf-raster-ready',schedule);
     view.addEventListener('pdf-zoom-start',start);view.addEventListener('pdf-zoom-end',measure);
     const resized=()=>{settlePixelGrid=true;schedule();};
+    // Translated pan beyond native scroll bounds has no browser scrollend.
+    // Refine when its geometry stays unchanged across paints; continuous input
+    // cancels this check without cancelling the useful PDF render itself.
+    const pan=()=>{
+      schedule();cancelAnimationFrame(panEndFrame);
+      panEndFrame=requestAnimationFrame(()=>{
+        const before=page.getBoundingClientRect();
+        panEndFrame=requestAnimationFrame(()=>{
+          panEndFrame=0;const after=page.getBoundingClientRect();
+          if(view.dataset.zoomGesture!=='true' && before.left===after.left && before.top===after.top)resized();
+        });
+      });
+    };
+    view.addEventListener('pdf-viewport-pan',pan);
+    // Native scrolling can end on a fractional device pixel even at unchanged
+    // zoom. Refine once at its final origin, not at every momentum tick.
+    view.addEventListener('scrollend',resized);
     const resize=new ResizeObserver(resized);resize.observe(view);resize.observe(page);
     window.addEventListener('resize',resized);
     // Moving Chrome between displays or changing browser zoom can change DPR
@@ -347,11 +390,12 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       if(scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0))readyRef.current?.();
     }
     measure();
-    return()=>{disposed=true;generation++;cancelCurrent();cancelAnimationFrame(frame);resize.disconnect();releaseOwnership();
+    return()=>{disposed=true;generation++;cancelCurrent();cancelAnimationFrame(frame);cancelAnimationFrame(panEndFrame);resize.disconnect();releaseOwnership();
       window.removeEventListener('resize',resized);resolution?.removeEventListener('change',resolutionChanged);
+      view.removeEventListener('scrollend',resized);
       if(detailSource) retainPageDetail(cacheKey,pdfDoc,detailSource,cacheRevision);
       for(const canvas of surfaces) {canvas.style.display='none';canvas.width=canvas.height=1;}
-      view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-viewport-pan',schedule);
+      view.removeEventListener('scroll',schedule);view.removeEventListener('pdf-viewport-pan',pan);
       view.removeEventListener('pdf-viewport-visibility',measure);view.removeEventListener('pdf-zoom-frame',measure);
       view.removeEventListener('pdf-raster-ready',schedule);
       view.removeEventListener('pdf-zoom-start',start);view.removeEventListener('pdf-zoom-end',measure);};

@@ -20,6 +20,14 @@ export function scaledDetailCovers(tile:DetailTile,preparedScale:number,scale:nu
     (tile.x+tile.width)*ratio>=visible.right-1e-6 && (tile.y+tile.height)*ratio>=visible.bottom-1e-6;
 }
 
+/** A moving viewport does not invalidate PDF pixels already being rendered.
+ * Keep useful work until it finishes; only a crop entirely left behind is stale. */
+export function detailIntersects(tile:DetailTile,preparedScale:number,scale:number,visible:{left:number;top:number;right:number;bottom:number}):boolean {
+  const ratio=scale/preparedScale;
+  return tile.x*ratio<visible.right && tile.y*ratio<visible.bottom &&
+    (tile.x+tile.width)*ratio>visible.left && (tile.y+tile.height)*ratio>visible.top;
+}
+
 /** A retained detail crop uses its PDF-space origin, not the current CSS origin. */
 export function detailSampleRect(source:{width:number;height:number},prepared:DetailTile,preparedScale:number,tile:DetailTile,scale:number) {
   const x=source.width/(prepared.width/preparedScale),y=source.height/(prepared.height/preparedScale);
