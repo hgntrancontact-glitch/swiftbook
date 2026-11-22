@@ -1,4 +1,5 @@
 import { AnnotationToolbar } from './AnnotationToolbar';
+import {FREE_TEXT_CLIPBOARD_TYPE,isClipboardEditor} from '../hooks/useClipboardImageImport';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FreeTextAnnotation } from '../types';
@@ -1691,7 +1692,6 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
 
   // High-performance pointer gesture refs
   const rafRef = useRef<number | null>(null);
-  const copiedItemRef = useRef<FreeTextAnnotation | null>(null);
 
   const dragRef = useRef<{
     id: string;
@@ -3167,11 +3167,6 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
             e.preventDefault();
             handleToggleStrikethrough(targetId);
             return;
-          } else if (key === 'c' && !isInputFocused) {
-            // Copy text block
-            e.preventDefault();
-            copiedItemRef.current = { ...item };
-            return;
           } else if (key === 'd' && !isInputFocused) {
             // Quick duplicate
             e.preventDefault();
@@ -3202,28 +3197,42 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
         }
       }
 
-      // Paste shortcut: Cmd+V / Ctrl+V for copied annotation items
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && !isInputFocused) {
-        if (copiedItemRef.current) {
-          e.preventDefault();
-          const dupId = `text_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-          const duplicatedItem: FreeTextAnnotation = {
-            ...copiedItemRef.current,
-            id: dupId,
-            pageNumber,
-            x: Math.min(85, copiedItemRef.current.x + 3),
-            y: Math.min(85, copiedItemRef.current.y + 3),
-            createdAt: Date.now(),
-          };
-          onAddText(duplicatedItem);
-          setActiveTextId(dupId);
-          setEditingTextId(null);
-        }
-      }
+    };
+
+    const ownsClipboardEvent=(event:ClipboardEvent)=>{
+      const page=containerRef.current?.closest('[data-page-container]') || containerRef.current;
+      return !event.defaultPrevented && !isClipboardEditor(event.target) && event.target instanceof Node && Boolean(page?.contains(event.target));
+    };
+    const copy=(event:ClipboardEvent)=>{
+      if(!ownsClipboardEvent(event) || !event.clipboardData)return;
+      const selected=freeTexts.filter(item=>selectedIdsRef.current?.includes(item.id));
+      if(selected.length>1)return;
+      const id=activeTextId || (selected.length===1 && pageTexts.some(item=>item.id===selected[0].id)?selected[0].id:null);
+      const item=freeTexts.find(item=>item.id===id);if(!item)return;
+      event.clipboardData.setData(FREE_TEXT_CLIPBOARD_TYPE,JSON.stringify(item));
+      event.clipboardData.setData('text/html',item.text);
+      const plain=document.createElement('div');plain.innerHTML=item.text;
+      event.clipboardData.setData('text/plain',plain.textContent || '');
+      event.preventDefault();
+    };
+    const paste=(event:ClipboardEvent)=>{
+      if(!ownsClipboardEvent(event))return;
+      const data=event.clipboardData?.getData(FREE_TEXT_CLIPBOARD_TYPE);if(!data)return;
+      let item:FreeTextAnnotation;
+      try {item=JSON.parse(data);}catch{return;}
+      if(!item || typeof item.text!=='string' || !Number.isFinite(item.x) || !Number.isFinite(item.y) || !Number.isFinite(item.fontSize))return;
+      event.preventDefault();
+      const id=`text_${Date.now()}_${Math.random().toString(36).substr(2,6)}`;
+      const duplicated:FreeTextAnnotation={...item,id,pageNumber,x:Math.min(85,item.x+3),y:Math.min(85,item.y+3),createdAt:Date.now()};
+      onAddText(duplicated);
+      setActiveTextId(id);setEditingTextId(null);
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // Let the browser dispatch its real paste event. Cancelling Cmd/Ctrl+V at
+    // keydown prevents clipboard images from ever reaching the workspace.
+    window.addEventListener('copy',copy);window.addEventListener('paste',paste);
+    return () => {window.removeEventListener('keydown', handleKeyDown);window.removeEventListener('copy',copy);window.removeEventListener('paste',paste);};
   }, [activeTextId, freeTexts, onDeleteText, onUpdateText, onAddText, pageNumber]);
 
   

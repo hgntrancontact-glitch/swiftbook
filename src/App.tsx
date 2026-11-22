@@ -1,4 +1,5 @@
 import {useWorkspaceDocumentFocus} from './hooks/useWorkspaceDocumentFocus';
+import {useClipboardImageImport} from './hooks/useClipboardImageImport';
 import {AnnotationSelectionController} from './components/AnnotationSelectionController';
 import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
@@ -42,7 +43,7 @@ import {
   loadPdfFileFromForage,
 } from "./utils/storage";
 import { generateSamplePdfBytes, SAMPLE_PDF_NAME } from "./utils/samplePdf";
-import { convertAnyFileToPdfBytes } from "./utils/fileConverter";
+import { convertAnyFileToPdfBytes, type ImageConversionOptions } from "./utils/fileConverter";
 import {
   CustomBookConfig,
   createBlankBookPdfBytes,
@@ -143,6 +144,7 @@ function SwiftbookApp() {
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
   const [isEmptyStateUploadMenuOpen, setIsEmptyStateUploadMenuOpen] = useState<boolean>(false);
   const emptyStateUploadMenuRef = useRef<HTMLDivElement>(null);
+  const clipboardWorkspaceRef = useRef<HTMLDivElement>(null);
 
   // Close empty state upload menu on outside click
   useEffect(() => {
@@ -684,7 +686,8 @@ function SwiftbookApp() {
   // Handle User File Upload
   const handleFileUpload = async (
     fileInput: File | File[],
-    skipSort: boolean = false
+    skipSort: boolean = false,
+    imageOptions:ImageConversionOptions={}
   ) => {
     resetQuickTools();
     try {
@@ -713,7 +716,8 @@ function SwiftbookApp() {
 
       const { bytes, fileName: processedName } = await convertAnyFileToPdfBytes(
         targetInput,
-        skipSort
+        skipSort,
+        imageOptions
       );
 
       let safeId = "";
@@ -738,6 +742,10 @@ function SwiftbookApp() {
     if (!orderedFiles || orderedFiles.length === 0) return;
     await handleFileUpload(orderedFiles, true);
   };
+
+  useClipboardImageImport(clipboardWorkspaceRef,file=>handleFileUpload(file,true,{preserveAspectRatio:true}),
+    isLibraryModalOpen || isSaveBookModalOpen || isExportModalOpen || isImageOrderModalOpen,
+    ()=>setLoadError('Không thể dán hình ảnh. Vui lòng sao chép lại ảnh và thử lại.'));
 
   // Load sample book
   const handleLoadSample = async () => {
@@ -901,7 +909,7 @@ function SwiftbookApp() {
     input.click();
   };
 
-  // Drag-and-drop & paste files onto window
+  // Drag-and-drop files onto window (clipboard images use the workspace hook).
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => {
       e.preventDefault();
@@ -1539,7 +1547,7 @@ function SwiftbookApp() {
         />
 
         {/* Center Viewer Canvas Area */}
-        <div className="flex-1 relative overflow-hidden bg-[#fafafa] flex flex-col min-h-0">
+        <div ref={clipboardWorkspaceRef} tabIndex={-1} className="flex-1 relative overflow-hidden bg-[#fafafa] flex flex-col min-h-0 outline-none">
           {/* Tab Bar directly above the viewing area */}
           {openDocs.length > 0 && (
             <TabBar

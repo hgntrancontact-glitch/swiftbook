@@ -180,7 +180,9 @@ async function generatePdfFromElements(elements: HTMLElement[], fitToPage: boole
 /**
  * Ultra-fast Image to PDF converter
  */
-export async function convertImageToPdfBytes(file: File): Promise<Uint8Array> {
+export interface ImageConversionOptions {preserveAspectRatio?: boolean}
+
+export async function convertImageToPdfBytes(file: File,options:ImageConversionOptions={}): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
@@ -190,7 +192,8 @@ export async function convertImageToPdfBytes(file: File): Promise<Uint8Array> {
       const naturalH = img.naturalHeight || 600;
 
       const pdfW = A4_WIDTH_PT;
-      const pdfH = Math.max(200, (naturalH / naturalW) * pdfW);
+      const imageHeight=(naturalH / naturalW)*pdfW;
+      const pdfH = options.preserveAspectRatio?imageHeight:Math.max(200,imageHeight);
       const orientation = naturalW > naturalH ? 'l' : 'p';
       
       const doc = new jsPDF({ orientation, unit: 'pt', format: [pdfW, pdfH] });
@@ -654,11 +657,12 @@ export async function reorderPdfPages(
  */
 export async function convertAnyFileToPdfBytes(
   fileOrFiles: File | File[],
-  skipSort: boolean = false
+  skipSort: boolean = false,
+  imageOptions:ImageConversionOptions={}
 ): Promise<{ bytes: Uint8Array; fileName: string; isConverted: boolean }> {
   if (Array.isArray(fileOrFiles)) {
     if (fileOrFiles.length === 0) throw new Error('Không có tệp nào được chọn.');
-    if (fileOrFiles.length === 1) return convertAnyFileToPdfBytes(fileOrFiles[0]);
+    if (fileOrFiles.length === 1) return convertAnyFileToPdfBytes(fileOrFiles[0],skipSort,imageOptions);
 
     const files = skipSort ? [...fileOrFiles] : sortFilesByUserSelectionIntent(fileOrFiles);
     const bytes = await convertMultipleFilesToSinglePdfBytes(files, true);
@@ -693,7 +697,7 @@ export async function convertAnyFileToPdfBytes(
   }
 
   if (type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext)) {
-    const bytes = await convertImageToPdfBytes(file);
+    const bytes = await convertImageToPdfBytes(file,imageOptions);
     return { bytes, fileName, isConverted: true };
   }
 
