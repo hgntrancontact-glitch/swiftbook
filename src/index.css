@@ -395,7 +395,7 @@
 /* The redesigned drawing panels and paper use their own typography. */
 .noto-ui, .noto-ui * { font-family: "Noto Sans", sans-serif; }
 .drawing-tools-panel { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin-bottom:10px; z-index:50; width:max-content; max-width:95vw; color:#555; }
-.drawing-tools-row { display:flex; align-items:center; gap:2px; background:#fff; border-radius:999px; padding:7px 10px; overflow-x:auto; scrollbar-width:none; }
+.drawing-tools-row { display:flex; align-items:center; gap:4px; background:#fff; border-radius:999px; padding:7px 10px; overflow-x:auto; scrollbar-width:none; }
 .drawing-tool-button { display:inline-flex; position:relative; align-items:center; justify-content:center; flex-shrink:0; min-width:34px; height:34px; padding:4px; border:0; border-radius:7px; background:transparent; color:inherit; cursor:pointer; font-size:12px; font-weight:400; line-height:1; }
 .drawing-tool-button:hover, .drawing-tool-button[data-active="true"] { background:#f4f4f4; }
 .drawing-tool-button:focus-visible { outline:2px solid #f5c41a; outline-offset:1px; }
@@ -406,7 +406,7 @@
 .drawing-pen-button { color:#666; width:34px; }
 .drawing-smart-sparkles { position:absolute; right:0; top:0; color:#f59e0b; fill:#fff; }
 .drawing-tools-divider { width:1px; height:28px; background:#e0e0e5; margin:0 4px; flex-shrink:0; }
-.drawing-shared-controls { display:flex; align-items:center; gap:3px; }
+.drawing-shared-controls { display:flex; align-items:center; gap:4px; }
 .drawing-px-control { gap:4px; min-width:48px; font-size:14px; }
 .drawing-color-control { gap:4px; min-width:39px; }
 .drawing-color-dot { width:20px; height:20px; border-radius:50%; box-shadow:0 1px 1px #0002; }

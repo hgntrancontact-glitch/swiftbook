@@ -3,7 +3,8 @@ import type { PageSize } from './pdfViewport';
 type Raster = { pdfDoc: any; bitmap: ImageBitmap; density: number; size: PageSize };
 const rasters = new Map<string, Raster>();
 const snapshots = new Map<string, number>();
-const PIXEL_BUDGET = 24_000_000;
+// The other 24MP of the shared 36MP allowance retain sharp detail crops.
+const PIXEL_BUDGET = 12_000_000;
 let revision = 0;
 let pendingPixels = 0;
 

@@ -43,6 +43,7 @@ test('a new epoch at the same zoom replaces pending work and cannot leave an ini
     await act(async()=>{firstTask.onContinue(()=>{});firstTask.onContinue(()=>{});});await flush();
     assert.ok(view.textContent!.includes('Đang tải trang')); // white chunks cannot dismiss the loading state
     hasInk=true;await act(async()=>firstTask.onContinue(()=>{}));await flush();
+    assert.deepEqual(scales,[1]); // complete-page detail will supply the thumbnail; no duplicate PDF replay during first paint
     assert.ok(!view.textContent!.includes('Đang tải trang')); // actual ink can paint before the whole task resolves
     assert.ok(view.querySelector<HTMLCanvasElement>('canvas[data-pdf-detail-tile][style*="visible"]')!.width>1);
     view.dataset.zoomEpoch='1';
