@@ -1,5 +1,6 @@
 import {useWorkspaceDocumentFocus} from './hooks/useWorkspaceDocumentFocus';
 import {useClipboardImageImport} from './hooks/useClipboardImageImport';
+import {registerImageDocument} from './utils/imagePdfResolution';
 import {AnnotationSelectionController} from './components/AnnotationSelectionController';
 import { EraserCursor } from './components/EraserCursor';
 import {QuickShapesProvider,useQuickShapesReset,useDrawingSettings} from './contexts/QuickShapesContext';
@@ -430,6 +431,7 @@ function SwiftbookApp() {
         });
 
         const doc = await loadingTask.promise;
+        registerImageDocument(doc, name, pdfjsLib.OPS);
         const page1 = await doc.getPage(1);
         const viewport = page1.getViewport({ scale: 1.0 });
         pageDimensionCache.set(`${id}_default`, { width: viewport.width, height: viewport.height });

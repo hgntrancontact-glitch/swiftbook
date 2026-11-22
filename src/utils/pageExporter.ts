@@ -3,6 +3,7 @@ import {stickyNoteGeometry} from './stickyNoteGeometry';
 import {drawQuickShape} from './quickShapes';
 import { highlightCorners, highlightDisplayRects } from './highlightGeometry';
 import { canvasViewportTransform } from './pageCoordinates';
+import { importedImagePixels } from './imagePdfResolution';
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -1156,9 +1157,16 @@ export async function renderPageWithAnnotations(
   }
 
   const page = await pdfDoc.getPage(pageNumber);
+  const base = page.getViewport({scale: 1});
+  const image = await importedImagePixels(pdfDoc, pageNumber, base);
+  // An image normalized to a 595pt page can contain far more than 3×595
+  // original pixels. Do not silently discard those pixels on PNG/flattened-PDF
+  // export. Keep allocation bounded for unusually large photographs.
+  if (image) scale = Math.max(scale, Math.min(image.width / base.width,
+    Math.sqrt(32_000_000 / (base.width * base.height))));
   const viewport = page.getViewport({ scale });
-  const width = Math.max(1, Math.floor(viewport.width));
-  const height = Math.max(1, Math.floor(viewport.height));
+  const width = Math.max(1, image ? Math.ceil(viewport.width - 1e-7) : Math.floor(viewport.width));
+  const height = Math.max(1, image ? Math.ceil(viewport.height - 1e-7) : Math.floor(viewport.height));
 
   const canvas = document.createElement('canvas');
   canvas.width = width;

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
+import { appendImagePage } from './imagePdf';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import DOMPurify from 'dompurify';
@@ -177,59 +178,13 @@ async function generatePdfFromElements(elements: HTMLElement[], fitToPage: boole
   return new Uint8Array(pdf.output('arraybuffer'));
 }
 
-/**
- * Ultra-fast Image to PDF converter
- */
+/** Images keep their original raster data and aspect ratio on both upload and paste. */
 export interface ImageConversionOptions {preserveAspectRatio?: boolean}
 
-export async function convertImageToPdfBytes(file: File,options:ImageConversionOptions={}): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      const naturalW = img.naturalWidth || 800;
-      const naturalH = img.naturalHeight || 600;
-
-      const pdfW = A4_WIDTH_PT;
-      const imageHeight=(naturalH / naturalW)*pdfW;
-      const pdfH = options.preserveAspectRatio?imageHeight:Math.max(200,imageHeight);
-      const orientation = naturalW > naturalH ? 'l' : 'p';
-      
-      const doc = new jsPDF({ orientation, unit: 'pt', format: [pdfW, pdfH] });
-      const format = (file.type.includes('png') || file.name.toLowerCase().endsWith('.png')) ? 'PNG' : 'JPEG';
-
-      try {
-        doc.addImage(img, format, 0, 0, pdfW, pdfH, undefined, 'FAST');
-        resolve(new Uint8Array(doc.output('arraybuffer')));
-      } catch (e) {
-        // Canvas fallback
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = naturalW;
-          canvas.height = naturalH;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const fallbackDoc = new jsPDF({ orientation, unit: 'pt', format: [pdfW, pdfH] });
-            fallbackDoc.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
-            resolve(new Uint8Array(fallbackDoc.output('arraybuffer')));
-            return;
-          }
-        } catch (canvasErr) {
-          console.error('Canvas image fallback error:', canvasErr);
-        }
-        reject(e);
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Không thể đọc hoặc giải mã tập tin hình ảnh.'));
-    };
-    img.src = objectUrl;
-  });
+export async function convertImageToPdfBytes(file: File, _options: ImageConversionOptions = {}): Promise<Uint8Array> {
+  const document = await PDFDocument.create();
+  await appendImagePage(document, file, A4_WIDTH_PT);
+  return document.save();
 }
 
 /**
@@ -576,50 +531,8 @@ export async function convertMultipleFilesToSinglePdfBytes(
         const donorPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
         const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
         copiedPages.forEach((page) => mergedPdf.addPage(page));
-      } else if (isPng) {
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const pngImage = await mergedPdf.embedPng(arrayBuffer);
-          const { width, height } = pngImage.scale(1);
-          const page = mergedPdf.addPage([width, height]);
-          page.drawImage(pngImage, {
-            x: 0,
-            y: 0,
-            width,
-            height,
-          });
-        } catch {
-          // Fallback to canvas converter to avoid skipping or dropping image
-          const singleBytes = await convertImageToPdfBytes(file);
-          const donorPdf = await PDFDocument.load(singleBytes, { ignoreEncryption: true });
-          const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
-          copiedPages.forEach((page) => mergedPdf.addPage(page));
-        }
-      } else if (isJpg) {
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const jpgImage = await mergedPdf.embedJpg(arrayBuffer);
-          const { width, height } = jpgImage.scale(1);
-          const page = mergedPdf.addPage([width, height]);
-          page.drawImage(jpgImage, {
-            x: 0,
-            y: 0,
-            width,
-            height,
-          });
-        } catch {
-          // Fallback to canvas converter to avoid skipping or dropping image
-          const singleBytes = await convertImageToPdfBytes(file);
-          const donorPdf = await PDFDocument.load(singleBytes, { ignoreEncryption: true });
-          const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
-          copiedPages.forEach((page) => mergedPdf.addPage(page));
-        }
-      } else if (file.type.startsWith('image/') || ['webp', 'gif', 'bmp', 'svg'].some(ext => lowerName.endsWith('.' + ext))) {
-        // Other image formats via canvas converter
-        const singleBytes = await convertImageToPdfBytes(file);
-        const donorPdf = await PDFDocument.load(singleBytes, { ignoreEncryption: true });
-        const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
-        copiedPages.forEach((page) => mergedPdf.addPage(page));
+      } else if (isPng || isJpg || file.type.startsWith('image/') || ['webp', 'gif', 'bmp', 'svg'].some(ext => lowerName.endsWith('.' + ext))) {
+        await appendImagePage(mergedPdf, file);
       } else {
         const single = await convertAnyFileToPdfBytes(file);
         const donorPdf = await PDFDocument.load(single.bytes, { ignoreEncryption: true });
@@ -696,7 +609,7 @@ export async function convertAnyFileToPdfBytes(
     return { bytes, fileName, isConverted: true };
   }
 
-  if (type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext)) {
+  if (type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) {
     const bytes = await convertImageToPdfBytes(file,imageOptions);
     return { bytes, fileName, isConverted: true };
   }
