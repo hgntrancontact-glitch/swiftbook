@@ -267,6 +267,20 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const hasOriginal=!!(imagePixels && detailSource && sameRasterScale(detailSource.tile.density,imagePixels.width/size.width) &&
         scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0));
       const needsOriginal=!!original && !hasOriginal;
+      // The live PDF surface already maps immutable page pixels to PDF
+      // coordinates. Keep it through release if it covers this viewport at
+      // device resolution. A second filtered copy would change the glyph
+      // edges even though the source and the final zoom are identical.
+      if (!zooming && !imagePixels && nativeSourceOnSurface && detailSource &&
+          detailSource.layoutKey === layoutKey && detailSource.tile.density <= requiredDensity * 3 &&
+          scaledDetailCovers(detailSource.tile, detailSource.scale, liveScale, visible, requiredDensity)) {
+        owned = true;
+        detailRasterOwnership.claim(page, owner, liveScale, view.dataset.zoomEpoch);
+        presented = {tile: nativeDetailPresentation(detailSource, liveScale), scale: liveScale, final: true};
+        settlePixelGrid = false;
+        if (rendering) cancelCurrent();
+        return;
+      }
       // A screen-sized resting buffer has already been filtered. Start each
       // pinch from the retained PDF/image source, then reuse those pixels for
       // subsequent ticks instead of magnifying the reduced display buffer.
@@ -360,7 +374,12 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         return;
       }
       const final=!zooming;
-      let target=oversampleDetail(tile),targetLayoutKey=layoutKey;
+      // A page entering the continuous view competes with the next page.
+      // Paint new pixels at the display's DPR first. Speculative zoom
+      // headroom costs 2.25x the pixels at a time when the reader is scrolling.
+      const firstScrollPaint = final && !detailSource && !!page.closest('[data-continuous-page]');
+      const targetForView = (crop: DetailTile) => firstScrollPaint ? crop : oversampleDetail(crop);
+      let target=targetForView(tile),targetLayoutKey=layoutKey;
       const epoch=view.dataset.zoomEpoch,own=++generation;
       rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch};
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null,progressFrame=0;
@@ -385,7 +404,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           }
           // Work waiting for a slot has not drawn anything yet. Retarget it in
           // place instead of cancelling and rejoining the queue after a resize.
-          if(final) {target=oversampleDetail(queued.tile);targetLayoutKey=queued.layoutKey;runningTarget!.tile=target;}
+          if(final) {target=targetForView(queued.tile);targetLayoutKey=queued.layoutKey;runningTarget!.tile=target;}
           else {
             target=nativeDetailPresentation({tile:queued.zooming?oversampleDetail(queued.tile):queued.tile,scale:queued.liveScale,final:false},liveScale);
             runningTarget!.tile=target;
@@ -435,10 +454,12 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           detailSource={canvas,tile:target,scale:liveScale,final,layoutKey:targetLayoutKey};retained=true;
           // A crop can still contain useful visible text after a large scroll.
           // Show it immediately, even if another crop must fill the new edge.
-          const previous=front,sample=latest.zooming?{tile:nativeDetailPresentation(detailSource,latest.liveScale),crop:{x:0,y:0,width:canvas.width,height:canvas.height}}:
+          const native = latest.zooming || (firstScrollPaint && !imagePixels &&
+            sameRasterScale(liveScale,latest.liveScale) && detailPixelAligned(target,latest.pageRect.left,latest.pageRect.top,liveScale));
+          const previous=front,sample=native?{tile:nativeDetailPresentation(detailSource,latest.liveScale),crop:{x:0,y:0,width:canvas.width,height:canvas.height}}:
             settledDetailSample(canvas,detailSource,latest.tile,latest.liveScale,latest.pageRect.left,latest.pageRect.top),display=sample.tile;
-          front=present(canvas,sample.crop,display,latest.liveScale,latest.zooming);
-          nativeSourceOnSurface=latest.zooming;
+          front=present(canvas,sample.crop,display,latest.liveScale,native);
+          nativeSourceOnSurface=native;
           if(previousSource)previousSource.canvas.width=previousSource.canvas.height=1;
           if(previous>=0 && previous!==front)surfaces[previous].width=surfaces[previous].height=1;
           presented={tile:display,scale:latest.liveScale,final:!latest.zooming && !needsFinalDetailRender(detailSource,latest.liveScale,latest.visible,latest.requiredDensity,false)};
@@ -1304,8 +1325,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
           width: `${effectiveWidth}px`,
           height: `${effectiveHeight}px`,
           '--pdf-layout-scale': scale,
-          transform: 'var(--pdf-live-transform, none)',
-          transformOrigin: '0 0',
+          zoom: 'var(--pdf-live-zoom, 1)',
         } as React.CSSProperties}
       >
         {/* Loading Skeleton only on very first load before initial render */}

@@ -51,11 +51,12 @@ export function loadSelectionLines(pdfDoc: any, pageNumber: number): Promise<Sel
     host.setAttribute('aria-hidden', 'true');
     host.inert = true;
     host.style.cssText = 'position:fixed;left:0;top:0;right:auto;bottom:auto;visibility:hidden;pointer-events:none;line-height:1;';
-    host.style.setProperty('--scale-factor', String(measureViewport.scale));
+    host.style.setProperty('--total-scale-factor', String(measureViewport.scale * measureViewport.userUnit));
     document.body.append(host);
-    const divs: HTMLElement[] = [];
     try {
-      await pdfjsLib.renderTextLayer({ textContentSource: content, container: host, viewport: measureViewport, textDivs: divs }).promise;
+      const layer = new pdfjsLib.TextLayer({ textContentSource: content, container: host, viewport: measureViewport });
+      await layer.render();
+      const divs = layer.textDivs;
       // PDF.js rounds its layer dimensions on browsers supporting CSS round().
       // Our page layout is fractional; undo only that layer-size rounding before
       // reading percentage-positioned spans, otherwise the measuring scale leaks

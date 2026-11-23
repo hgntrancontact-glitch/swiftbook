@@ -18,6 +18,9 @@ export default defineConfig(({ command }) => {
         this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify(buildInfo, null, 2) });
       },
     }, react(), tailwindcss(), viteStaticCopy({ targets: [
+      { src: 'node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs', dest: 'pdf-assets', rename: { stripBase: true } },
+      { src: 'node_modules/pdfjs-dist/wasm/*', dest: 'pdf-assets/wasm', rename: { stripBase: true } },
+      { src: 'node_modules/pdfjs-dist/iccs/*', dest: 'pdf-assets/iccs', rename: { stripBase: true } },
       { src: 'node_modules/pdfjs-dist/cmaps/*.bcmap', dest: 'pdf-assets/cmaps', rename: { stripBase: true } },
       { src: 'node_modules/pdfjs-dist/standard_fonts/*', dest: 'pdf-assets/standard_fonts', rename: { stripBase: true } },
       { src: 'node_modules/tesseract.js/dist/worker.min.js', dest: 'ocr', rename: { stripBase: true } },

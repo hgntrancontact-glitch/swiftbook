@@ -62,6 +62,37 @@ test('PDF pinch starts from retained native pixels rather than a reduced resting
 });
 
 
+test('release keeps the displayed native PDF when its pixels cover the final view', async () => {
+  const h = await environment();
+  const source = document.createElement('canvas');
+  source.width = 1785;
+  source.height = 2526;
+  const pdfDoc = {getPage() { throw new Error('The native source already covers this zoom'); }};
+  const key = 'release-native';
+  try {
+    retainPageDetail(key + '_1', pdfDoc, {
+      canvas: source, scale: 1, final: true, layoutKey: '1200:900:2',
+      tile: {x: 0, y: 0, width: 595, height: 842, density: 3, pixelsWide: source.width, pixelsHigh: source.height},
+    });
+    await act(async () => h.root.render(tree(pdfDoc, key, true)));
+    h.setScale(1.4);
+    const view = document.querySelector<HTMLElement>('.pdf-viewport-container')!;
+    view.dispatchEvent(new h.dom.window.Event('pdf-zoom-frame'));
+    await h.flush();
+    const copies = h.copies.length;
+    delete view.dataset.zoomGesture;
+    view.querySelector<HTMLElement>('[data-page-container]')!.style.setProperty('--pdf-layout-scale', '1.4');
+    view.dispatchEvent(new h.dom.window.Event('pdf-zoom-end'));
+    await h.flush();
+    assert.ok(source.isConnected);
+    assert.equal(source.style.visibility, 'visible');
+    assert.equal(h.copies.length, copies);
+  } finally {
+    await h.close();
+    clearDocCanvasCache(key);
+  }
+});
+
 test('a resized page preview cannot permanently satisfy final PDF sharpness just because it has enough pixels',async()=>{
   const h=await environment();let renders=0,resolve=()=>{};
   const pdfDoc={getPage:async()=>({getViewport:({scale}:{scale:number})=>({width:595*scale,height:842*scale}),

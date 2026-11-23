@@ -98,6 +98,15 @@
   cursor: default;
 }
 
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-text-layer span[role="presentation"] {
+  font-size: calc(var(--total-scale-factor) * var(--min-font-size, 1) * var(--font-height));
+  transform: rotate(var(--rotate, 0deg)) scaleX(var(--scale-x, 1)) scale(calc(1 / var(--min-font-size, 1)));
+}
+
 .pdf-text-layer span {
   color: transparent;
   position: absolute;
