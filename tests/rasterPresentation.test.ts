@@ -50,3 +50,9 @@ test('small final zoom changes are not deduplicated against an obsolete render',
   const doc={},target={doc,page:2,scale:1,epoch:'8'};
   assert.equal(canPresentRaster(target,{...target,scale:1.0005},false),false);
 });
+
+test('a raster completed under another browser pixel density cannot replace the current surface',()=>{
+  const doc={},completed={doc,page:1,scale:1,epoch:'1',dpr:1};
+  assert.equal(canPresentRaster(completed,{...completed,dpr:2},false),false);
+  assert.equal(canPresentRaster(completed,{...completed,dpr:1},false),true);
+});

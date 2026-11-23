@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import React,{act} from 'react';
 import {JSDOM} from 'jsdom';
 import {PDFDetailTile,clearDocCanvasCache} from '../src/components/PDFPageView';
+import {getPageRaster} from '../src/utils/pdfRasterCache';
 import {retainPageDetail} from '../src/utils/pdfDetailCache';
 
 async function environment() {
@@ -21,8 +22,8 @@ async function environment() {
     close:async()=>{await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor] of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete (globalThis as any)[key];}};
 }
 const pageSize={width:595,height:842};
-const tree=(pdfDoc:any,key:string,zooming:boolean,fallback=false,preview=false)=>React.createElement('div',{className:'pdf-viewport-container','data-zoom-gesture':zooming?'true':undefined,'data-zoom-epoch':'1'},
-  React.createElement('div',{'data-page-container':true,style:{'--pdf-layout-scale':1} as any},fallback && React.createElement('canvas',{'data-raster-density':preview?3:1,'data-raster-preview':preview?'true':undefined,width:preview?1785:595,height:preview?2526:842}),
+const tree=(pdfDoc:any,key:string,zooming:boolean,fallback=false,preview=false,scale=1)=>React.createElement('div',{className:'pdf-viewport-container','data-zoom-gesture':zooming?'true':undefined,'data-zoom-epoch':'1'},
+  React.createElement('div',{'data-page-container':true,style:{'--pdf-layout-scale':scale} as any},fallback && React.createElement('canvas',{'data-raster-density':preview?3:1,'data-raster-preview':preview?'true':undefined,width:preview?1785:595,height:preview?2526:842}),
     React.createElement(PDFDetailTile,{pdfDoc,pageNumber:1,size:pageSize,near:true,cacheKey:key+'_1'})));
 
 test('a sharper PDF raster arriving during pinch replaces a covered blurry surface before release',async()=>{
@@ -93,4 +94,22 @@ test('releasing a long pinch preserves useful in-flight pixels even when a later
     await act(async()=>jobs[1].resolve());await h.flush();
     assert.equal(jobs.length,2);
   } finally {await h.close();clearDocCanvasCache('long-pinch');}
+});
+
+test('a complete native page survives a later crop and restores a smaller mode without replaying PDF work',async()=>{
+  const h=await environment(),saved=Object.getOwnPropertyDescriptor(globalThis,'createImageBitmap');let renders=0;
+  Object.defineProperty(globalThis,'createImageBitmap',{configurable:true,value:async(source:HTMLCanvasElement)=>({width:source.width,height:source.height,close(){}})});
+  const pdfDoc={getPage:async()=>({getViewport:({scale}:{scale:number})=>({width:595*scale,height:842*scale}),render:()=>{renders++;return {promise:Promise.resolve(),cancel(){}};}})};
+  try {
+    await act(async()=>h.root.render(tree(pdfDoc,'full-return',false)));await h.flush();
+    assert.ok(getPageRaster('full-return_1',pdfDoc)?.density!>=3);
+    const view=document.querySelector<HTMLElement>('.pdf-viewport-container')!;
+    h.setScale(3);view.querySelector<HTMLElement>('[data-page-container]')!.style.setProperty('--pdf-layout-scale','3');
+    await act(async()=>view.dispatchEvent(new h.dom.window.Event('pdf-zoom-end')));await h.flush();
+    const count=renders;assert.ok(count>=2);
+    await act(async()=>h.root.render(null));h.setScale(.5);
+    await act(async()=>h.root.render(tree(pdfDoc,'full-return',false,false,false,.5)));await h.flush();
+    assert.equal(renders,count,'The whole-page cache covers areas outside the last zoom crop');
+    assert.ok([...document.querySelectorAll<HTMLCanvasElement>('[data-pdf-detail-tile]')].some(c=>c.style.visibility==='visible' && c.width>1));
+  } finally {await h.close();clearDocCanvasCache('full-return');if(saved)Object.defineProperty(globalThis,'createImageBitmap',saved);else delete (globalThis as any).createImageBitmap;}
 });
