@@ -72,3 +72,25 @@ test('a resized page preview cannot permanently satisfy final PDF sharpness just
     assert.equal(renders,1,'The completed native result must not create a refinement loop');
   } finally {await h.close();clearDocCanvasCache('preview-quality');}
 });
+
+test('releasing a long pinch preserves useful in-flight pixels even when a later refinement needs more resolution',async()=>{
+  const h=await environment();let cancelled=0;
+  const jobs:{resolve:()=>void}[]=[];
+  const pdfDoc={getPage:async()=>({getViewport:({scale}:{scale:number})=>({width:595*scale,height:842*scale}),
+    render:()=>{let resolve=()=>{};const promise=new Promise<void>(done=>resolve=done);jobs.push({resolve});return {promise,cancel(){cancelled++;resolve();}};}})};
+  try {
+    await act(async()=>h.root.render(tree(pdfDoc,'long-pinch',true,true)));await h.flush();
+    const view=document.querySelector<HTMLElement>('.pdf-viewport-container')!;
+    h.setScale(2.1);await act(async()=>view.dispatchEvent(new h.dom.window.Event('pdf-zoom-frame')));await h.flush();
+    delete view.dataset.zoomGesture;
+    view.querySelector<HTMLElement>('[data-page-container]')!.style.setProperty('--pdf-layout-scale','2.1');
+    await act(async()=>view.dispatchEvent(new h.dom.window.Event('pdf-zoom-end')));await h.flush();
+    assert.equal(cancelled,0,'Release keeps the useful pending raster');
+    assert.equal(jobs.length,1);
+    const before=h.copies.length;await act(async()=>jobs[0].resolve());await h.flush();
+    assert.ok(h.copies.length>before,'Completed pixels are displayed before higher-resolution refinement');
+    assert.equal(jobs.length,2,'Only the still-missing final density starts another render');
+    await act(async()=>jobs[1].resolve());await h.flush();
+    assert.equal(jobs.length,2);
+  } finally {await h.close();clearDocCanvasCache('long-pinch');}
+});

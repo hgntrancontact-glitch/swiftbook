@@ -16,7 +16,7 @@ import {
   DrawingStroke,
 } from '../types';
 import { BookSpreadView } from './BookSpreadView';
-import { PDFPageView, pageDimensionCache } from './PDFPageView';
+import { PDFPageView, pageDimensionCache, prepareAdjacentPages } from './PDFPageView';
 import { fitPageScale, viewportPages, boundedPanShift, settledPanShift, zoomPanShift, MIN_ZOOM, MAX_ZOOM, type PageSize } from '../utils/pdfViewport';
 import { ContinuousView } from './ContinuousView';
 import { ChevronLeft, ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
@@ -530,6 +530,17 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       visibilityObserver.disconnect();
     };
   }, []);
+
+  useEffect(()=>{
+    if(!isActive || !isInViewport || doc.viewMode==='continuous')return;
+    const visible=viewportPages(doc.viewMode,doc.currentPage,doc.totalPages);
+    const next=Math.max(...visible)+1,previous=Math.min(...visible)-1;
+    const candidates=doc.viewMode==='double'?[previous,next,next+1]:[previous,next];
+    const numbers=candidates.filter(number=>number>=1 && number<=doc.totalPages);
+    const cancel=prepareAdjacentPages(doc.pdfDoc,doc.fileId,numbers,actualScale);
+    containerRef.current?.addEventListener('pdf-zoom-start',cancel);
+    return()=>{containerRef.current?.removeEventListener('pdf-zoom-start',cancel);cancel();};
+  },[doc.pdfDoc,doc.fileId,doc.currentPage,doc.viewMode,actualScale,isActive,isInViewport]);
 
   const handleActivateThisColumn = () => {
     onActivate(doc.id);

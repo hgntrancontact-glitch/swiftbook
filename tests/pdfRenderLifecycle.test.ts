@@ -38,7 +38,7 @@ test('a new epoch at the same zoom replaces pending work and cannot leave an ini
   try {
     await act(async()=>root.render(React.createElement('div',{'data-workspace-doc':'lifecycle','data-active':'true'},
       React.createElement('div',{className:'pdf-viewport-container','data-zoom-epoch':'0'},React.createElement(PDFPageView,props)))));await flush();
-    assert.deepEqual(scales,[1]);assert.equal(densities[0],2); // native crop at retina density; no blocking full-page bootstrap
+    assert.deepEqual(scales,[1]);assert.equal(densities[0],3); // native crop at retina density; no blocking full-page bootstrap
     const view=dom.window.document.querySelector<HTMLElement>('.pdf-viewport-container')!;
     await act(async()=>{firstTask.onContinue(()=>{});firstTask.onContinue(()=>{});});await flush();
     assert.ok(view.textContent!.includes('Đang tải trang')); // white chunks cannot dismiss the loading state

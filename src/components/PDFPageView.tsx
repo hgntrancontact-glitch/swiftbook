@@ -135,6 +135,52 @@ export function clearDocCanvasCache(docId: string) {
   }
 }
 
+// Prepare adjacent spreads in a preemptible slot while the current page is
+// idle. Their first paint can use actual PDF pixels across view modes.
+export function prepareAdjacentPages(pdfDoc:any,docId:string,numbers:number[],scale:number) {
+  let cancelled=false;
+  let task:any=null;
+  let slot:ReturnType<typeof requestPdfRenderSlot>|null=null;
+  const stop=()=>{cancelled=true;slot?.cancel();task?.cancel();};
+  void (async()=>{
+    for(const number of numbers) {
+      if(cancelled)return;
+      let canvas:HTMLCanvasElement|null=null,release:(()=>void)|null=null;
+      try {
+        const page=await pdfDoc.getPage(number);
+        if(cancelled)return;
+        const size=page.getViewport({scale:1});
+        const density=Math.min(rasterDensity(size,scale),Math.sqrt(4_000_000/(size.width*size.height)));
+        const key=docId+'_'+number;
+        const cached=getPageRaster(key,pdfDoc);
+        if(cached && cached.density>=density-.002)continue;
+        slot=requestPdfRenderSlot(10,stop);
+        release=await slot.promise;
+        if(!release || cancelled)return;
+        const viewport=page.getViewport({scale:density});
+        canvas=document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round(viewport.width));
+        canvas.height=Math.max(1,Math.round(viewport.height));
+        const context=canvas.getContext('2d',{alpha:false});
+        if(!context)return;
+        context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+        task=page.render({canvasContext:context,viewport,background:'#fff',transform:canvasViewportTransform(viewport,canvas)});
+        await task.promise;
+        if(cancelled)return;
+        pageDimensionCache.set(key,{width:size.width,height:size.height});
+        rememberPagePreview(key,pdfDoc,canvas,density);
+        rememberPageRaster(key,pdfDoc,canvas,density,size,false);
+      } catch(error:any) {
+        if(!cancelled && error?.name!=='RenderingCancelledException')console.warn('Adjacent page preparation failed',error);
+      } finally {
+        if(canvas)canvas.width=canvas.height=1;
+        release?.();slot=null;task=null;
+      }
+    }
+  })();
+  return stop;
+}
+
 type RenderSample = { page: number; doc: string; scale: number; queueMs: number; renderMs: number; outcome: string; active: number };
 const renderSamples: RenderSample[] = [];
 const detailSamples:{page:number;scale:number;sampleMs:number;kind:'sample'|'native'|'progress';zooming:boolean}[]=[];
@@ -310,13 +356,11 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         // Publish useful pixels, then refine at the new origin. Cancelling on
         // every fractional movement starves heavy pages indefinitely.
         if(runningTarget && (runningTarget.epoch!==view.dataset.zoomEpoch ||
-          (!zooming && (!runningTarget.final || !sameRasterScale(runningTarget.scale,liveScale)) &&
-            !scaledDetailCovers(runningTarget.tile,runningTarget.scale,liveScale,visible,requiredDensity)) ||
           !detailIntersects(runningTarget.tile,runningTarget.scale,liveScale,visible))) cancelCurrent();
         return;
       }
       const final=!zooming;
-      let target=final?tile:oversampleDetail(tile),targetLayoutKey=layoutKey;
+      let target=oversampleDetail(tile),targetLayoutKey=layoutKey;
       const epoch=view.dataset.zoomEpoch,own=++generation;
       rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch};
       let cancelled=false,task:any=null,handle:ReturnType<typeof requestPdfRenderSlot>|null=null,progressFrame=0;
@@ -341,7 +385,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           }
           // Work waiting for a slot has not drawn anything yet. Retarget it in
           // place instead of cancelling and rejoining the queue after a resize.
-          if(final) {target=queued.tile;targetLayoutKey=queued.layoutKey;runningTarget!.tile=target;}
+          if(final) {target=oversampleDetail(queued.tile);targetLayoutKey=queued.layoutKey;runningTarget!.tile=target;}
           else {
             target=nativeDetailPresentation({tile:queued.zooming?oversampleDetail(queued.tile):queued.tile,scale:queued.liveScale,final:false},liveScale);
             runningTarget!.tile=target;
@@ -383,12 +427,10 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           await task.promise;
           if(stale()) return;
           const latest=input();
-          if(!latest.tile || !detailIntersects(target,liveScale,latest.liveScale,latest.visible) ||
-            (final && latest.zooming) || (!final && !latest.zooming &&
-              !scaledDetailCovers(target,liveScale,latest.liveScale,latest.visible,latest.requiredDensity))) {refreshAfterRender=true;return;}
+          if(!latest.tile || !detailIntersects(target,liveScale,latest.liveScale,latest.visible)) {refreshAfterRender=true;return;}
           // Keep the completed PDF render as the canonical source. Only the
           // display buffer is resampled; it never becomes a future source.
-          if(detailSource) detailSource.canvas.width=detailSource.canvas.height=1;
+          const previousSource=detailSource;
           if(previewSource) {previewSource.canvas.width=previewSource.canvas.height=1;previewSource=null;}
           detailSource={canvas,tile:target,scale:liveScale,final,layoutKey:targetLayoutKey};retained=true;
           // A crop can still contain useful visible text after a large scroll.
@@ -397,6 +439,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
             settledDetailSample(canvas,detailSource,latest.tile,latest.liveScale,latest.pageRect.left,latest.pageRect.top),display=sample.tile;
           front=present(canvas,sample.crop,display,latest.liveScale,latest.zooming);
           nativeSourceOnSurface=latest.zooming;
+          if(previousSource)previousSource.canvas.width=previousSource.canvas.height=1;
           if(previous>=0 && previous!==front)surfaces[previous].width=surfaces[previous].height=1;
           presented={tile:display,scale:latest.liveScale,final:!latest.zooming && !needsFinalDetailRender(detailSource,latest.liveScale,latest.visible,latest.requiredDensity,false)};
           if(presented.final)settlePixelGrid=false;
@@ -871,7 +914,8 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
         // First paint uses the actual device resolution. Preparing a 2×
         // source here multiplied image decoding/compositing before any content
         // could appear; live detail crops already own gesture headroom.
-        const density = backgroundPreview || renderPriorityRef.current >= 10 ? Math.min(targetDensity,1200/Math.max(size.width,size.height)) : targetDensity;
+        const density = backgroundPreview ? Math.min(targetDensity,1200/Math.max(size.width,size.height))
+          : renderPriorityRef.current >= 10 ? Math.min(targetDensity,Math.sqrt(4_000_000/(size.width*size.height))) : targetDensity;
         const viewport = page.getViewport({ scale: density });
         back = document.createElement('canvas');
         back.width = Math.max(1, Math.round(viewport.width));

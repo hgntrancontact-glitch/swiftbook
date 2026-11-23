@@ -38,7 +38,7 @@ test('slow PDF work survives fractional scrolling and resize; the last zoom and 
 
     // New zooms invalidate the old epoch, but scroll/resize within that zoom
     // must retain useful work and the previous visible pixels.
-    scale=1.2;page.style.setProperty('--pdf-layout-scale',String(scale));view.dataset.zoomEpoch='1';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
+    scale=1.6;page.style.setProperty('--pdf-layout-scale',String(scale));view.dataset.zoomEpoch='1';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
     const slow=jobs.at(-1)!;left+=.125;width-=100;dom.window.dispatchEvent(new dom.window.Event('resize'));await flush();
     assert.equal(slow.cancelled,false);assert.ok(shown());
     const beforeReady=ready;slow.resolve();await flush();assert.ok(ready>beforeReady,'useful new pixels are shown before any phase refinement');assert.ok(shown());
@@ -56,24 +56,24 @@ test('slow PDF work survives fractional scrolling and resize; the last zoom and 
 
     // A remount at another zoom resolves retained original pixels immediately,
     // and still requires PDF work when the requested density is higher.
-    scale=.7;await render('mode-change');assert.ok(shown());assert.equal(jobs.length,panCount);
-    page.style.setProperty('--pdf-layout-scale','1.5');scale=1.5;view.dataset.zoomEpoch='2';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
+    scale=1.6;await render('mode-change');assert.ok(shown());assert.equal(jobs.length,panCount);
+    page.style.setProperty('--pdf-layout-scale','2.6');scale=2.6;view.dataset.zoomEpoch='2';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
     const obsolete=jobs.at(-1)!;
-    scale=1.6;page.style.setProperty('--pdf-layout-scale',String(scale));view.dataset.zoomEpoch='3';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
-    assert.equal(obsolete.cancelled,true);assert.equal(jobs.at(-1)!.scale,1.6);obsolete.resolve();jobs.at(-1)!.resolve();await flush();assert.ok(shown());
+    scale=2.8;page.style.setProperty('--pdf-layout-scale',String(scale));view.dataset.zoomEpoch='3';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
+    assert.equal(obsolete.cancelled,true);assert.equal(jobs.at(-1)!.scale,2.8);obsolete.resolve();jobs.at(-1)!.resolve();await flush();assert.ok(shown());
 
     // A slow gesture preview remains useful as pinch-in raises the desired
     // density. Release promotes sufficient original pixels instead of restarting.
     view.dataset.zoomEpoch='4';view.dataset.zoomGesture='true';view.dispatchEvent(new dom.window.Event('pdf-zoom-start'));
-    scale=1.8;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));await flush();
+    scale=4.5;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));await flush();
     const preview=jobs.at(-1)!,previewCount=jobs.length;
-    for(const next of [1.85,1.9,1.95,2.05]){scale=next;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));await flush();assert.ok(shown());}
+    for(const next of [4.55,4.6,4.7,5.05]){scale=next;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));await flush();assert.ok(shown());}
     assert.equal(preview.cancelled,false);assert.equal(jobs.length,previewCount);
     delete view.dataset.zoomGesture;page.style.setProperty('--pdf-layout-scale',String(scale));view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
     assert.equal(preview.cancelled,false);assert.equal(jobs.length,previewCount);
     jobs.at(-1)!.resolve();await flush();assert.ok(shown());
 
-    scale=3;page.style.setProperty('--pdf-layout-scale',String(scale));view.dataset.zoomEpoch='5';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
+    scale=7;page.style.setProperty('--pdf-layout-scale',String(scale));view.dataset.zoomEpoch='5';view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
     const edge=jobs.at(-1)!;top=-250;view.dispatchEvent(new dom.window.Event('scroll'));await flush();
     assert.equal(edge.cancelled,false);
     const partialReady=ready;edge.resolve();await flush();assert.ok(ready>partialReady);assert.ok(shown());
@@ -82,8 +82,8 @@ test('slow PDF work survives fractional scrolling and resize; the last zoom and 
     // Releasing back at the already sharp zoom must discard a late preview,
     // even when no intermediate frame was sent for the reversed position.
     view.dataset.zoomEpoch='6';view.dataset.zoomGesture='true';view.dispatchEvent(new dom.window.Event('pdf-zoom-start'));
-    scale=3.5;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));await flush();const reversed=jobs.at(-1)!,reversedCount=jobs.length;
-    scale=3;delete view.dataset.zoomGesture;view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
+    scale=9;view.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));await flush();const reversed=jobs.at(-1)!,reversedCount=jobs.length;
+    scale=7;delete view.dataset.zoomGesture;view.dispatchEvent(new dom.window.Event('pdf-zoom-end'));await flush();
     assert.equal(reversed.cancelled,true);assert.equal(jobs.length,reversedCount);assert.ok(shown());
   } finally {
     await act(async()=>root.unmount());clearDocCanvasCache('stability');dom.window.close();
