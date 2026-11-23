@@ -5,6 +5,7 @@ import {JSDOM} from 'jsdom';
 import {PDFDetailTile,clearDocCanvasCache} from '../src/components/PDFPageView';
 import {getPageRaster} from '../src/utils/pdfRasterCache';
 import {retainPageDetail} from '../src/utils/pdfDetailCache';
+import {IMAGE_PIXELS_METADATA} from '../src/utils/imagePdfResolution';
 
 async function environment() {
   const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost'}),saved=new Map<string,PropertyDescriptor|undefined>(),frames=new Map<number,FrameRequestCallback>();
@@ -62,12 +63,19 @@ test('PDF pinch starts from retained native pixels rather than a reduced resting
 });
 
 
-test('release keeps the displayed native PDF when its pixels cover the final view', async () => {
+async function checkNativeRelease(importedImage: boolean) {
   const h = await environment();
   const source = document.createElement('canvas');
   source.width = 1785;
   source.height = 2526;
-  const pdfDoc = {getPage() { throw new Error('The native source already covers this zoom'); }};
+  const pdfDoc = {
+    getMetadata: async () => ({
+      info: {Custom: importedImage ? {
+        [IMAGE_PIXELS_METADATA]: JSON.stringify({1: {width: source.width, height: source.height}}),
+      } : {}},
+    }),
+    getPage() { throw new Error('The native source already covers this zoom'); },
+  };
   const key = 'release-native';
   try {
     retainPageDetail(key + '_1', pdfDoc, {
@@ -91,7 +99,10 @@ test('release keeps the displayed native PDF when its pixels cover the final vie
     await h.close();
     clearDocCanvasCache(key);
   }
-});
+}
+
+test('release keeps the displayed PDF raster when its pixels cover the final view', () => checkNativeRelease(false));
+test('release keeps an imported image at its original pixel density', () => checkNativeRelease(true));
 
 test('a resized page preview cannot permanently satisfy final PDF sharpness just because it has enough pixels',async()=>{
   const h=await environment();let renders=0,resolve=()=>{};

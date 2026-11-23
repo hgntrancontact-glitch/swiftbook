@@ -58,7 +58,13 @@ test('image renderer retains original pixels through small zoom, pinch release, 
       page.style.setProperty('--pdf-layout-scale',String(scale));delete view.dataset.zoomGesture;
       await act(async()=>view.dispatchEvent(new dom.window.Event('pdf-zoom-end')));await flush();
       const displayed=[...page.querySelectorAll<HTMLCanvasElement>('canvas')].find(c=>c.style.visibility==='visible')!;
-      assert.ok(Math.abs(displayed.width/(parseFloat(displayed.style.width.slice(5))*scale)-2)<1e-7);
+      const pageWidth=parseFloat(displayed.style.width.slice(5));
+      if (displayed.width===1600 && displayed.height===1000) {
+        assert.ok(Math.abs(pageWidth-size.width)<1e-7,'Native pixels keep their original page geometry');
+        assert.ok(Math.abs(parseFloat(displayed.style.height.slice(5))-size.height)<1e-7);
+      } else {
+        assert.ok(Math.abs(displayed.width/(pageWidth*scale)-2)<1e-7,'A sampled display buffer must match the device DPR');
+      }
     }
     viewWidth=600;await act(async()=>dom.window.dispatchEvent(new dom.window.Event('resize')));await flush();
     await act(async()=>root.render(tree('remounted')));await flush();

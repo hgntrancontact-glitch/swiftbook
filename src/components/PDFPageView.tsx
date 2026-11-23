@@ -267,11 +267,11 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const hasOriginal=!!(imagePixels && detailSource && sameRasterScale(detailSource.tile.density,imagePixels.width/size.width) &&
         scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0));
       const needsOriginal=!!original && !hasOriginal;
-      // The live PDF surface already maps immutable page pixels to PDF
+      // The live surface already maps immutable page pixels to document
       // coordinates. Keep it through release if it covers this viewport at
       // device resolution. A second filtered copy would change the glyph
       // edges even though the source and the final zoom are identical.
-      if (!zooming && !imagePixels && nativeSourceOnSurface && detailSource &&
+      if (!zooming && (!imagePixels || hasOriginal) && nativeSourceOnSurface && detailSource &&
           detailSource.layoutKey === layoutKey && detailSource.tile.density <= requiredDensity * 3 &&
           scaledDetailCovers(detailSource.tile, detailSource.scale, liveScale, visible, requiredDensity)) {
         owned = true;
