@@ -43,7 +43,7 @@ test('a smaller browser window repaints the final PDF at its new pixel origin an
     await act(async()=>observers.forEach(fn=>fn()));await flush();native();
     dpr=1.25;await act(async()=>dom.window.dispatchEvent(new dom.window.Event('resize')));await flush();native();
     dpr=.8;await act(async()=>dom.window.dispatchEvent(new dom.window.Event('resize')));await flush();native();
-    assert.equal(renders.length,before); // zoom-out and smaller windows reuse sufficient source density
+    assert.deepEqual(renders.slice(before),[scale,scale,scale]); // zoom plus two distinct device grids
     const settled=renders.length;top-=.125;
     await act(async()=>dom.window.document.querySelector('.pdf-viewport-container')!.dispatchEvent(new dom.window.Event('scroll')));await flush();
     assert.equal(renders.length,settled);

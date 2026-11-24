@@ -68,13 +68,23 @@ async function checkNativeRelease(importedImage: boolean) {
   const source = document.createElement('canvas');
   source.width = 1785;
   source.height = 2526;
+  let renders = 0;
+  let finish = () => {};
   const pdfDoc = {
     getMetadata: async () => ({
       info: {Custom: importedImage ? {
         [IMAGE_PIXELS_METADATA]: JSON.stringify({1: {width: source.width, height: source.height}}),
       } : {}},
     }),
-    getPage() { throw new Error('The native source already covers this zoom'); },
+    async getPage() {
+      return {
+        getViewport: ({scale}: {scale: number}) => ({width: 595 * scale, height: 842 * scale}),
+        render: () => {
+          renders++;
+          return {promise: new Promise<void>(resolve => { finish = resolve; }), cancel: () => finish()};
+        },
+      };
+    },
   };
   const key = 'release-native';
   try {
@@ -95,13 +105,23 @@ async function checkNativeRelease(importedImage: boolean) {
     assert.ok(source.isConnected);
     assert.equal(source.style.visibility, 'visible');
     assert.equal(h.copies.length, copies);
+    assert.equal(renders, importedImage ? 0 : 1);
+    if (!importedImage) {
+      await act(async () => finish());
+      await h.flush();
+      assert.equal(source.isConnected, false);
+      const visible = [...view.querySelectorAll<HTMLCanvasElement>('[data-pdf-detail-tile]')]
+        .filter(canvas => canvas.style.visibility === 'visible' && canvas.style.display !== 'none');
+      assert.equal(visible.length, 1);
+      assert.equal(renders, 1);
+    }
   } finally {
     await h.close();
     clearDocCanvasCache(key);
   }
 }
 
-test('release keeps the displayed PDF raster when its pixels cover the final view', () => checkNativeRelease(false));
+test('release keeps displayed PDF pixels until the render at the committed scale is ready', () => checkNativeRelease(false));
 test('release keeps an imported image at its original pixel density', () => checkNativeRelease(true));
 
 test('a resized page preview cannot permanently satisfy final PDF sharpness just because it has enough pixels',async()=>{

@@ -1240,11 +1240,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           );
         })()}
 
-      {/* 2. Active Drawing Layer (Lớp trên): HTML5 Canvas for real-time smooth raster rendering */}
+      {/* Pointer hit surface. Live ink is drawn by the SVG below. */}
       <canvas
         ref={canvasRef}
-        width={width}
-        height={height}
+        width={1}
+        height={1}
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
         className={`absolute inset-0 z-30 ${

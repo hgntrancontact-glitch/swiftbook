@@ -191,23 +191,34 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     zoomPanOriginRef.current=null;
     if (wrapperRef.current) wrapperRef.current.style.translate = '';
   };
-  const panViewport = (dx: number, dy: number, settle = false, centerFitting = false, cursorZoom = false) => {
-    const container = containerRef.current, wrapper = wrapperRef.current;
-    if (!container || !wrapper) return;
-    const style = getComputedStyle(container), rect = container.getBoundingClientRect(), content = wrapper.getBoundingClientRect();
-    const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
-    const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
-    const sx = !settle && !cursorZoom && dx===0 ? 0 : cursorZoom ? zoomPanShift(content.left,content.width,rect.left+left,container.clientWidth-left-right) : settle ? settledPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, centerFitting, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined)
-      : boundedPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, dx, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined);
-    const sy = !settle && !cursorZoom && dy===0 ? 0 : cursorZoom ? zoomPanShift(content.top,content.height,rect.top+top,container.clientHeight-top-bottom) : settle ? settledPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, centerFitting, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined)
-      : boundedPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, dy, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined);
+  const applyPan = (wrapper:HTMLElement) => {
+    const dpr = window.devicePixelRatio || 1;
+    const x = Math.round(panRef.current.x * dpr) / dpr;
+    const y = Math.round(panRef.current.y * dpr) / dpr;
+    panRef.current = {x,y};
+    wrapper.style.translate = `${x}px ${y}px`;
+  };
+  const shiftViewport = (container:HTMLElement, wrapper:HTMLElement, sx:number, sy:number) => {
+    if (!sx && !sy && wrapper.style.translate) return;
     const oldX = container.scrollLeft, oldY = container.scrollTop;
     container.scrollLeft -= sx;
     container.scrollTop -= sy;
     panRef.current.x += container.scrollLeft-oldX+sx;
     panRef.current.y += container.scrollTop-oldY+sy;
-    wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
-    if(!cursorZoom) container.dispatchEvent(new Event('pdf-viewport-pan'));
+    applyPan(wrapper);
+  };
+  const panViewport = (dx: number, dy: number, settle = false, centerFitting = false) => {
+    const container = containerRef.current, wrapper = wrapperRef.current;
+    if (!container || !wrapper) return;
+    const style = getComputedStyle(container), rect = container.getBoundingClientRect(), content = wrapper.getBoundingClientRect();
+    const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
+    const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
+    const sx = !settle && dx===0 ? 0 : settle ? settledPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, centerFitting, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined)
+      : boundedPanShift(content.left, content.width, rect.left+left, container.clientWidth-left-right, dx, zoomPanOriginRef.current ? rect.left+left+zoomPanOriginRef.current.x : undefined);
+    const sy = !settle && dy===0 ? 0 : settle ? settledPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, centerFitting, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined)
+      : boundedPanShift(content.top, content.height, rect.top+top, container.clientHeight-top-bottom, dy, zoomPanOriginRef.current ? rect.top+top+zoomPanOriginRef.current.y : undefined);
+    shiftViewport(container,wrapper,sx,sy);
+    container.dispatchEvent(new Event('pdf-viewport-pan'));
   };
   const captureAnchor = (clientX: number, clientY: number): Anchor | null => {
     const container = containerRef.current;
@@ -255,7 +266,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     if (allowPan) {
       panRef.current.x += container.scrollLeft - oldX - dx;
       panRef.current.y += container.scrollTop - oldY - dy;
-      wrapper.style.translate = `${panRef.current.x}px ${panRef.current.y}px`;
+      applyPan(wrapper);
     }
   };
   const alignCurrentPage = () => {
@@ -345,6 +356,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
     let frame: number | null = null;
     let gestureAnchor: Anchor | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let previousWheelTime: number | null = null;
     const apply = () => {
       frame = null;
       // Reuse the page-local point while the pointer stays still. Hit testing
@@ -355,15 +367,25 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       const anchor = gestureAnchor;
       wrapperRef.current?.style.setProperty('--pdf-live-zoom', String(targetScale / startScale));
       wrapperRef.current?.style.setProperty('--pdf-label-zoom',String(pageLabelZoom(targetScale)));
-      if (anchor) restoreAnchor(anchor);
-      panViewport(0,0,true,true,true);
-      // Keep the original text target for subsequent pinch frames. The actual
-      // displayed pose is a separate anchor, used only for the layout commit.
-      // Replacing the target each frame loses it while the page still fits.
-      if(anchor) {
-        const rect=anchor.element.getBoundingClientRect();
-        visualAnchorRef.current={...anchor,x:(clientX-rect.left)/rect.width,y:(clientY-rect.top)/rect.height};
-      } else visualAnchorRef.current=null;
+      // Compute the cursor translation and its boundary correction from one
+      // layout. Moving the page twice forced a synchronous geometry readback.
+      const wrapper = wrapperRef.current;
+      if (wrapper) {
+        const page = anchor?.element.getBoundingClientRect();
+        const dx = page && anchor ? clientX - page.left - anchor.x * page.width : 0;
+        const dy = page && anchor ? clientY - page.top - anchor.y * page.height : 0;
+        const bounds = container.getBoundingClientRect(), content = wrapper.getBoundingClientRect();
+        const style = getComputedStyle(container);
+        const left = parseFloat(style.paddingLeft) || 0, top = parseFloat(style.paddingTop) || 0;
+        const width = container.clientWidth - left - (parseFloat(style.paddingRight) || 0);
+        const height = container.clientHeight - top - (parseFloat(style.paddingBottom) || 0);
+        const sx = dx + zoomPanShift(content.left + dx, content.width, bounds.left + left, width);
+        const sy = dy + zoomPanShift(content.top + dy, content.height, bounds.top + top, height);
+        shiftViewport(container, wrapper, sx, sy);
+        visualAnchorRef.current = page && anchor ? {
+          ...anchor, x: (clientX - page.left - sx) / page.width, y: (clientY - page.top - sy) / page.height,
+        } : null;
+      }
       container.dispatchEvent(new Event('pdf-zoom-frame'));
     };
     const cancel = () => {
@@ -451,6 +473,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
         wheelRouter.setHorizontalOwner(container);
         gestureEpochRef.current++;
         container.dataset.zoomEpoch=String(gestureEpochRef.current);
+        previousWheelTime = null;
         startScale = committedScaleRef.current;
         gestureAnchor = null;
         targetScale = scaleRef.current;
@@ -465,7 +488,12 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       clientY = event.clientY;
       if (frame === null) frame = requestAnimationFrame(apply);
       if (timer) clearTimeout(timer);
-      timer = setTimeout(finish, 120);
+      // Chrome sends pinch as a stream of wheel events without gestureend.
+      // Allow several input intervals for the next tick. A fast trackpad can
+      // start its final raster sooner, while a sparse stream stays continuous.
+      const interval = previousWheelTime === null ? 24 : event.timeStamp - previousWheelTime;
+      previousWheelTime = event.timeStamp;
+      timer = setTimeout(finish, Math.max(56, Math.min(120, 3 * interval)));
     };
     container.addEventListener('wheel', wheel, { passive: false });
     const panInput=(event:Event)=>{const {x,y}=(event as CustomEvent<{x:number;y:number}>).detail;queuePan(x,y);};

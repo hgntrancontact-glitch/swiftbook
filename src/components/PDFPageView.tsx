@@ -218,6 +218,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const wasOwned=owned;owned=false;detailRasterOwnership.release(page,owner);
       if(notify && wasOwned)page.dispatchEvent(new Event('pdf-detail-fallback'));
     };
+    let imageResolutionKnown=false;
     let imagePixels:{width:number;height:number}|null=null;
     let detailSource:{canvas:HTMLCanvasElement;tile:DetailTile;scale:number;final:boolean;layoutKey?:string}|null=null;
     let cancelCurrent=()=>{};
@@ -258,6 +259,9 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         requiredDensity:Math.min(tile?.density || 0,imagePixels ? imagePixels.width/size.width : Infinity),
         layoutKey:`${v.width}:${v.height}:${window.devicePixelRatio || 1}`};
     };
+    let settledScale = parseFloat(page.style.getPropertyValue('--pdf-layout-scale')) || page.getBoundingClientRect().width/size.width;
+    let settledDpr = window.devicePixelRatio || 1;
+    let gridChanged = false;
     const measure=()=> {
       if(frame) cancelAnimationFrame(frame);frame=0;
       if(disposed) return;
@@ -267,11 +271,25 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const hasOriginal=!!(imagePixels && detailSource && sameRasterScale(detailSource.tile.density,imagePixels.width/size.width) &&
         scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0));
       const needsOriginal=!!original && !hasOriginal;
+      const dpr = window.devicePixelRatio || 1;
+      if (!zooming && (!sameRasterScale(liveScale,settledScale) || dpr !== settledDpr)) {
+        settledDpr = dpr;
+        settledScale = liveScale;
+        gridChanged = true;
+      }
+      // PDF glyphs are hinted on the grid on which PDF.js paints them.
+      // A denser bitmap from an earlier zoom can cover the entire viewport
+      // yet have different glyph edges. Keep it visible until the exact crop
+      // is ready. Imported images have their own canonical pixel grid.
+      const matchesGrid = detailSource && sameRasterScale(detailSource.scale,liveScale) &&
+        sameRasterScale(detailSource.tile.density,tile.density) &&
+        scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,requiredDensity);
+      const refineGrid = !zooming && gridChanged && imageResolutionKnown && !imagePixels && !matchesGrid;
       // The live surface already maps immutable page pixels to document
       // coordinates. Keep it through release if it covers this viewport at
       // device resolution. A second filtered copy would change the glyph
       // edges even though the source and the final zoom are identical.
-      if (!zooming && (!imagePixels || hasOriginal) && nativeSourceOnSurface && detailSource &&
+      if (!zooming && !refineGrid && (!imagePixels || hasOriginal) && nativeSourceOnSurface && detailSource &&
           detailSource.layoutKey === layoutKey && detailSource.tile.density <= requiredDensity * 3 &&
           scaledDetailCovers(detailSource.tile, detailSource.scale, liveScale, visible, requiredDensity)) {
         owned = true;
@@ -287,7 +305,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       const needsPinchOriginal=zooming && !nativeSourceOnSurface && !!detailSource &&
         scaledDetailCovers(detailSource.tile,detailSource.scale,liveScale,visible,0) &&
         (hasOriginal || lastSource===detailSource.canvas);
-      if(!needsOriginal && !zooming && !settlePixelGrid && presented?.final && sameRasterScale(presented.scale,liveScale) &&
+      if(!refineGrid && !needsOriginal && !zooming && !settlePixelGrid && presented?.final && sameRasterScale(presented.scale,liveScale) &&
         scaledDetailCovers(presented.tile,presented.scale,liveScale,visible,requiredDensity)) {
         if(rendering && runningTarget && !runningTarget.final)cancelCurrent();
         return;
@@ -331,13 +349,14 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
         Math.abs(fallback.height-pageRect.height*tile.density/liveScale)<1e-6 &&
         detailPixelAligned({...tile,x:0,y:0},pageRect.left,pageRect.top,liveScale);
       if(nativeFull && !needsOriginal) {cancelCurrent();hide();settlePixelGrid=false;readyRef.current?.();return;}
-      const needsFinal=!failed && !zooming && (needsOriginal ||
+      const needsFinal=!failed && !zooming && (refineGrid || needsOriginal ||
         (needsFinalDetailRender(detailSource,liveScale,visible,requiredDensity,false) && !(source===full && fullIsNative && sourceDensity>=requiredDensity-.002)));
       const needsPreview=zooming && (needsOriginal || sourceDensity<requiredDensity-.002);
       if(source && crop) {
         const signature=[sampleTile.x,sampleTile.y,sampleTile.width,sampleTile.height,sampleTile.density].join(':');
         const improvesQuality=!!presented && Math.min(sampleTile.density,sourceDensity)>presented.tile.density+.002;
-        if((key!==signature || lastSource!==source || needsPinchOriginal) &&
+        if(!(refineGrid && presented && scaledDetailCovers(presented.tile,presented.scale,liveScale,visible,0)) &&
+          (key!==signature || lastSource!==source || needsPinchOriginal) &&
           (needsPinchOriginal || improvesQuality || !reuseDetailSurface(presented,liveScale,visible,0,zooming))) {
           const previous=front;
           front=present(source,crop,sampleTile,liveScale,zooming);
@@ -378,7 +397,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
       // Paint new pixels at the display's DPR first. Speculative zoom
       // headroom costs 2.25x the pixels at a time when the reader is scrolling.
       const firstScrollPaint = final && !detailSource && !!page.closest('[data-continuous-page]');
-      const targetForView = (crop: DetailTile) => firstScrollPaint ? crop : oversampleDetail(crop);
+      const targetForView = (crop: DetailTile) => firstScrollPaint || refineGrid ? crop : oversampleDetail(crop);
       let target=targetForView(tile),targetLayoutKey=layoutKey;
       const epoch=view.dataset.zoomEpoch,own=++generation;
       rendering=true;refreshAfterRender=false;runningTarget={scale:liveScale,final,tile:target,epoch};
@@ -454,16 +473,19 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
           detailSource={canvas,tile:target,scale:liveScale,final,layoutKey:targetLayoutKey};retained=true;
           // A crop can still contain useful visible text after a large scroll.
           // Show it immediately, even if another crop must fill the new edge.
-          const native = latest.zooming || (firstScrollPaint && !imagePixels &&
+          const native = latest.zooming || ((firstScrollPaint || refineGrid) && !imagePixels &&
             sameRasterScale(liveScale,latest.liveScale) && detailPixelAligned(target,latest.pageRect.left,latest.pageRect.top,liveScale));
           const previous=front,sample=native?{tile:nativeDetailPresentation(detailSource,latest.liveScale),crop:{x:0,y:0,width:canvas.width,height:canvas.height}}:
             settledDetailSample(canvas,detailSource,latest.tile,latest.liveScale,latest.pageRect.left,latest.pageRect.top),display=sample.tile;
           front=present(canvas,sample.crop,display,latest.liveScale,native);
           nativeSourceOnSurface=native;
           if(previousSource)previousSource.canvas.width=previousSource.canvas.height=1;
-          if(previous>=0 && previous!==front)surfaces[previous].width=surfaces[previous].height=1;
+          if(previous>=0 && (native || previous!==front))surfaces[previous].width=surfaces[previous].height=1;
           presented={tile:display,scale:latest.liveScale,final:!latest.zooming && !needsFinalDetailRender(detailSource,latest.liveScale,latest.visible,latest.requiredDensity,false)};
-          if(presented.final)settlePixelGrid=false;
+          if(presented.final) {
+            settlePixelGrid=false;
+            if(final && sameRasterScale(target.density,latest.tile.density))gridChanged=false;
+          }
           lastSource=canvas;key=[display.x,display.y,display.width,display.height,display.density].join(':');
           // A finished crop covering the page already contains the fallback
           // pixels. Derive the thumbnail once instead of replaying the whole
@@ -550,7 +572,7 @@ export function PDFDetailTile({ pdfDoc, pageNumber, size, near, cacheKey, onRead
     };
     watchResolution();
     void importedImagePixels(pdfDoc,pageNumber,size).then(pixels=>{
-      if(!disposed && pixels) {imagePixels=pixels;settlePixelGrid=true;schedule();}
+      if(!disposed) {imageResolutionKnown=true;imagePixels=pixels;settlePixelGrid=true;schedule();}
     });
     // Restore before paint, including a mode change at another scale. Keep the
     // old pixels until this viewport's exact native result is ready.
@@ -1325,7 +1347,8 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
           width: `${effectiveWidth}px`,
           height: `${effectiveHeight}px`,
           '--pdf-layout-scale': scale,
-          zoom: 'var(--pdf-live-zoom, 1)',
+          scale: 'var(--pdf-live-zoom, none)',
+          transformOrigin: 'top left',
         } as React.CSSProperties}
       >
         {/* Loading Skeleton only on very first load before initial render */}
