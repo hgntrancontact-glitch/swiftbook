@@ -437,8 +437,8 @@
 .box-toolbar-color { width:18px; height:18px; border:0; border-radius:50%; cursor:pointer; }
 .box-toolbar-color:focus-visible, .box-toolbar-button:focus-visible { outline:2px solid #f5c41a; outline-offset:2px; }
 .box-toolbar-slider { width:100px; margin:0 2px 0 4px; flex-shrink:1; min-width:50px; }
-.box-toolbar-width { display:inline-flex; align-items:center; gap:3px; font-size:14px; font-weight:400; white-space:nowrap; min-width:32px; }
-.box-toolbar-width-input { padding:2px 0; border:0; border-bottom:1px solid #ccc; outline:none; box-shadow:none; background:transparent; color:inherit; font:inherit; text-align:right; appearance:textfield; }
+.box-toolbar-width { display:inline-flex; flex:none; align-items:center; gap:3px; font-size:14px; font-weight:400; white-space:nowrap; min-width:32px; }
+.box-toolbar-width-input { field-sizing:content; min-width:2ch; padding:2px 0; border:0; border-bottom:1px solid #ccc; outline:none; box-shadow:none; background:transparent; color:inherit; font:inherit; text-align:right; appearance:textfield; }
 .box-toolbar-width-input::-webkit-inner-spin-button, .box-toolbar-width-input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .box-toolbar-button { display:inline-flex; align-items:center; justify-content:center; padding:0; width:28px; height:28px; border:0; background:transparent; color:inherit; cursor:pointer; }
 .box-toolbar-button:hover { background:#f4f4f4; }
@@ -446,5 +446,6 @@
 .box-toolbar-delete { color:#ef2020; }
 .annotation-group-toolbar { display:flex; align-items:center; gap:7px; padding:8px 10px; background:#fff; border-radius:10px; box-shadow:0 4px 18px #0003; font-size:12px; max-width:calc(100vw - 16px); }
 .annotation-group-toolbar button { display:flex; align-items:center; justify-content:center; border:0; background:transparent; cursor:pointer; padding:3px; }
-.annotation-group-toolbar .annotation-group-color { border-radius:50%; width:17px; height:17px; padding:0; flex-shrink:0; }
-.annotation-group-width { width:38px; border:0; border-bottom:1px solid #ccc; background:transparent; outline:none; text-align:right; font:inherit; }
+body[data-annotation-shift] :is(.box-floating-toolbar, .ft-toolbar, .unified-group-toolbar, .floating-submenu, .highlight-popup-toolbar, .annotation-group-toolbar, [data-annotation-editor="true"]) {
+  visibility:hidden !important;
+}

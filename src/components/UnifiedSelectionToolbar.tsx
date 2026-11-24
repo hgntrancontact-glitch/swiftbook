@@ -1,37 +1,22 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { FreeTextAnnotation, BoxAnnotation, BoxConfig, DEFAULT_BOX_CONFIG } from '../types';
+import { FreeTextAnnotation } from '../types';
 import {
   Unlock,
   Trash2,
   ChevronDown,
   Check,
-  Square,
+  Copy,
   Lock,
 } from 'lucide-react';
 
 interface UnifiedSelectionToolbarProps {
   selectedIds?: string[];
   freeTexts: FreeTextAnnotation[];
-  boxes: BoxAnnotation[];
-  boxConfig?: BoxConfig;
   onUpdateText: (id: string, updates: Partial<FreeTextAnnotation>, skipHistory?: boolean) => void;
   onDeleteText: (id: string) => void;
-  onUpdateBox: (id: string, updates: Partial<BoxAnnotation>, skipHistory?: boolean) => void;
-  onDeleteBox: (id: string) => void;
-  onUpdateBoxConfig?: (updates: Partial<BoxConfig>) => void;
-  isModalOpen?: boolean;
+  onCopy: () => void;
 }
-
-const BOX_PRESET_COLORS = [
-  '#ef4444', // Red
-  '#3b82f6', // Blue
-  '#22c55e', // Green
-  '#eab308', // Yellow
-  '#171717', // Black
-];
-
-const BORDER_WIDTHS = [2, 3, 4, 6];
 
 const FONT_SIZES = [12, 14, 18, 24, 36, 48, 72, 96];
 
@@ -298,14 +283,9 @@ const FloatingSubmenu: React.FC<FloatingSubmenuProps> = ({
 export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = ({
   selectedIds,
   freeTexts,
-  boxes,
-  boxConfig = DEFAULT_BOX_CONFIG,
   onUpdateText,
   onDeleteText,
-  onUpdateBox,
-  onDeleteBox,
-  onUpdateBoxConfig,
-  isModalOpen = false,
+  onCopy,
 }) => {
   const [activePopup, setActivePopup] = useState<'color' | 'size' | 'format' | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -313,39 +293,22 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
   const isDraggingRef = useRef<boolean>(false);
 
   // Keep references to latest props in refs to avoid recreating callbacks
-  const boxesRef = useRef(boxes);
-  boxesRef.current = boxes;
   const freeTextsRef = useRef(freeTexts);
   freeTextsRef.current = freeTexts;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
-  const boxConfigRef = useRef(boxConfig);
-  boxConfigRef.current = boxConfig;
 
   // Filter selected items across ALL pages using memoization
   const selectedIdsKey = (selectedIds || []).join(',');
-  const selectedBoxes = useMemo(() => {
-    if (!selectedIds || selectedIds.length === 0) return [];
-    const idSet = new Set(selectedIds);
-    return boxes.filter((b) => idSet.has(b.id));
-  }, [boxes, selectedIdsKey]);
-
   const selectedTexts = useMemo(() => {
     if (!selectedIds || selectedIds.length === 0) return [];
     const idSet = new Set(selectedIds);
     return freeTexts.filter((t) => idSet.has(t.id));
   }, [freeTexts, selectedIdsKey]);
 
-  const isBoxGroup = selectedBoxes.length > 1;
-  const isTextGroup = !isBoxGroup && selectedTexts.length > 1;
-  const isVisibleGroup = (isBoxGroup || isTextGroup) && !isModalOpen;
-
+  const isVisibleGroup = selectedTexts.length > 1;
   const isVisibleGroupRef = useRef(isVisibleGroup);
   isVisibleGroupRef.current = isVisibleGroup;
-  const isBoxGroupRef = useRef(isBoxGroup);
-  isBoxGroupRef.current = isBoxGroup;
-  const isTextGroupRef = useRef(isTextGroup);
-  isTextGroupRef.current = isTextGroup;
 
   const [pos, setPos] = useState<{ left: number; top: number; isAbove: boolean; isVisible: boolean }>({
     left: 0,
@@ -362,28 +325,15 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
     }
 
     const currentSelectedIds = selectedIdsRef.current || [];
-    const currentBoxes = boxesRef.current || [];
     const currentTexts = freeTextsRef.current || [];
     const idSet = new Set(currentSelectedIds);
 
-    const elements: HTMLElement[] = [];
-    if (isBoxGroupRef.current) {
-      currentBoxes.forEach((b) => {
-        if (idSet.has(b.id)) {
-          const el = document.getElementById(`box-${b.id}`);
-          if (el) elements.push(el);
-        }
-      });
-    } else if (isTextGroupRef.current) {
-      currentTexts.forEach((t) => {
-        if (idSet.has(t.id)) {
-          const el = document.getElementById(`freetext-${t.id}`) || document.getElementById(`editable-${t.id}`);
-          if (el) elements.push(el);
-        }
-      });
-    }
+    const elements = currentTexts.filter(text => idSet.has(text.id))
+      .map(text => document.getElementById(`freetext-${text.id}`))
+      .filter((element): element is HTMLElement => !!element);
 
     if (elements.length === 0) {
+      setPos(prev => prev.isVisible ? { ...prev, isVisible: false } : prev);
       return;
     }
 
@@ -423,13 +373,13 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
     }
 
     const tbEl = toolbarRef.current;
-    const tbWidth = tbEl ? tbEl.offsetWidth : (isBoxGroupRef.current ? 290 : 430);
-    const tbHeight = tbEl ? tbEl.offsetHeight : (isBoxGroupRef.current ? 38 : 42);
+    const tbWidth = tbEl ? tbEl.offsetWidth : 430;
+    const tbHeight = tbEl ? tbEl.offsetHeight : 42;
 
     const GAP_BOX_TB = 10;
     const GAP_TB_SUB = 8;
     const MARGIN = 10;
-    const PREDICTED_SUBMENU_HEIGHT = isTextGroupRef.current ? 280 : 0;
+    const PREDICTED_SUBMENU_HEIGHT = 280;
 
     const totalAboveNeeded = tbHeight + GAP_BOX_TB + GAP_TB_SUB + PREDICTED_SUBMENU_HEIGHT + MARGIN;
     const totalBelowNeeded = tbHeight + GAP_BOX_TB + GAP_TB_SUB + PREDICTED_SUBMENU_HEIGHT + MARGIN;
@@ -566,6 +516,9 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
     window.addEventListener('mouseup', onWindowMouseUp, { passive: true });
     window.addEventListener('pointerup', onWindowMouseUp, { passive: true });
     window.addEventListener('scroll', updatePosition, { passive: true, capture: true });
+    window.addEventListener('pdf-zoom-frame', updatePosition, true);
+    window.addEventListener('pdf-zoom-end', updatePosition, true);
+    window.addEventListener('pdf-viewport-pan', updatePosition, true);
     window.addEventListener('resize', updatePosition, { passive: true });
 
     return () => {
@@ -578,6 +531,9 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
       window.removeEventListener('mouseup', onWindowMouseUp);
       window.removeEventListener('pointerup', onWindowMouseUp);
       window.removeEventListener('scroll', updatePosition, { capture: true } as any);
+      window.removeEventListener('pdf-zoom-frame', updatePosition, true);
+      window.removeEventListener('pdf-zoom-end', updatePosition, true);
+      window.removeEventListener('pdf-viewport-pan', updatePosition, true);
       window.removeEventListener('resize', updatePosition);
     };
   }, [updatePosition]);
@@ -596,145 +552,6 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
     return null;
   }
 
-  // 1. RENDER BOX GROUP TOOLBAR
-  const renderBoxGroupToolbar = () => {
-    const allGroupColorSame = selectedBoxes.every(
-      (b) => (b.color || '#ef4444') === (selectedBoxes[0].color || '#ef4444')
-    );
-    const groupColor = allGroupColorSame ? selectedBoxes[0].color || '#ef4444' : null;
-
-    const allGroupWidthSame = selectedBoxes.every(
-      (b) => (b.borderWidth || 2) === (selectedBoxes[0].borderWidth || 2)
-    );
-    const groupWidth = allGroupWidthSame ? selectedBoxes[0].borderWidth || 2 : null;
-
-    const allGroupStyleSame = selectedBoxes.every(
-      (b) => (b.borderStyle || 'solid') === (selectedBoxes[0].borderStyle || 'solid')
-    );
-    const isGroupDashed = allGroupStyleSame && selectedBoxes[0].borderStyle === 'dashed';
-
-    const allGroupFillSame = selectedBoxes.every(
-      (b) =>
-        Boolean(b.fillColor && b.fillColor !== 'transparent') ===
-        Boolean(selectedBoxes[0].fillColor && selectedBoxes[0].fillColor !== 'transparent')
-    );
-    const isGroupFilled =
-      allGroupFillSame &&
-      Boolean(selectedBoxes[0].fillColor && selectedBoxes[0].fillColor !== 'transparent');
-
-    return (
-      <div
-        className="unified-box-toolbar bg-white/98 backdrop-blur-md border border-neutral-200/90 shadow-xl rounded-lg px-2 py-1 flex items-center gap-1.5 whitespace-nowrap select-none max-w-full flex-wrap"
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Border Color Swatches */}
-        <div className="flex items-center gap-1 pr-1.5 border-r border-neutral-200">
-          {BOX_PRESET_COLORS.map((c) => {
-            const isChecked = groupColor === c;
-            return (
-              <button
-                key={c}
-                onClick={() => {
-                  selectedBoxes.forEach((targetBox) => {
-                    const tHasFill = targetBox.fillColor && targetBox.fillColor !== 'transparent';
-                    const tNewFill = tHasFill ? `${c}25` : 'transparent';
-                    onUpdateBox(targetBox.id, { color: c, fillColor: tNewFill });
-                  });
-                  onUpdateBoxConfig?.({ color: c });
-                }}
-                className="w-4.5 h-4.5 rounded-full border border-black/15 flex items-center justify-center transition-transform hover:scale-115 cursor-pointer shadow-2xs"
-                style={{ backgroundColor: c }}
-                title={`Đổi màu viền sang ${c}`}
-              >
-                {isChecked && (
-                  <Check size={10} className={c === '#eab308' ? 'text-black' : 'text-white'} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Border Width Selector */}
-        <div className="flex items-center gap-0.5 px-1 border-r border-neutral-200">
-          {BORDER_WIDTHS.map((w) => {
-            const isActive = groupWidth === w;
-            return (
-              <button
-                key={w}
-                onClick={() => {
-                  selectedBoxes.forEach((targetBox) => {
-                    onUpdateBox(targetBox.id, { borderWidth: w });
-                  });
-                  onUpdateBoxConfig?.({ borderWidth: w });
-                }}
-                className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer ${
-                  isActive
-                    ? 'bg-neutral-900 text-white shadow-2xs'
-                    : 'text-neutral-700 hover:bg-neutral-100'
-                }`}
-                title={`Độ dày viền ${w}px`}
-              >
-                {w}px
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Border Style (Solid / Dashed) */}
-        <div className="flex items-center gap-1 px-0.5">
-          <button
-            onClick={() => {
-              const nextStyle = isGroupDashed ? 'solid' : 'dashed';
-              selectedBoxes.forEach((targetBox) => {
-                onUpdateBox(targetBox.id, { borderStyle: nextStyle });
-              });
-              onUpdateBoxConfig?.({ borderStyle: nextStyle });
-            }}
-            className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center justify-center cursor-pointer ${
-              isGroupDashed ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-            title={isGroupDashed ? 'Chuyển sang nét liền' : 'Chuyển sang nét đứt'}
-          >
-            <span>{isGroupDashed ? 'Đứt' : 'Liền'}</span>
-          </button>
-
-          {/* Fill / Background Toggle */}
-          <button
-            onClick={() => {
-              const nextHasFill = !isGroupFilled;
-              selectedBoxes.forEach((targetBox) => {
-                const targetFill = nextHasFill ? `${targetBox.color || '#ef4444'}25` : 'transparent';
-                onUpdateBox(targetBox.id, { fillColor: targetFill });
-              });
-              onUpdateBoxConfig?.({ hasBackground: nextHasFill });
-            }}
-            className={`p-1 rounded text-[11px] transition-colors cursor-pointer ${
-              isGroupFilled ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-            title={isGroupFilled ? 'Bỏ màu nền (Trong suốt)' : 'Tô màu nền nhẹ'}
-          >
-            <Square size={13} className={isGroupFilled ? 'fill-current' : ''} />
-          </button>
-        </div>
-
-        <div className="w-px h-3.5 bg-neutral-200" />
-
-        {/* Delete Button */}
-        <button
-          onClick={() => {
-            selectedBoxes.forEach((targetBox) => onDeleteBox(targetBox.id));
-          }}
-          className="p-1 rounded text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer shrink-0"
-          title="Xóa nhóm khung đã chọn"
-        >
-          <Trash2 size={13.5} />
-        </button>
-      </div>
-    );
-  };
-
-  // 2. RENDER TEXT GROUP TOOLBAR
   const renderTextGroupToolbar = () => {
     const allGroupColorSame = selectedTexts.every(
       (t) => (t.color || '#1D2129').toUpperCase() === (selectedTexts[0].color || '#1D2129').toUpperCase()
@@ -771,6 +588,11 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onCopy}
+          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-neutral-100 text-neutral-700 transition-colors cursor-pointer"
+          aria-label="Sao chép nhóm" title="Sao chép nhóm">
+          <Copy size={15} />
+        </button>
         {allGroupLocked ? (
           <div className="flex items-center gap-1 whitespace-nowrap">
             <button
@@ -1351,8 +1173,7 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {isBoxGroup && renderBoxGroupToolbar()}
-      {isTextGroup && renderTextGroupToolbar()}
+      {renderTextGroupToolbar()}
     </div>,
     document.body
   );

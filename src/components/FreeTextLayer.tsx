@@ -24,8 +24,6 @@ import {
   X
 } from 'lucide-react';
 
-let globalJustDeactivated = false;
-
 interface FreeTextLayerProps {
   fileId?: string;
   pageNumber: number;
@@ -668,6 +666,7 @@ export function recalculateBlockLayout(el: HTMLElement, currentBaseFontSize: num
 }
 
 interface EditableTextProps {
+  keepEmptyDraft?: boolean;
   id: string;
   isSelected: boolean;
   isEditing: boolean;
@@ -696,6 +695,7 @@ interface EditableTextProps {
 }
 
 const EditableText: React.FC<EditableTextProps> = ({
+  keepEmptyDraft,
   id,
   isSelected,
   isEditing,
@@ -898,6 +898,7 @@ const EditableText: React.FC<EditableTextProps> = ({
         const html = elRef.current.innerHTML || '';
         const textContent = (elRef.current.textContent || elRef.current.innerText || '').trim();
         if (textContent === '' || html === '<br>' || html.trim() === '') {
+          if (keepEmptyDraft) return;
           onDeleteText(id);
           if (isSelected) {
             setActiveTextId(null);
@@ -1117,22 +1118,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
     selectedIdsRef.current = selectedIds;
   }, [selectedIds]);
 
-  // Shift key tracking
-  const [isShiftDown, setIsShiftDown] = useState(false);
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift' || e.shiftKey) setIsShiftDown(true);
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift' || !e.shiftKey) setIsShiftDown(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
+  const draftTextId = useRef<string | null>(null);
 
   // Smart positioning state and calculation for Toolbar and Sub-menus
   interface ToolbarPosition {
@@ -2448,13 +2434,8 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
   };
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isTextToolActive || !containerRef.current) return;
+    if (!isTextToolActive || !containerRef.current || e.button !== 0 || e.shiftKey) return;
     if ((e.target as HTMLElement).closest('.free-text-item-container')) return;
-
-    if (globalJustDeactivated) {
-      globalJustDeactivated = false;
-      return;
-    }
 
     // First delete any empty text items on this page
     pageTexts.forEach((item) => {
@@ -2469,6 +2450,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
     const newId = `text_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    draftTextId.current = newId;
 
     onAddText({
       id: newId,
@@ -3085,40 +3067,34 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (e.button !== 0) return;
       const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-      if (!el?.closest?.('.free-text-item-container') && !el?.closest?.('.ft-toolbar') && !el?.closest?.('.unified-group-toolbar') && !el?.closest?.('.floating-submenu')) {
-        if (activeTextId) {
-          const item = freeTexts.find((t) => t.id === activeTextId);
-          if (item) {
-            const el = document.getElementById(`editable-${activeTextId}`);
-            const textContent = (el?.textContent || el?.innerText || item.text || '').replace(/<[^>]*>/g, '').trim();
-            if (textContent === '') {
-              onDeleteText(activeTextId);
-              setActiveLinkCard(null);
-            }
-          }
-          if (isTextToolActive && onDeactivateTextTool) {
-            globalJustDeactivated = true;
-            onDeactivateTextTool();
-            const clearFlag = () => {
-              // Ensure we run after handleContainerClick which is a normal bubble phase listener
-              setTimeout(() => { globalJustDeactivated = false; }, 0);
-              window.removeEventListener('click', clearFlag, true);
-            };
-            window.addEventListener('click', clearFlag, true);
-          }
+      if (el?.closest('.free-text-item-container, .ft-toolbar, .unified-group-toolbar, .floating-submenu, .ft-link-card-popover, .ft-link-dialog, .box-floating-toolbar, .highlight-popup-toolbar, .highlight-note-preview, .annotation-group-ui, #bottom-toolbar, header, aside, [data-document-tabs], [role="dialog"], button, input, select, textarea, a[href], [role="button"]')) return;
+
+      if (activeTextId && activeTextId === draftTextId.current) {
+        const editor = document.getElementById(`editable-${activeTextId}`);
+        const item = freeTexts.find(t => t.id === activeTextId);
+        if (!(editor?.textContent ?? item?.text ?? '').trim()) {
+          const page = el?.closest('[data-page-container]');
+          if (page?.contains(containerRef.current)) return;
+          draftTextId.current = null;
+          onDeleteText(activeTextId);
+          onSelect?.('', false);
+          setActiveLinkCard(null);
+          if (!page && isTextToolActive) onDeactivateTextTool?.();
         }
-        setActiveTextId(null);
-        setEditingTextId(null);
-        setActivePopup(null);
-        savedRangeRef.current = null;
-        savedOffsetsRef.current = null;
-        setSavedRange(null);
       }
+      setActiveTextId(null);
+      setEditingTextId(null);
+      setActivePopup(null);
+      savedRangeRef.current = null;
+      savedOffsetsRef.current = null;
+      setSavedRange(null);
     };
-    window.addEventListener('mousedown', handleClickOutside);
-    return () => window.removeEventListener('mousedown', handleClickOutside);
-  }, [activeTextId, freeTexts, onDeleteText, isTextToolActive, onDeactivateTextTool]);
+    if (!activeTextId && !editingTextId) return;
+    window.addEventListener('mousedown', handleClickOutside, true);
+    return () => window.removeEventListener('mousedown', handleClickOutside, true);
+  }, [activeTextId, editingTextId, freeTexts, onDeleteText, isTextToolActive, onDeactivateTextTool, onSelect]);
 
   // Keyboard shortcuts for active text item: formatting (Cmd+B/I/U/S) and duplication (Option+drag, Cmd+C/V/D)
   useEffect(() => {
@@ -3507,7 +3483,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
               </div>
             )}
 
-            {isSelected && !isMultiSelectedText && !isShiftDown && !isGesturing && !(activeLinkCard && activeLinkCard.itemId === item.id) && (
+            {isSelected && !isMultiSelectedText && !isGesturing && !(activeLinkCard && activeLinkCard.itemId === item.id) && (
               <AnnotationToolbar anchorId={`freetext-${item.id}`} preferredAbove={isToolbarAbove}
                 ref={activeTextId === item.id ? toolbarRef : undefined}
                 className="ft-toolbar pointer-events-auto bg-white text-neutral-800 px-1 py-1 rounded-[10px] shadow-[0_4px_24px_rgba(0,0,0,0.18)] flex items-center gap-0 text-[14px] select-none border border-neutral-200 transition-none"
@@ -4277,6 +4253,7 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
             }`}>
               <EditableText
                 id={item.id}
+                keepEmptyDraft={isTextToolActive && item.id === draftTextId.current}
                 isSelected={isSelected}
                 isEditing={editingTextId === item.id}
                 isLocked={item.isLocked || false}

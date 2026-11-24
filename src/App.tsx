@@ -1753,29 +1753,16 @@ function SwiftbookApp() {
           {/* Unified Cross-Page Selection Toolbar for Active Document */}
           <AnnotationSelectionController docs={openDocs} activeId={activeDocId} activeTool={activeTool}
             disabled={isLibraryModalOpen || isSaveBookModalOpen || isExportModalOpen || isImageOrderModalOpen}
-            onSelect={handleSelect} onApply={handleApplyAnnotationSelection}/>
-          <UnifiedSelectionToolbar
-            selectedIds={activeDoc?.selectedIds.every(id=>activeDoc.freeTexts.some(text=>text.id===id))?activeDoc.selectedIds:[]}
-            freeTexts={activeDoc?.freeTexts || []}
-            boxes={activeDoc?.boxes || []}
-            boxConfig={boxConfig}
-            onUpdateText={(id, u, s) =>
-              activeDoc && handleUpdateFreeText(activeDoc.id, id, u, s)
-            }
-            onDeleteText={(id) => activeDoc && handleDeleteFreeText(activeDoc.id, id)}
-            onUpdateBox={(id, u, s) =>
-              activeDoc && handleUpdateBox(activeDoc.id, id, u, s)
-            }
-            onDeleteBox={(id) => activeDoc && handleDeleteBox(activeDoc.id, id)}
-            onUpdateBoxConfig={(u) =>
-              activeDoc && handleUpdateBoxConfig(activeDoc.id, u)
-            }
-            isModalOpen={
-              isLibraryModalOpen ||
-              isSaveBookModalOpen ||
-              isExportModalOpen ||
-              isImageOrderModalOpen
-            }
+            onSelect={handleSelect} onApply={handleApplyAnnotationSelection}
+            renderTextToolbar={(copy) => activeDoc && (
+              <UnifiedSelectionToolbar
+                selectedIds={activeDoc.selectedIds}
+                freeTexts={activeDoc.freeTexts}
+                onUpdateText={(id, changes, skipHistory) => handleUpdateFreeText(activeDoc.id, id, changes, skipHistory)}
+                onDeleteText={(id) => handleDeleteFreeText(activeDoc.id, id)}
+                onCopy={copy}
+              />
+            )}
           />
         </div>
       </div>

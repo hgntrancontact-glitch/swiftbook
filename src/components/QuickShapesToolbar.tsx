@@ -63,7 +63,7 @@ function Panel({activeTool,onActiveToolChange,state}:Props & {state:NonNullable<
   const size=highlighting?state.highlightSize:state.settings.size;
   const changeSize=(size:number)=>highlighting?state.updateHighlightSize(size):state.updateSettings({size});
   const progress=Math.max(0,Math.min(100,(size-1)/(STROKE_SLIDER_MAX-1)*100));
-  return <div ref={root} data-quick-shape-ui data-drawing-tools-panel={state.group} className="drawing-tools-panel noto-ui">
+  return <div ref={root} data-quick-shape-ui data-drawing-tools-panel={state.group} data-annotation-editor={state.selection ? 'true' : undefined} className="drawing-tools-panel noto-ui">
     <div className="drawing-tools-row">
       {state.group==='quick'?shapes.map(({tool,label,icon:Icon,temporary},index)=><React.Fragment key={tool}>
         {index===3 && <span className="drawing-tools-divider"/>}

@@ -1,25 +1,28 @@
-import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
+import React,{useEffect,useLayoutEffect,useRef} from 'react';
 import {createPortal} from 'react-dom';
-import {Copy,Trash2} from 'lucide-react';
-import type {ActiveTool,HistorySnapshot,WorkspaceDoc,DrawingStroke,BoxAnnotation,HighlightColor} from '../types';
+import {Copy} from 'lucide-react';
+import type {ActiveTool,HistorySnapshot,WorkspaceDoc,DrawingStroke} from '../types';
 import {useQuickShapes} from '../contexts/QuickShapesContext';
-import {annotationEntries,annotationSnapshot,editAnnotations,transformAnnotations,styleAnnotations,type PageBounds,type SelectionBounds,type GroupTransform,type GroupStyle} from '../utils/annotationSelection';
-import {StrokeWidthInput} from './StrokeWidthInput';
+import {annotationEntries,annotationSnapshot,editAnnotations,transformAnnotations,type PageBounds,type SelectionBounds,type GroupTransform} from '../utils/annotationSelection';
+import {AnnotationToolbar} from './AnnotationToolbar';
+import {BoxToolbarControls} from './BoxToolbarControls';
 
 type Props={docs:WorkspaceDoc[];activeId:string;activeTool:ActiveTool;disabled:boolean;
   onSelect:(docId:string,id:string,shift:boolean)=>void;
-  onApply:(docId:string,snapshot:HistorySnapshot,ids:string[],historyBase?:HistorySnapshot)=>void};
+  onApply:(docId:string,snapshot:HistorySnapshot,ids:string[],historyBase?:HistorySnapshot)=>void;
+  renderTextToolbar?:(copy:()=>void)=>React.ReactNode};
 type Drag={docId:string;pointer:number;x:number;y:number;lastX:number;lastY:number;ids:string[];base:HistorySnapshot;
   pages:PageBounds;measured:Record<string,SelectionBounds>;bounds:SelectionBounds;clones?:Record<string,string>;corner?:number;moved:boolean};
 const editable=(target:Element|null)=>!!target?.closest('input,textarea,select,[contenteditable="true"]');
 const surface=(target:Element|null)=>target?.closest('[data-annotation-id]');
-const ui=(target:Element|null)=>target?.closest('[data-quick-shape-ui],[data-note-size-controls],.annotation-group-ui,.ft-toolbar,.floating-submenu,.box-floating-toolbar,.highlight-popup-toolbar,.highlight-note-preview,#bottom-toolbar-dock');
+const ui=(target:Element|null)=>target?.closest('[data-quick-shape-ui],[data-note-size-controls],.annotation-group-ui,.ft-toolbar,.unified-group-toolbar,.floating-submenu,.box-floating-toolbar,.highlight-popup-toolbar,.highlight-note-preview,#bottom-toolbar-dock');
 
 export function AnnotationSelectionController(props:Props) {
   const ctx=useQuickShapes()!;
   const latest=useRef({...props,ctx});latest.current={...props,ctx};
   const drag=useRef<Drag|null>(null),frame=useRef(0),blockedClick=useRef(false);
-  const [bounds,setBounds]=useState<SelectionBounds|null>(null);
+  const groupFrame=useRef<HTMLDivElement>(null);
+  const copyToolbar=useRef<HTMLDivElement>(null);
   const active=props.docs.find(doc=>doc.id===props.activeId);
   const snapshot=(doc:WorkspaceDoc)=>({...annotationSnapshot(doc),drawings:[...doc.drawings,...latest.current.ctx.temporary.filter(s=>s.fileId===doc.fileId),...latest.current.ctx.previewShapes.filter(s=>s.fileId===doc.fileId)]});
   const elements=(id:string)=>Array.from(document.querySelectorAll<HTMLElement>(`[data-annotation-id="${CSS.escape(id)}"]`));
@@ -31,10 +34,33 @@ export function AnnotationSelectionController(props:Props) {
   };
   const refresh=()=>{
     const {docs,activeId}=latest.current,doc=docs.find(d=>d.id===activeId);
-    const next=doc && doc.selectedIds.length>1?measure(doc.selectedIds):null;
-    setBounds(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
+    const frame=groupFrame.current;
+    if(!frame)return;
+    const bounds=doc && measure(doc.selectedIds);
+    const toolbar=copyToolbar.current;
+    frame.style.visibility=bounds?'visible':'hidden';
+    if(toolbar)toolbar.style.visibility=bounds?'visible':'hidden';
+    if(!bounds)return;
+    // Read the transformed annotation bounds and move the frame before the
+    // browser paints this zoom frame. A React state update can land a frame late.
+    const {left,top,width,height}=bounds;
+    Object.assign(frame.style,{left:`${left-1}px`,top:`${top-1}px`,width:`${Math.max(3,width+2)}px`,height:`${Math.max(3,height+2)}px`});
+    if(toolbar) {
+      const size=toolbar.getBoundingClientRect();
+      const header=document.getElementById('app-header')?.getBoundingClientRect().bottom || 0;
+      const y=top-size.height-8>=header?top-size.height-8:top+height+8;
+      toolbar.style.left=`${Math.max(8,Math.min(window.innerWidth-size.width-8,left+(width-size.width)/2))}px`;
+      toolbar.style.top=`${Math.max(header,Math.min(window.innerHeight-size.height-8,y))}px`;
+      toolbar.style.visibility=top>window.innerHeight || top+height<header || left+width<0 || left>window.innerWidth?'hidden':'visible';
+    }
   };
-  useLayoutEffect(refresh,[active?.selectedIds,active?.drawings,active?.boxes,active?.textNotes,active?.freeTexts,active?.highlights,ctx.temporary,ctx.previewShapes]);
+  useLayoutEffect(refresh,[props.disabled,active?.id,active?.selectedIds,active?.drawings,active?.boxes,active?.textNotes,active?.freeTexts,active?.highlights,ctx.temporary,ctx.previewShapes]);
+  useLayoutEffect(()=>{
+    if(!groupFrame.current || !active || typeof ResizeObserver==='undefined')return;
+    const observer=new ResizeObserver(refresh);
+    active.selectedIds.flatMap(elements).forEach(element=>observer.observe(element));
+    return()=>observer.disconnect();
+  },[active?.selectedIds,active?.id,props.disabled]);
   useEffect(()=>{
     if(!active || drag.current || !active.selectedIds.length)return;
     const available=new Set(annotationEntries(snapshot(active)).map(({item})=>item.id));
@@ -48,7 +74,8 @@ export function AnnotationSelectionController(props:Props) {
     const refreshSoon=()=>{if(!drag.current)refresh();};
     window.addEventListener('scroll',refreshSoon,true);window.addEventListener('resize',refreshSoon);
     window.addEventListener('pdf-zoom-frame',refreshSoon,true);window.addEventListener('pdf-zoom-end',refreshSoon,true);
-    return()=>{window.removeEventListener('scroll',refreshSoon,true);window.removeEventListener('resize',refreshSoon);window.removeEventListener('pdf-zoom-frame',refreshSoon,true);window.removeEventListener('pdf-zoom-end',refreshSoon,true);};
+    window.addEventListener('pdf-viewport-pan',refreshSoon,true);
+    return()=>{window.removeEventListener('scroll',refreshSoon,true);window.removeEventListener('resize',refreshSoon);window.removeEventListener('pdf-zoom-frame',refreshSoon,true);window.removeEventListener('pdf-zoom-end',refreshSoon,true);window.removeEventListener('pdf-viewport-pan',refreshSoon,true);};
   },[]);
   const apply=(docId:string,next:HistorySnapshot,ids:string[],base?:HistorySnapshot,clones?:Record<string,string>)=>{
     const {ctx,docs,onApply}=latest.current,doc=docs.find(d=>d.id===docId);if(!doc)return;
@@ -149,7 +176,19 @@ export function AnnotationSelectionController(props:Props) {
     };
     const up=(event:PointerEvent)=>{if(drag.current?.pointer===event.pointerId){move(event);finish(event.type==='pointercancel');}};
     const click=(event:MouseEvent)=>{if(blockedClick.current && surface(event.target instanceof Element?event.target:null)){blockedClick.current=false;event.preventDefault();event.stopImmediatePropagation();}};
+    const updateShift=(event:KeyboardEvent)=>{
+      const wasHeld=document.body.hasAttribute('data-annotation-shift');
+      document.body.toggleAttribute('data-annotation-shift',event.shiftKey);
+      if(!wasHeld || event.shiftKey || latest.current.activeTool!=='select')return;
+      const {ctx,docs,activeId}=latest.current,doc=docs.find(item=>item.id===activeId);
+      if(!doc?.selectedIds.length)return;
+      const strokes=snapshot(doc).drawings.filter(stroke=>doc.selectedIds.includes(stroke.id));
+      if(strokes.length!==doc.selectedIds.length)return;
+      const first=strokes[0];
+      if(strokes.every(stroke=>!!stroke.quickShape===!!first.quickShape && !!stroke.isHighlighter===!!first.isHighlighter))ctx.select(first,doc.fileId);
+    };
     const key=(event:KeyboardEvent)=>{
+      updateShift(event);
       if(editable(event.target instanceof Element?event.target:null) || editable(document.activeElement) || latest.current.disabled)return;
       if(event.key==='Escape'){finish(true);return;}
       if(event.key!=='Delete' && event.key!=='Backspace')return;
@@ -158,10 +197,10 @@ export function AnnotationSelectionController(props:Props) {
       event.preventDefault();event.stopImmediatePropagation();
       const base=snapshot(doc);apply(doc.id,editAnnotations(base,doc.selectedIds,()=>null),[],base);latest.current.ctx.setSelection(null);latest.current.ctx.setOpen(false);
     };
-    const blur=()=>finish(true);
+    const blur=()=>{document.body.removeAttribute('data-annotation-shift');finish(true);};
     window.addEventListener('pointerdown',down,true);window.addEventListener('pointermove',move,true);window.addEventListener('pointerup',up,true);window.addEventListener('pointercancel',up,true);
-    window.addEventListener('click',click,true);window.addEventListener('keydown',key,true);window.addEventListener('blur',blur);
-    return()=>{if(frame.current)cancelAnimationFrame(frame.current);window.removeEventListener('pointerdown',down,true);window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerup',up,true);window.removeEventListener('pointercancel',up,true);window.removeEventListener('click',click,true);window.removeEventListener('keydown',key,true);window.removeEventListener('blur',blur);};
+    window.addEventListener('click',click,true);window.addEventListener('keydown',key,true);window.addEventListener('keyup',updateShift,true);window.addEventListener('blur',blur);
+    return()=>{if(frame.current)cancelAnimationFrame(frame.current);document.body.removeAttribute('data-annotation-shift');window.removeEventListener('pointerdown',down,true);window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerup',up,true);window.removeEventListener('pointercancel',up,true);window.removeEventListener('click',click,true);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',updateShift,true);window.removeEventListener('blur',blur);};
   },[]);
   // The reopened drawing panel edits its selected objects, not the next tool alone.
   const revisions=useRef([ctx.revision,ctx.highlightRevision]);
@@ -174,26 +213,43 @@ export function AnnotationSelectionController(props:Props) {
       ...((item as DrawingStroke).isHighlighter?(highlight?{size:ctx.highlightSize}:{}):(normal?{size:ctx.settings.size}:{}))}:item);
     apply(active.id,next,ids,base);
   },[ctx.revision,ctx.highlightRevision]);
-  if(!active || !bounds || active.selectedIds.length<2 || props.disabled)return null;
+  if(!active || active.selectedIds.length<2 || props.disabled)return null;
   const ids=active.selectedIds;
-  const style=(patch:GroupStyle)=>{const base=snapshot(active);apply(active.id,styleAnnotations(base,ids,patch),ids,base);};
   const selected=annotationEntries(snapshot(active)).filter(({item})=>ids.includes(item.id));
-  const pureText=selected.every(({kind})=>kind==='freeTexts');
-  const hasStroke=selected.some(({kind})=>kind==='drawings' || kind==='boxes');
+  const kinds=new Set(selected.map(({kind})=>kind));
+  const pureText=kinds.size===1 && kinds.has('freeTexts');
+  const boxes=kinds.size===1 && kinds.has('boxes')?active.boxes.filter(box=>ids.includes(box.id)):[];
+  const mixedWithToolbar=kinds.size>1 && selected.some(({kind})=>kind!=='textNotes');
+  const copy=()=>{
+    const base=snapshot(active),pages:PageBounds={};
+    for(const {item} of selected) {
+      const page=elements(item.id)[0]?.closest('[data-page-container]');
+      if(page)pages[item.pageNumber]=page.getBoundingClientRect();
+    }
+    const clones=Object.fromEntries(ids.map(id=>[id,`annotation_${crypto.randomUUID()}`]));
+    apply(active.id,transformAnnotations(base,ids,pages,{dx:12,dy:12,scale:1,originX:0,originY:0},clones),Object.values(clones),base,clones);
+  };
   return createPortal(<div className="annotation-group-ui noto-ui" data-quick-shape-ui>
-    <div data-annotation-group-frame style={{position:'fixed',zIndex:89000,left:bounds.left-4,top:bounds.top-4,width:Math.max(8,bounds.width+8),height:Math.max(8,bounds.height+8),border:'1.5px solid #f5c41a',pointerEvents:'none'}}>
+    <div ref={groupFrame} data-annotation-group-frame style={{position:'fixed',zIndex:89000,visibility:'hidden',border:'1.5px solid #f5c41a',pointerEvents:'none'}}>
       {[0,1,2,3].map(side=><div key={side} aria-label="Di chuyển nhóm" style={{position:'absolute',pointerEvents:'auto',cursor:'move',...(side%2===0?{left:0,right:0,height:8,...(side===0?{top:-4}:{bottom:-4})}:{top:0,bottom:0,width:8,...(side===1?{right:-4}:{left:-4})})}}
         onPointerDown={e=>{e.preventDefault();e.stopPropagation();begin(e,active,ids);}}/>)}
       {[0,1,2,3].map(corner=><button key={corner} aria-label={`Đổi kích thước nhóm góc ${corner+1}`} style={{position:'absolute',width:8,height:8,background:'#fff',border:'1.5px solid #f5c41a',pointerEvents:'auto',left:corner===0 || corner===3?-5:undefined,right:corner===1 || corner===2?-5:undefined,top:corner<2?-5:undefined,bottom:corner>=2?-5:undefined,cursor:corner%2?'nesw-resize':'nwse-resize'}}
         onPointerDown={e=>{e.preventDefault();e.stopPropagation();begin(e,active,ids,corner);}}/>) }
     </div>
-    {!pureText && <div className="annotation-group-toolbar" style={{position:'fixed',zIndex:90000,left:Math.max(8,Math.min(window.innerWidth-360,bounds.left+bounds.width/2-180)),top:Math.max(8,bounds.top>64?bounds.top-48:bounds.top+bounds.height+14)}}>
-      {(['yellow','green','pink','red','gray'] as HighlightColor[]).map((color,i)=><button key={color} aria-label={`Màu nhóm ${color}`} className="annotation-group-color" style={{background:['#eab308','#22c55e','#ec4899','#ef4444','#6b7280'][i]}} onClick={()=>style({color})}/>)}
-      {hasStroke && <><StrokeWidthInput aria-label="Độ dày nhóm (px)" className="annotation-group-width" value={(selected.find(({kind})=>kind==='drawings')?.item as DrawingStroke)?.size || (selected.find(({kind})=>kind==='boxes')?.item as BoxAnnotation)?.borderWidth || 4} onChange={size=>style({size})}/><span>px</span>
-        <button aria-label="Nét nhóm liền hoặc đứt" onClick={()=>style({dashStyle:selected.some(({item})=>'dashStyle' in item?item.dashStyle==='dashed':'borderStyle' in item && item.borderStyle==='dashed')?'solid':'dashed'})}>┄</button></>}
-      {selected.some(({kind})=>kind==='boxes') && <button aria-label="Bật hoặc tắt nền nhóm Box" onClick={()=>style({fill:!selected.some(({kind,item})=>kind==='boxes' && !!(item as BoxAnnotation).fillColor && (item as BoxAnnotation).fillColor!=='transparent')})}>□</button>}
-      <button aria-label="Sao chép nhóm" onClick={()=>{const base=snapshot(active),clones=Object.fromEntries(ids.map(id=>[id,`annotation_${crypto.randomUUID()}`]));apply(active.id,transformAnnotations(base,ids,Object.fromEntries(selected.map(({item})=>[item.pageNumber,elements(item.id)[0]?.closest('[data-page-container]')?.getBoundingClientRect()]).filter(([,p])=>p)) as PageBounds,{dx:12,dy:12,scale:1,originX:0,originY:0},clones),Object.values(clones),base,clones);}}><Copy size={16}/></button>
-      <button aria-label="Xóa nhóm" onClick={()=>{const base=snapshot(active);apply(active.id,editAnnotations(base,ids,()=>null),[],base);ctx.setSelection(null);ctx.setOpen(false);}}><Trash2 size={16}/></button>
+    {mixedWithToolbar && <div ref={copyToolbar} className="annotation-group-toolbar" style={{position:'fixed',zIndex:90000,visibility:'hidden'}}>
+      <button aria-label="Sao chép nhóm" title="Sao chép nhóm" onClick={copy}><Copy size={16}/></button>
     </div>}
+    {boxes.length>1 && <AnnotationToolbar anchorId={`box-${boxes[0].id}`} anchorIds={boxes.map(box=>`box-${box.id}`)}
+      fitAnchorEdges scaleWithPage className="box-floating-toolbar noto-ui pointer-events-auto select-none">
+      <BoxToolbarControls boxes={[boxes[0],...boxes.slice(1)]} onCopy={copy} onChange={edit=>{
+        const base=snapshot(active);
+        const boxes=base.boxes.map(box=>ids.includes(box.id)?{...box,...edit(box)}:box);
+        apply(active.id,{...base,boxes},ids,base);
+      }} onDelete={()=>{
+        const base=snapshot(active);
+        apply(active.id,editAnnotations(base,ids,()=>null),[],base);
+      }}/>
+    </AnnotationToolbar>}
+    {pureText && props.renderTextToolbar?.(copy)}
   </div>,document.body);
 }

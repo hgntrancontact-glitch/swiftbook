@@ -16,8 +16,8 @@ test('Box toolbar changes width, toggles dash/fill directly, retains fill when r
   let saved=initial,deleted=false;
   function App() {
     const [box,setBox]=useState(initial);saved=box;
-    return React.createElement('div',{className:'box-floating-toolbar noto-ui'},React.createElement(BoxToolbarControls,{box,
-      onChange:patch=>setBox(old=>({...old,...patch})),onDelete:()=>{deleted=true;}}));
+    return React.createElement('div',{className:'box-floating-toolbar noto-ui'},React.createElement(BoxToolbarControls,{boxes:[box],
+      onChange:edit=>setBox(old=>({...old,...edit(old)})),onDelete:()=>{deleted=true;}}));
   }
   const {createRoot}=await import('react-dom/client');const root=createRoot(dom.window.document.getElementById('root')!);
   const doc=dom.window.document;
@@ -29,9 +29,10 @@ test('Box toolbar changes width, toggles dash/fill directly, retains fill when r
     assert.equal(dash().getAttribute('stroke-dasharray'),null);
     await click('Đổi nét viền khung liền hoặc đứt');assert.equal(saved.borderStyle,'dashed');assert.equal(dash().getAttribute('stroke-dasharray'),'4 2');
     await click('Đổi nét viền khung liền hoặc đứt');assert.equal(saved.borderStyle,'solid');
-    await click('Bật hoặc tắt nền khung');assert.equal(saved.fillColor,'#22c55e25');
-    await click('Màu khung #3b82f6');assert.equal(saved.color,'#3b82f6');assert.equal(saved.fillColor,'#3b82f625');
-    await click('Bật hoặc tắt nền khung');assert.equal(saved.fillColor,'transparent');
+    await click('Bật nền khung');assert.equal(saved.fillColor,'#22c55e33');
+    assert.ok(doc.querySelector('[aria-label="Tắt nền khung"] svg path'));
+    await click('Màu khung #3b82f6');assert.equal(saved.color,'#3b82f6');assert.equal(saved.fillColor,'#3b82f633');
+    await click('Tắt nền khung');assert.equal(saved.fillColor,'transparent');
     await click('Màu khung #ef4444');assert.equal(saved.fillColor,'transparent');
     const input=doc.querySelector<HTMLInputElement>('[aria-label="Độ dày viền khung"]')!;
     const setter=Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!;

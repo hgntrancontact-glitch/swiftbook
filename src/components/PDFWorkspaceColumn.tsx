@@ -598,6 +598,7 @@ const PDFWorkspaceColumnComponent: React.FC<PDFWorkspaceColumnProps> = ({
       {/* Column Mini Sub-Header when viewing multiple PDFs */}
       {totalVisibleDocs > 1 && (
         <div
+          data-document-tabs
           className={`h-7 px-3 flex items-center justify-between text-xs border-b transition-colors shrink-0 ${
             isActive
               ? 'bg-neutral-200/80 text-neutral-900 border-neutral-300 font-medium'

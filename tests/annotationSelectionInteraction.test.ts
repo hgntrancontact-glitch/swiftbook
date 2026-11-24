@@ -88,11 +88,11 @@ test('Option duplicates a mixed group; Delete respects editors, deletes all sele
   } finally {await h.dispose();}
 });
 
-test('group controls edit compatible styles, resizing scales the group and Escape cancels an in-progress drag',async()=>{
+test('mixed groups expose only Copy, resizing scales the group and Escape cancels dragging',async()=>{
   const h=await harness();try {
-    await h.selectAll();await h.click('Màu nhóm green');
-    assert.equal(h.model.doc.highlights[0].color,'green');assert.equal(h.model.doc.textNotes[0].color,'#98d08a');
-    assert.equal(h.model.doc.boxes[0].color,'#22c55e');assert.equal(h.model.doc.drawings[0].color,'#22c55e');
+    await h.selectAll();
+    const toolbar=h.doc.querySelector('.annotation-group-toolbar')!;
+    assert.deepEqual([...toolbar.querySelectorAll('button')].map(button=>button.getAttribute('aria-label')),['Sao chép nhóm']);
     const before=annotationSnapshot(h.model.doc),history=h.model.doc.pastStates.length;
     await h.pointer(h.element('b'),'pointerdown',120,120);await h.pointer(h.dom.window,'pointermove',140,140);await h.flush();await h.key('Escape');
     assert.deepEqual(annotationSnapshot(h.model.doc),before);assert.equal(h.model.doc.pastStates.length,history);
@@ -102,6 +102,22 @@ test('group controls edit compatible styles, resizing scales the group and Escap
     assert.ok(h.model.doc.drawings[0].size>before.drawings[0].size);
     assert.ok(h.model.doc.freeTexts[0].fontSize>before.freeTexts[0].fontSize);
     assert.equal(h.model.doc.pastStates.length,history+1);
+  } finally {await h.dispose();}
+});
+
+test('the group frame follows zoom synchronously and copying selects the copies',async()=>{
+  const h=await harness();try {
+    await h.selectAll();
+    const frame=h.doc.querySelector<HTMLElement>('[data-annotation-group-frame]')!;
+    const item=h.element('b');
+    const original=item.getBoundingClientRect();
+    item.getBoundingClientRect=()=>({...original,left:10,right:original.right});
+    item.dispatchEvent(new h.dom.window.Event('pdf-zoom-frame'));
+    assert.equal(frame.style.left,'9px');
+    await h.click('Sao chép nhóm');
+    assert.equal(annotationEntries(h.model.doc).length,12);
+    assert.equal(h.model.doc.selectedIds.length,6);
+    assert.equal(h.model.doc.pastStates.length,1);
   } finally {await h.dispose();}
 });
 

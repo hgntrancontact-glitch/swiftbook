@@ -2,7 +2,7 @@ import { BoxBorder } from './BoxBorder';
 import { AnnotationToolbar } from './AnnotationToolbar';
 import React, { useState, useRef, useEffect } from 'react';
 import { BoxAnnotation, BoxConfig, DEFAULT_BOX_CONFIG } from '../types';
-import { BoxToolbarControls } from './BoxToolbarControls';
+import { BoxToolbarControls, boxLightFill } from './BoxToolbarControls';
 import { findBestMatchingPage, elevatePageZIndex, resetPageZIndex } from '../utils/pageBoundaryHelper';
 
 interface BoxAnnotationsLayerProps {
@@ -382,7 +382,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
         borderWidth: boxConfig.borderWidth || 2,
         referenceScale: 1,
         borderStyle: boxConfig.borderStyle || 'solid',
-        fillColor: hasBg ? `${activeBorderColor}25` : 'transparent',
+        fillColor: hasBg ? boxLightFill(activeBorderColor) : 'transparent',
       });
     }
 
@@ -563,7 +563,8 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
               <AnnotationToolbar anchorId={`box-${box.id}`} align="center" fitAnchorEdges scaleWithPage
                 onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 className="box-floating-toolbar noto-ui pointer-events-auto select-none">
-                <BoxToolbarControls box={box} onChange={patch=>{
+                <BoxToolbarControls boxes={[box]} onChange={edit=>{
+                  const patch=edit(box);
                   onUpdateBox(box.id,patch);
                   onUpdateBoxConfig?.({
                     ...(patch.color!==undefined?{color:patch.color}:{}),
@@ -634,7 +635,7 @@ export const BoxAnnotationsLayer: React.FC<BoxAnnotationsLayerProps> = ({
           style={{
             border: 'none',
             backgroundColor: (boxConfig.hasBackground ?? true)
-              ? `${boxConfig.color || activeColor || '#ef4444'}25`
+              ? boxLightFill(boxConfig.color || activeColor || '#ef4444')
               : 'transparent',
             left: `${currentBox.x}%`,
             top: `${currentBox.y}%`,

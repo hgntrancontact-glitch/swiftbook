@@ -140,6 +140,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div
       ref={barRef}
+      data-document-tabs
       role="tablist"
       aria-label="Thanh tài liệu đang mở"
       className="relative flex items-center h-9 bg-[#f3f4f6] border-b border-neutral-200/90 px-1.5 overflow-x-auto no-scrollbar shrink-0 select-none gap-1 font-['Inter',sans-serif]"

@@ -40,15 +40,18 @@ test('mounted Box toolbar measures its PDF page and repositions on box movement 
     assert.equal(toolbar.style.top,'310px');
     paper={left:500,right:800,top:250,bottom:1160};box={left:650,right:750,top:600,bottom:640};
     doc.querySelector('.pdf-viewport-container')!.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));
-    assert.equal(Number(toolbar.dataset.annotationToolbarScale),.73);
+    assert.equal(Number(toolbar.dataset.annotationToolbarScale),.9);
     for(const zoom of [.25,.5,1,1.5,3]) {
       doc.querySelector<HTMLElement>('[data-page-container]')!.dataset.userZoom=String(zoom);
       doc.querySelector('.pdf-viewport-container')!.dispatchEvent(new dom.window.Event('pdf-zoom-frame'));
       const scale=Number(toolbar.dataset.annotationToolbarScale);
       const left=Number.parseFloat(toolbar.style.left)*scale;
       assert.equal(toolbar.style.flexWrap,'nowrap');
-      assert.ok(left>=paper.left);assert.ok(left+400*scale<=paper.right);
-      assert.equal(scale,Math.min(zoom,292/400));
+      assert.ok(left>=8);assert.ok(left+400*scale<=1988);
+      if (400*scale <= 292) {
+        assert.ok(left>=paper.left);assert.ok(left+400*scale<=paper.right);
+      }
+      assert.equal(scale,zoom*.9);
       assert.equal(toolbar.getBoundingClientRect().height,44*scale);
     }
   } finally {

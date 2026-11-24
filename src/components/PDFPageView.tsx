@@ -1342,7 +1342,7 @@ const PDFPageViewComponent: React.FC<PDFPageViewProps> = ({
             }
           }
         }}
-        className={`relative bg-white cursor-default overflow-visible`}
+        className="relative bg-white cursor-default overflow-visible focus:outline-none"
         style={{
           width: `${effectiveWidth}px`,
           height: `${effectiveHeight}px`,
