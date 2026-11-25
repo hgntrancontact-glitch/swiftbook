@@ -37,8 +37,7 @@ export function BoxToolbarControls({boxes,onChange,onDelete,onCopy}:{
     <button type="button" className="box-toolbar-button" aria-label={fillAction} aria-pressed={filled}
       title={fillAction} onClick={()=>onChange(item=>({fillColor:filled?'transparent':boxLightFill(item.color || COLORS[0])}))}>
       <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="3" width="18" height="18" stroke={color} strokeWidth="3" fill={filled?'none':boxLightFill(color)}/>
-        {filled && <path d="M4 20 20 4" stroke={color} strokeWidth="2"/>}
+        <rect x="3" y="3" width="18" height="18" stroke={color} strokeWidth="3" fill={filled?'none':`${color}55`}/>
       </svg>
     </button>
     <span className="box-toolbar-divider"/>

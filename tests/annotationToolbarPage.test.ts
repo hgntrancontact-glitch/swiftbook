@@ -51,7 +51,7 @@ test('mounted Box toolbar measures its PDF page and repositions on box movement 
       if (400*scale <= 292) {
         assert.ok(left>=paper.left);assert.ok(left+400*scale<=paper.right);
       }
-      assert.equal(scale,zoom*.9);
+      assert.equal(scale,.9*Math.max(.65,Math.min(1.3,1/zoom)));
       assert.equal(toolbar.getBoundingClientRect().height,44*scale);
     }
   } finally {

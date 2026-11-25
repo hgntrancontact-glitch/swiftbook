@@ -17,6 +17,10 @@ export function getAnnotationZoom(anchor: HTMLElement): number {
     page ? parseFloat(page.style.width) : 0);
 }
 
+export function boxToolbarZoom(zoom: number, portrait: boolean): number {
+  return (portrait ? 0.9 : 1) * Math.max(0.65, Math.min(1.3, 1 / zoom));
+}
+
 type Bounds = { left: number; right: number; top: number; bottom: number };
 
 /** Box controls must fit the visible paper, including when it is narrower than the viewport. */

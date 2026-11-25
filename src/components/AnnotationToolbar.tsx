@@ -1,6 +1,6 @@
 import { snapUiPixel } from '../utils/annotationSharpness';
 import { routeAnnotationWheel } from '../utils/annotationWheel';
-import { getAnnotationZoom, placeAnnotationToolbar, toolbarLimitsWithinPage } from '../utils/annotationUi';
+import { boxToolbarZoom, getAnnotationZoom, placeAnnotationToolbar, toolbarLimitsWithinPage } from '../utils/annotationUi';
 import React, { forwardRef, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -37,8 +37,8 @@ export const AnnotationToolbar = forwardRef<HTMLDivElement, AnnotationToolbarPro
         const bottomLimit = Math.min(window.innerHeight - 8, viewport?.bottom || window.innerHeight, document.getElementById('bottom-toolbar-dock')?.getBoundingClientRect().top || window.innerHeight) - 8;
         const page=anchor.closest<HTMLElement>('[data-page-container="true"]');
         const paper=page?.getBoundingClientRect();
-        let scale = uiScale * (scaleWithPage ? getAnnotationZoom(anchor) : 1);
-        if (fitAnchorEdges && paper && paper.height > paper.width) scale *= 0.9;
+        const zoom = scaleWithPage ? getAnnotationZoom(anchor) : 1;
+        let scale = uiScale * (fitAnchorEdges ? boxToolbarZoom(zoom, !!paper && paper.height > paper.width) : zoom);
         // Native CSS zoom rasterizes text at its actual display size. A transform
         // kept a low-resolution text layer after the gesture finished.
         toolbar.style.transform = '';

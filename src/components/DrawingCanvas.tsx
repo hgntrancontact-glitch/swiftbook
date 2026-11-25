@@ -1,4 +1,6 @@
 import {useDrawingSettings} from '../contexts/QuickShapesContext';
+import {StrokeEndpointHandles} from './StrokeEndpointHandles';
+import {hasStrokeEndpoints} from '../utils/strokeEndpoints';
 import {drawingDashArray} from '../utils/drawingStyle';
 import { annotationCreationScale } from '../utils/annotationCreation';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -687,7 +689,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const handleGlobalDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-      if (el?.closest?.('#smart-shape-handles') || el?.closest?.('.stroke-interactive-group, .stroke-vector-group')) {
+      if (el?.closest?.('#smart-shape-handles, #smart-shape-handles-portal, [data-quick-shape-ui], .stroke-interactive-group, .stroke-vector-group')) {
         return;
       }
       if (canvasRef.current && (canvasRef.current === e.target || (el && canvasRef.current.contains(el)))) {
@@ -969,13 +971,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           shapeType === 'parallelogram' ||
           shapeType === 'trapezoid');
 
-      if (isGeom && typeof newStrokeId === 'string') {
-        // Nhóm Hình Khối: Cho phép kéo chỉnh Handle và kéo di chuyển trực tiếp
+      const open=hasStrokeEndpoints({points:strokePointsToSave,isSmartShape,shapeType});
+      if ((isGeom || open) && typeof newStrokeId === 'string') {
         setSelectedStrokeId(newStrokeId);
+        onSelect?.(newStrokeId,false);
         setIsHoveringShape(true);
       } else {
-        // Nhóm Nét Vẽ & Chỉ Hướng (Đường Thẳng, Mũi Tên, Vẽ Tự Do, Highlight):
-        // Trong Chế độ Vẽ/Tạo Nét: KHÔNG cho phép di chuyển hay tương tác lại nét vừa vẽ
         setSelectedStrokeId(null);
         setIsHoveringShape(false);
       }
@@ -1258,6 +1259,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         onPointerMove={handleMove}
         onPointerUp={handleEnd}
         onPointerCancel={handleEnd}
+        onClick={event=>{if(isDrawingMode)event.stopPropagation();}}
         onMouseLeave={() => {
           setCursorPos(null);
           if (isDrawingMode && !draggingStrokeId && !resizingStrokeId) {
@@ -1269,6 +1271,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           height: `${height}px`,
         }}
       />
+
+      {selectedStroke && !isPainting && !isEraserMode &&
+        (!selectedIds || selectedIds.length<=1) &&
+        <StrokeEndpointHandles stroke={selectedStroke} onUpdate={onUpdateStroke}/>}
 
       {/* Real-time Current Drawing Stroke SVG Overlay */}
       {isPainting && currentStroke.length > 0 && (
@@ -1398,7 +1404,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               {cornerHandles.map((handle) => (
                 <div
                   key={handle.id}
-                  className="fixed -translate-x-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full bg-[#2563eb] border-2 border-white shadow-lg pointer-events-auto select-none z-[99999999] before:content-[''] before:absolute before:-inset-2.5 before:rounded-full before:bg-transparent hover:scale-125 transition-transform"
+                  className="fixed -translate-x-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full bg-[#f5c41a] border-2 border-white shadow-lg pointer-events-auto select-none z-[99999999] before:content-[''] before:absolute before:-inset-2.5 before:rounded-full before:bg-transparent hover:scale-125 transition-transform"
                   style={{
                     left: `${handle.screenX}px`,
                     top: `${handle.screenY}px`,
@@ -1420,7 +1426,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               {edgeHandles.map((handle) => (
                 <div
                   key={handle.id}
-                  className="fixed -translate-x-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full bg-[#2563eb] border-2 border-white shadow-lg pointer-events-auto select-none z-[99999999] before:content-[''] before:absolute before:-inset-2.5 before:rounded-full before:bg-transparent hover:scale-125 transition-transform"
+                  className="fixed -translate-x-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full bg-[#f5c41a] border-2 border-white shadow-lg pointer-events-auto select-none z-[99999999] before:content-[''] before:absolute before:-inset-2.5 before:rounded-full before:bg-transparent hover:scale-125 transition-transform"
                   style={{
                     left: `${handle.screenX}px`,
                     top: `${handle.screenY}px`,

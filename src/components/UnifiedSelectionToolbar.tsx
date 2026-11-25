@@ -588,13 +588,14 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onCopy}
-          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-neutral-100 text-neutral-700 transition-colors cursor-pointer"
-          aria-label="Sao chép nhóm" title="Sao chép nhóm">
-          <Copy size={15} />
-        </button>
         {allGroupLocked ? (
           <div className="flex items-center gap-1 whitespace-nowrap">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onCopy}
+              className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-neutral-100 text-neutral-700 transition-colors cursor-pointer"
+              aria-label="Sao chép nhóm" title="Sao chép nhóm">
+              <Copy size={15} />
+            </button>
+
             <button
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
@@ -1127,6 +1128,11 @@ export const UnifiedSelectionToolbar: React.FC<UnifiedSelectionToolbarProps> = (
 
             <div className="w-px h-5 bg-neutral-200 mx-0.5" />
 
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onCopy}
+              className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-neutral-100 text-neutral-700 transition-colors cursor-pointer"
+              aria-label="Sao chép nhóm" title="Sao chép nhóm">
+              <Copy size={15} />
+            </button>
             {/* Lock button */}
             <button
               onMouseDown={(e) => e.preventDefault()}

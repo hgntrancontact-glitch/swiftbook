@@ -383,6 +383,7 @@ test('real arrow and Highlight layers reopen their editor in select mode, edit o
       await h.pointer(canvas,'pointerdown',100,200);await h.pointer(canvas,'pointermove',400,200);await h.pointer(canvas,'pointerup',400,200);
       assert.equal(h.model.shapes.length,1);
       await act(async()=>h.model.setTool('select'));
+      await h.pointer(h.svg(),'pointerdown',900,700);await h.pointer(h.svg(),'pointerup',900,700);
       const hit=h.dom.window.document.querySelector(`[data-annotation-id="${h.model.shapes[0].id}"] path[stroke="transparent"]`)!;
       await h.pointer(hit,'pointerdown',250,200);await h.pointer(h.svg(),'pointerup',250,200);
       assert.equal(h.model.state.open,true);assert.equal(h.model.state.group,tool==='quick_arrow'?'quick':'draw');
@@ -391,6 +392,33 @@ test('real arrow and Highlight layers reopen their editor in select mode, edit o
       assert.equal(h.model.shapes[0].size,tool==='quick_arrow'?9:15);assert.equal(h.commits(),1);
       await h.pointer(h.svg(),'pointerdown',900,700);await h.pointer(h.svg(),'pointerup',900,700);
       assert.equal(h.model.state.open,false);
+    } finally {await h.dispose();}
+  }
+});
+
+test('open pen and Highlight strokes expose endpoints immediately and each handle leaves the other points fixed',async()=>{
+  for(const tool of ['pen','smart_pen','highlighter','smart_highlighter'] as const) {
+    const h=await harness(tool,1,1,true);
+    try {
+      const canvas=h.dom.window.document.querySelector('canvas')!;
+      await h.pointer(canvas,'pointerdown',100,200);
+      await h.pointer(canvas,'pointermove',250,225);
+      await h.pointer(canvas,'pointermove',400,250);
+      await h.pointer(canvas,'pointerup',400,250);
+      const handles=()=>h.dom.window.document.querySelectorAll('[data-stroke-endpoint]');
+      assert.equal(handles().length,2,tool);
+      const before=h.model.shapes[0].points.map(point=>({...point}));
+      await h.pointer(handles()[0],'pointerdown',100,200);
+      await h.pointer(handles()[0],'pointermove',80,180);
+      await h.pointer(handles()[0],'pointerup',80,180);
+      const after=h.model.shapes[0].points;
+      assert.deepEqual(after[0],{x:8,y:22.5});
+      assert.deepEqual(after.slice(1),before.slice(1));
+      await h.pointer(handles()[1],'pointerdown',400,250);
+      await h.pointer(handles()[1],'pointerup',420,270);
+      const last=h.model.shapes[0].points;
+      assert.deepEqual(last.slice(0,-1),after.slice(0,-1));
+      assert.deepEqual(last.at(-1),{x:42,y:33.75});
     } finally {await h.dispose();}
   }
 });

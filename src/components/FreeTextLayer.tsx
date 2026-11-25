@@ -1119,6 +1119,22 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
   }, [selectedIds]);
 
   const draftTextId = useRef<string | null>(null);
+  const cancelDraftClick = useRef(false);
+  useEffect(() => {
+    const consumeClick = (event: MouseEvent) => {
+      if (!cancelDraftClick.current) return;
+      cancelDraftClick.current = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const resetClick = () => { cancelDraftClick.current = false; };
+    window.addEventListener('click', consumeClick, true);
+    window.addEventListener('pointerdown', resetClick, true);
+    return () => {
+      window.removeEventListener('click', consumeClick, true);
+      window.removeEventListener('pointerdown', resetClick, true);
+    };
+  }, []);
 
   // Smart positioning state and calculation for Toolbar and Sub-menus
   interface ToolbarPosition {
@@ -3075,13 +3091,12 @@ export const FreeTextLayer: React.FC<FreeTextLayerProps> = ({
         const editor = document.getElementById(`editable-${activeTextId}`);
         const item = freeTexts.find(t => t.id === activeTextId);
         if (!(editor?.textContent ?? item?.text ?? '').trim()) {
-          const page = el?.closest('[data-page-container]');
-          if (page?.contains(containerRef.current)) return;
+          cancelDraftClick.current = true;
           draftTextId.current = null;
           onDeleteText(activeTextId);
           onSelect?.('', false);
           setActiveLinkCard(null);
-          if (!page && isTextToolActive) onDeactivateTextTool?.();
+          if (isTextToolActive) onDeactivateTextTool?.();
         }
       }
       setActiveTextId(null);

@@ -30,7 +30,8 @@ test('Box toolbar changes width, toggles dash/fill directly, retains fill when r
     await click('Đổi nét viền khung liền hoặc đứt');assert.equal(saved.borderStyle,'dashed');assert.equal(dash().getAttribute('stroke-dasharray'),'4 2');
     await click('Đổi nét viền khung liền hoặc đứt');assert.equal(saved.borderStyle,'solid');
     await click('Bật nền khung');assert.equal(saved.fillColor,'#22c55e33');
-    assert.ok(doc.querySelector('[aria-label="Tắt nền khung"] svg path'));
+    assert.equal(doc.querySelector('[aria-label="Tắt nền khung"] svg path'),null);
+    assert.equal(doc.querySelector('[aria-label="Tắt nền khung"] rect')?.getAttribute("fill"),"none");
     await click('Màu khung #3b82f6');assert.equal(saved.color,'#3b82f6');assert.equal(saved.fillColor,'#3b82f633');
     await click('Tắt nền khung');assert.equal(saved.fillColor,'transparent');
     await click('Màu khung #ef4444');assert.equal(saved.fillColor,'transparent');
